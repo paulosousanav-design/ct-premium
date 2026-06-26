@@ -56,6 +56,10 @@ type VolumeDia = {
   valor: number
 }
 
+type ParceiroResumo = {
+  status?: string | null
+}
+
 const STATUS_RAPIDOS = [
   { value: 'NOVA', label: 'Nova', className: 'border-slate-300 text-slate-700 hover:bg-slate-50', icon: UserIcon },
   { value: 'EM_TRIAGEM', label: 'Triagem', className: 'border-amber-300 text-amber-700 hover:bg-amber-50', icon: ListIcon },
@@ -146,6 +150,24 @@ export default function DashboardPage() {
           return 0
         }
       }
+      const carregarResumoParceiros = async () => {
+        try {
+          const response = await adminFetch('/api/admin/parceiros')
+          const data = await response.json().catch(() => null)
+
+          if (!response.ok) return { total: 0, pendentes: 0 }
+
+          const parceiros = Array.isArray(data?.data) ? (data.data as ParceiroResumo[]) : []
+
+          return {
+            total: parceiros.length,
+            pendentes: parceiros.filter((parceiro) => (parceiro.status ?? 'ATIVO').toUpperCase() === 'PENDENTE')
+              .length,
+          }
+        } catch {
+          return { total: 0, pendentes: 0 }
+        }
+      }
       const limiteSemTecnico = new Date()
       limiteSemTecnico.setDate(limiteSemTecnico.getDate() - 3)
 
@@ -157,13 +179,12 @@ export default function DashboardPage() {
         aguardandoPeca,
         criticas,
         finalizadas,
-        parceirosAtivos,
-        parceirosPendentes,
         clientes,
         notificacoes,
         ordensTotal,
         osSemTecnico3Dias,
         orcamentosPendentes,
+        parceirosResumo,
         relatoriosResumo,
       ] = await Promise.all([
         countQuery('ordens_servico', 'NOVA').catch(() => 0),
@@ -173,13 +194,12 @@ export default function DashboardPage() {
         countQuery('ordens_servico', 'AGUARDANDO_PECA').catch(() => 0),
         countQuery('ordens_servico', 'CRITICA').catch(() => 0),
         countQuery('ordens_servico', 'FINALIZADA').catch(() => 0),
-        countQuery('parceiros').catch(() => 0),
-        countQuery('parceiros', 'PENDENTE').catch(() => 0),
         countQuery('clientes').catch(() => 0),
         countQuery('notificacoes').catch(() => 0),
         countQuery('ordens_servico').catch(() => 0),
         countOsSemTecnico3Dias(),
         countOrcamentosPendentes(),
+        carregarResumoParceiros(),
         carregarResumoRelatorios(),
       ])
 
@@ -253,8 +273,8 @@ export default function DashboardPage() {
         aguardandoRevisao,
         aguardandoPeca,
         criticas,
-        parceirosAtivos,
-        parceirosPendentes,
+        parceirosAtivos: parceirosResumo.total,
+        parceirosPendentes: parceirosResumo.pendentes,
         clientes,
         notificacoes,
         ordensTotal,
