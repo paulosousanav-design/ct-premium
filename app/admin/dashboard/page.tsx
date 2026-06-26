@@ -13,6 +13,7 @@ type DashboardStats = {
   aguardandoPeca: number
   criticas: number
   parceirosAtivos: number
+  parceirosPendentes: number
   clientes: number
   notificacoes: number
   ordensTotal: number
@@ -77,6 +78,7 @@ export default function DashboardPage() {
     aguardandoPeca: 0,
     criticas: 0,
     parceirosAtivos: 0,
+    parceirosPendentes: 0,
     clientes: 0,
     notificacoes: 0,
     ordensTotal: 0,
@@ -156,6 +158,7 @@ export default function DashboardPage() {
         criticas,
         finalizadas,
         parceirosAtivos,
+        parceirosPendentes,
         clientes,
         notificacoes,
         ordensTotal,
@@ -171,6 +174,7 @@ export default function DashboardPage() {
         countQuery('ordens_servico', 'CRITICA').catch(() => 0),
         countQuery('ordens_servico', 'FINALIZADA').catch(() => 0),
         countQuery('parceiros').catch(() => 0),
+        countQuery('parceiros', 'PENDENTE').catch(() => 0),
         countQuery('clientes').catch(() => 0),
         countQuery('notificacoes').catch(() => 0),
         countQuery('ordens_servico').catch(() => 0),
@@ -250,6 +254,7 @@ export default function DashboardPage() {
         aguardandoPeca,
         criticas,
         parceirosAtivos,
+        parceirosPendentes,
         clientes,
         notificacoes,
         ordensTotal,
@@ -358,7 +363,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <AlertCard
             title="Triagem agora"
             value={loading ? '...' : String(stats.osNovas)}
@@ -379,6 +384,13 @@ export default function DashboardPage() {
             detail="Orcamentos aguardando decisao"
             onClick={() => router.push('/admin/aprovacao')}
             tone={stats.orcamentosPendentes > 0 ? 'amber' : 'slate'}
+          />
+          <AlertCard
+            title="Tecnicos pendentes"
+            value={loading ? '...' : String(stats.parceirosPendentes)}
+            detail="Cadastros aguardando aprovacao"
+            onClick={() => router.push('/admin/parceiros?status=PENDENTES')}
+            tone={stats.parceirosPendentes > 0 ? 'amber' : 'slate'}
           />
           <AlertCard
             title="Estoque baixo"

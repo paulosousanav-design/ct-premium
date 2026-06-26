@@ -86,11 +86,20 @@ const formInicial: FormState = {
   ativo: true,
 }
 
+function getStatusFiltroInicial() {
+  if (typeof window === 'undefined') return 'TODOS'
+
+  const statusParam = new URLSearchParams(window.location.search).get('status')?.toUpperCase()
+  const statusPermitidos = ['TODOS', 'ATIVOS', 'PENDENTES', 'REPROVADOS', 'INATIVOS']
+
+  return statusParam && statusPermitidos.includes(statusParam) ? statusParam : 'TODOS'
+}
+
 export default function ParceirosPage() {
   const [tecnicos, setTecnicos] = useState<Tecnico[]>([])
   const [form, setForm] = useState<FormState>(formInicial)
   const [busca, setBusca] = useState('')
-  const [statusFiltro, setStatusFiltro] = useState('TODOS')
+  const [statusFiltro, setStatusFiltro] = useState(getStatusFiltroInicial)
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [buscandoCep, setBuscandoCep] = useState(false)
