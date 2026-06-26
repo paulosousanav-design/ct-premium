@@ -71,9 +71,13 @@ export async function POST(request: NextRequest) {
 
     const novoStatusOrcamento = acao === 'APROVAR' ? 'APROVADO' : 'REPROVADO'
     const statusAtualizado =
-      acao === 'APROVAR' && ['NOVA', 'EM_TRIAGEM', 'AGUARDANDO_APROVACAO', 'AGUARDANDO_PECA'].includes(os.status ?? 'NOVA')
-        ? 'EM_ATENDIMENTO'
-        : os.status ?? 'NOVA'
+      acao === 'REPROVAR'
+        ? 'AGUARDANDO_REVISAO'
+        : ['NOVA', 'EM_TRIAGEM', 'AGUARDANDO_REVISAO', 'AGUARDANDO_APROVACAO', 'AGUARDANDO_PECA'].includes(
+              os.status ?? 'NOVA'
+            )
+          ? 'EM_ATENDIMENTO'
+          : os.status ?? 'NOVA'
 
     const { error: updateError } = await supabase
       .from('ordens_servico')

@@ -15,6 +15,14 @@ type OSItem = {
   valor_pecas?: number | string | null
   valor_mao_obra?: number | string | null
   desconto?: number | string | null
+  tecnico_valor_pecas?: number | string | null
+  tecnico_valor_mao_obra?: number | string | null
+  tecnico_desconto?: number | string | null
+  tecnico_total?: number | string | null
+  cliente_valor_pecas?: number | string | null
+  cliente_valor_mao_obra?: number | string | null
+  cliente_desconto?: number | string | null
+  cliente_total?: number | string | null
   garantia: boolean | null
   created_at: string
   modelo: string | null
@@ -51,7 +59,7 @@ export default function AprovacaoPage() {
       const { data, error } = await supabase
         .from('ordens_servico')
         .select(
-          'id, numero_os, status, orcamento_status, orcamento_resposta_em, total, valor_pecas, valor_mao_obra, desconto, garantia, created_at, modelo, diagnostico_tecnico, servico_executado, pecas_utilizadas, categoria_id, marca_id, cliente_id'
+          'id, numero_os, status, orcamento_status, orcamento_resposta_em, total, valor_pecas, valor_mao_obra, desconto, tecnico_valor_pecas, tecnico_valor_mao_obra, tecnico_desconto, tecnico_total, cliente_valor_pecas, cliente_valor_mao_obra, cliente_desconto, cliente_total, garantia, created_at, modelo, diagnostico_tecnico, servico_executado, pecas_utilizadas, categoria_id, marca_id, cliente_id'
         )
         .order('created_at', { ascending: false })
 
@@ -156,6 +164,16 @@ export default function AprovacaoPage() {
     setErro('')
 
     try {
+      const valorVisitaTecnico =
+        novoStatus === 'REPROVADO'
+          ? pedirValorVisitaTecnico()
+          : null
+
+      if (novoStatus === 'REPROVADO' && valorVisitaTecnico === null) {
+        setProcessandoId(null)
+        return
+      }
+
       const { data: osAtual, error: atualError } = await supabase
         .from('ordens_servico')
         .select('id, status, prioridade, orcamento_status')
@@ -169,18 +187,40 @@ export default function AprovacaoPage() {
       const prioridadeAnterior = osAtual.prioridade ?? 'NORMAL'
 
       const statusNovo =
-        novoStatus === 'APROVADO' &&
-        ['NOVA', 'EM_TRIAGEM', 'AGUARDANDO_APROVACAO', 'AGUARDANDO_PECA'].includes(osAtual.status ?? 'NOVA')
-          ? 'EM_ATENDIMENTO'
-          : osAtual.status ?? 'NOVA'
+        novoStatus === 'REPROVADO'
+          ? 'FINALIZADA'
+          : ['NOVA', 'EM_TRIAGEM', 'AGUARDANDO_REVISAO', 'AGUARDANDO_APROVACAO', 'AGUARDANDO_PECA'].includes(
+                osAtual.status ?? 'NOVA'
+              )
+            ? 'EM_ATENDIMENTO'
+            : osAtual.status ?? 'NOVA'
+
+      const updatePayload: Record<string, unknown> = {
+        orcamento_status: novoStatus,
+        orcamento_resposta_em: new Date().toISOString(),
+        status: statusNovo,
+      }
+
+      if (novoStatus === 'REPROVADO') {
+        updatePayload.valor_pecas = 0
+        updatePayload.valor_mao_obra = 0
+        updatePayload.desconto = 0
+        updatePayload.total = 0
+        updatePayload.cliente_valor_pecas = 0
+        updatePayload.cliente_valor_mao_obra = 0
+        updatePayload.cliente_desconto = 0
+        updatePayload.cliente_total = 0
+        updatePayload.tecnico_valor_pecas = 0
+        updatePayload.tecnico_valor_mao_obra = valorVisitaTecnico ?? 0
+        updatePayload.tecnico_desconto = 0
+        updatePayload.tecnico_total = valorVisitaTecnico ?? 0
+        updatePayload.bloqueada = true
+        updatePayload.finalizada_em = new Date().toISOString()
+      }
 
       const { error: updateError } = await supabase
         .from('ordens_servico')
-        .update({
-          orcamento_status: novoStatus,
-          orcamento_resposta_em: new Date().toISOString(),
-          status: statusNovo,
-        })
+        .update(updatePayload)
         .eq('id', id)
 
       if (updateError) throw updateError
@@ -720,6 +760,29 @@ function formatarEquipamento(item: OSItem) {
 
 function toNumber(value: number | string | null | undefined) {
   return Number(value ?? 0)
+}
+
+function pedirValorVisitaTecnico() {
+  const resposta = window.prompt(
+    'Informe o valor da visita a pagar ao tecnico nesta OS reprovada. Use 0 se nao houver pagamento.',
+    '0'
+  )
+
+  if (resposta === null) return null
+
+  const normalizado = resposta
+    .replace(/[^\d,.-]/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.')
+
+  const valor = Number(normalizado)
+
+  if (!Number.isFinite(valor) || valor < 0) {
+    window.alert('Valor invalido. Informe um valor igual ou maior que zero.')
+    return null
+  }
+
+  return Math.round(valor * 100) / 100
 }
 
 function formatCurrency(value: number) {
