@@ -163,7 +163,7 @@ export async function PATCH(request: NextRequest) {
       body?.tipoVinculo !== undefined ||
       body?.ativo !== undefined
 
-    if (!id || (!['ATIVO', 'INATIVO'].includes(status) && !portalPin && !temDadosCadastro)) {
+    if (!id || (!['ATIVO', 'INATIVO', 'PENDENTE', 'REPROVADO'].includes(status) && !portalPin && !temDadosCadastro)) {
       return NextResponse.json(
         { error: 'Dados invalidos para alterar status.' },
         { status: 400 }
@@ -173,7 +173,7 @@ export async function PATCH(request: NextRequest) {
     const supabase = getSupabaseAdmin()
     const updatePayload: Record<string, unknown> = {}
 
-    if (['ATIVO', 'INATIVO'].includes(status)) updatePayload.status = status
+    if (['ATIVO', 'INATIVO', 'PENDENTE', 'REPROVADO'].includes(status)) updatePayload.status = status
 
     if (temDadosCadastro) {
       const nome = String(body?.nome ?? '').trim()

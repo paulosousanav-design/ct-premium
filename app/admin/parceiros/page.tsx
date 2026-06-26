@@ -121,6 +121,7 @@ export default function ParceirosPage() {
       total: tecnicos.length,
       ativos: tecnicos.filter((item) => tecnicoAtivo(item)).length,
       pendentes: tecnicos.filter((item) => tecnicoPendente(item)).length,
+      reprovados: tecnicos.filter((item) => tecnicoReprovado(item)).length,
       inativos: tecnicos.filter((item) => tecnicoInativo(item)).length,
       cidades: new Set(tecnicos.map((item) => item.cidade).filter(Boolean)).size,
     }
@@ -159,6 +160,7 @@ export default function ParceirosPage() {
         statusFiltro === 'TODOS' ||
         (statusFiltro === 'ATIVOS' && tecnicoAtivo(item)) ||
         (statusFiltro === 'PENDENTES' && tecnicoPendente(item)) ||
+        (statusFiltro === 'REPROVADOS' && tecnicoReprovado(item)) ||
         (statusFiltro === 'INATIVOS' && tecnicoInativo(item))
 
       return bateBusca && bateStatus
@@ -312,7 +314,7 @@ export default function ParceirosPage() {
           especialidades: form.especialidades,
           observacoes: form.observacoes,
           tipoVinculo: form.tipoVinculo,
-          ativo: form.ativo,
+          ...(editandoId ? {} : { ativo: form.ativo }),
         }),
       })
 
@@ -374,7 +376,7 @@ export default function ParceirosPage() {
     await alterarStatus(tecnico, tecnicoAtivo(tecnico) ? 'INATIVO' : 'ATIVO')
   }
 
-  async function alterarStatus(tecnico: Tecnico, status: 'ATIVO' | 'INATIVO') {
+  async function alterarStatus(tecnico: Tecnico, status: 'ATIVO' | 'INATIVO' | 'PENDENTE' | 'REPROVADO') {
     if (!tecnico.id) return
 
     setErro('')
@@ -395,6 +397,13 @@ export default function ParceirosPage() {
 
       await carregarTecnicos()
       setTecnicoSelecionado(null)
+      setMensagem(
+        status === 'ATIVO'
+          ? 'Tecnico aprovado e liberado para atribuicao em OS.'
+          : status === 'REPROVADO'
+            ? 'Tecnico reprovado e removido das sugestoes de OS.'
+            : 'Status do tecnico atualizado.'
+      )
     } catch (err) {
       setErro(formatarErro(err, 'Erro ao alterar o status do técnico.'))
     }
@@ -465,10 +474,11 @@ export default function ParceirosPage() {
           </div>
         </header>
 
-        <section className="grid gap-2 md:grid-cols-4">
+        <section className="grid gap-2 md:grid-cols-5">
           <ResumoCard titulo="Técnicos" valor={String(resumo.total)} />
           <ResumoCard titulo="Ativos" valor={String(resumo.ativos)} destaque="emerald" />
           <ResumoCard titulo="Pendentes" valor={String(resumo.pendentes)} destaque="amber" />
+          <ResumoCard titulo="Reprovados" valor={String(resumo.reprovados)} destaque="red" />
           <ResumoCard titulo="Inativos" valor={String(resumo.inativos)} destaque="slate" />
         </section>
 
@@ -563,7 +573,14 @@ export default function ParceirosPage() {
                       onClick={() => alterarStatus(tecnico, 'ATIVO')}
                       className="rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-orange-600"
                     >
-                      Ativar
+                      Aprovar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => alterarStatus(tecnico, 'REPROVADO')}
+                      className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700"
+                    >
+                      Reprovar
                     </button>
                   </div>
                 </div>
@@ -734,6 +751,7 @@ export default function ParceirosPage() {
                 <option value="TODOS">Todos</option>
                 <option value="ATIVOS">Ativos</option>
                 <option value="PENDENTES">Pendentes</option>
+                <option value="REPROVADOS">Reprovados</option>
                 <option value="INATIVOS">Inativos</option>
               </select>
             </div>
@@ -768,7 +786,13 @@ export default function ParceirosPage() {
                   tecnicosFiltrados.map((tecnico) => (
                     <tr
                       key={tecnico.id ?? getNomeTecnico(tecnico)}
-                      className={`border-t ${tecnicoPendente(tecnico) ? 'bg-amber-50/60' : ''}`}
+                      className={`border-t ${
+                        tecnicoPendente(tecnico)
+                          ? 'bg-amber-50/60'
+                          : tecnicoReprovado(tecnico)
+                            ? 'bg-red-50/50'
+                            : ''
+                      }`}
                     >
                       <td className="px-3 py-2 font-medium text-slate-900">
                         <div>{getNomeTecnico(tecnico) || '-'}</div>
@@ -805,17 +829,36 @@ export default function ParceirosPage() {
                           >
                             Editar
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => alternarStatus(tecnico)}
-                            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                              tecnicoAtivo(tecnico)
-                                ? 'border border-slate-300 text-slate-700 hover:bg-slate-50'
-                                : 'bg-orange-500 text-white hover:bg-orange-600'
-                            }`}
-                          >
-                            {tecnicoAtivo(tecnico) ? 'Inativar' : 'Ativar'}
-                          </button>
+                          {tecnicoPendente(tecnico) ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => alterarStatus(tecnico, 'ATIVO')}
+                                className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-orange-600"
+                              >
+                                Aprovar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => alterarStatus(tecnico, 'REPROVADO')}
+                                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-red-700"
+                              >
+                                Reprovar
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => alternarStatus(tecnico)}
+                              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                                tecnicoAtivo(tecnico)
+                                  ? 'border border-slate-300 text-slate-700 hover:bg-slate-50'
+                                  : 'bg-orange-500 text-white hover:bg-orange-600'
+                              }`}
+                            >
+                              {tecnicoAtivo(tecnico) ? 'Inativar' : 'Ativar'}
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => gerarPinPortal(tecnico)}
@@ -900,13 +943,31 @@ export default function ParceirosPage() {
                 >
                   Gerar PIN portal
                 </button>
-                {!tecnicoAtivo(tecnicoSelecionado) && (
+                {tecnicoPendente(tecnicoSelecionado) && (
+                  <button
+                    type="button"
+                    onClick={() => alterarStatus(tecnicoSelecionado, 'REPROVADO')}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
+                  >
+                    Reprovar cadastro
+                  </button>
+                )}
+                {!tecnicoAtivo(tecnicoSelecionado) && !tecnicoReprovado(tecnicoSelecionado) && (
                   <button
                     type="button"
                     onClick={() => alterarStatus(tecnicoSelecionado, 'ATIVO')}
                     className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-600"
                   >
-                    Ativar tecnico
+                    Aprovar tecnico
+                  </button>
+                )}
+                {tecnicoReprovado(tecnicoSelecionado) && (
+                  <button
+                    type="button"
+                    onClick={() => alterarStatus(tecnicoSelecionado, 'PENDENTE')}
+                    className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600"
+                  >
+                    Reabrir analise
                   </button>
                 )}
                 {!tecnicoInativo(tecnicoSelecionado) && (
@@ -934,13 +995,15 @@ function ResumoCard({
 }: {
   titulo: string
   valor: string
-  destaque?: 'slate' | 'emerald' | 'orange' | 'amber'
+  destaque?: 'slate' | 'emerald' | 'orange' | 'amber' | 'red'
 }) {
   const cls =
     destaque === 'emerald'
       ? 'text-emerald-600'
       : destaque === 'amber'
         ? 'text-amber-600'
+      : destaque === 'red'
+        ? 'text-red-600'
       : destaque === 'orange'
         ? 'text-orange-500'
         : 'text-slate-900'
@@ -1048,6 +1111,8 @@ function StatusBadge({ status }: { status: string }) {
       ? 'bg-emerald-100 text-emerald-700'
       : status === 'PENDENTE'
         ? 'bg-amber-100 text-amber-700'
+      : status === 'REPROVADO'
+        ? 'bg-red-100 text-red-700'
         : 'bg-slate-100 text-slate-600'
 
   return (
@@ -1098,6 +1163,10 @@ function tecnicoAtivo(tecnico: Tecnico) {
 
 function tecnicoPendente(tecnico: Tecnico) {
   return getStatusTecnico(tecnico) === 'PENDENTE'
+}
+
+function tecnicoReprovado(tecnico: Tecnico) {
+  return getStatusTecnico(tecnico) === 'REPROVADO'
 }
 
 function tecnicoInativo(tecnico: Tecnico) {
