@@ -60,6 +60,8 @@ type ParceiroResumo = {
   status?: string | null
 }
 
+type FiltroOrigemDashboard = 'TODOS' | 'CLIENTE' | 'GARANTIDOR'
+
 const STATUS_RAPIDOS = [
   { value: 'NOVA', label: 'Nova', className: 'border-slate-300 text-slate-700 hover:bg-slate-50', icon: UserIcon },
   { value: 'EM_TRIAGEM', label: 'Triagem', className: 'border-amber-300 text-amber-700 hover:bg-amber-50', icon: ListIcon },
@@ -70,6 +72,23 @@ const STATUS_RAPIDOS = [
 ] as const
 
 const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
+
+async function contarTabela(table: string) {
+  const { count, error } = await supabase.from(table).select('*', { count: 'exact', head: true })
+  if (error) throw error
+  return count ?? 0
+}
+
+function aplicarFiltroOrigemQuery<T>(query: T, filtro: FiltroOrigemDashboard): T {
+  const builder = query as T & {
+    eq: (column: string, value: unknown) => T
+    or: (filters: string) => T
+  }
+
+  if (filtro === 'CLIENTE') return builder.or('garantia.is.false,garantia.is.null')
+  if (filtro === 'GARANTIDOR') return builder.eq('garantia', true)
+  return query
+}
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -106,33 +125,29 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
   const [salvandoStatusId, setSalvandoStatusId] = useState<number | null>(null)
+  const [filtroOrigem, setFiltroOrigem] = useState<FiltroOrigemDashboard>('TODOS')
 
   useEffect(() => {
     void carregarDashboard()
-  }, [])
+  }, [filtroOrigem])
 
   async function carregarDashboard() {
     setLoading(true)
     setErro('')
 
     try {
-      const countQuery = async (table: string, status?: string) => {
-        let query = supabase.from(table).select('*', { count: 'exact', head: true })
-        if (status) query = query.eq('status', status)
-
-        const { count, error } = await query
-        if (error) throw error
-        return count ?? 0
-      }
       const countOsSemTecnico3Dias = async () => {
         try {
-          const { count } = await supabase
+          let query = supabase
             .from('ordens_servico')
             .select('*', { count: 'exact', head: true })
             .is('parceiro_id', null)
             .lte('created_at', limiteSemTecnico.toISOString())
             .not('status', 'in', '("FINALIZADA","CANCELADA")')
 
+          query = aplicarFiltroOrigemQuery(query, filtroOrigem)
+
+          const { count } = await query
           return count ?? 0
         } catch {
           return 0
@@ -140,11 +155,14 @@ export default function DashboardPage() {
       }
       const countOrcamentosPendentes = async () => {
         try {
-          const { count } = await supabase
+          let query = supabase
             .from('ordens_servico')
             .select('*', { count: 'exact', head: true })
             .eq('status', 'AGUARDANDO_APROVACAO')
 
+          query = aplicarFiltroOrigemQuery(query, filtroOrigem)
+
+          const { count } = await query
           return count ?? 0
         } catch {
           return 0
@@ -172,42 +190,30 @@ export default function DashboardPage() {
       limiteSemTecnico.setDate(limiteSemTecnico.getDate() - 3)
 
       const [
-        osNovas,
-        emTriagem,
-        emAtendimento,
-        aguardandoRevisao,
-        aguardandoPeca,
-        criticas,
-        finalizadas,
         clientes,
         notificacoes,
-        ordensTotal,
         osSemTecnico3Dias,
         orcamentosPendentes,
         parceirosResumo,
         relatoriosResumo,
       ] = await Promise.all([
-        countQuery('ordens_servico', 'NOVA').catch(() => 0),
-        countQuery('ordens_servico', 'EM_TRIAGEM').catch(() => 0),
-        countQuery('ordens_servico', 'EM_ATENDIMENTO').catch(() => 0),
-        countQuery('ordens_servico', 'AGUARDANDO_REVISAO').catch(() => 0),
-        countQuery('ordens_servico', 'AGUARDANDO_PECA').catch(() => 0),
-        countQuery('ordens_servico', 'CRITICA').catch(() => 0),
-        countQuery('ordens_servico', 'FINALIZADA').catch(() => 0),
-        countQuery('clientes').catch(() => 0),
-        countQuery('notificacoes').catch(() => 0),
-        countQuery('ordens_servico').catch(() => 0),
+        contarTabela('clientes').catch(() => 0),
+        contarTabela('notificacoes').catch(() => 0),
         countOsSemTecnico3Dias(),
         countOrcamentosPendentes(),
         carregarResumoParceiros(),
-        carregarResumoRelatorios(),
+        carregarResumoRelatorios(filtroOrigem),
       ])
 
-      const { data: ultimasOsData, error: ultimasOsError } = await supabase
+      let ultimasOsQuery = supabase
         .from('ordens_servico')
         .select('id, numero_os, status, prioridade, created_at')
         .order('created_at', { ascending: false })
         .limit(8)
+
+      ultimasOsQuery = aplicarFiltroOrigemQuery(ultimasOsQuery, filtroOrigem)
+
+      const { data: ultimasOsData, error: ultimasOsError } = await ultimasOsQuery
 
       if (ultimasOsError) throw ultimasOsError
 
@@ -230,11 +236,15 @@ export default function DashboardPage() {
 
       if (historicoError) throw historicoError
 
-      const { data: volumeData, error: volumeError } = await supabase
+      let volumeQuery = supabase
         .from('ordens_servico')
         .select('created_at')
         .order('created_at', { ascending: false })
         .limit(500)
+
+      volumeQuery = aplicarFiltroOrigemQuery(volumeQuery, filtroOrigem)
+
+      const { data: volumeData, error: volumeError } = await volumeQuery
 
       if (volumeError) throw volumeError
 
@@ -267,18 +277,18 @@ export default function DashboardPage() {
 
       setOsMap(map)
       setStats({
-        osNovas,
-        emTriagem,
-        emAtendimento,
-        aguardandoRevisao,
-        aguardandoPeca,
-        criticas,
+        osNovas: relatoriosResumo.osNovas,
+        emTriagem: relatoriosResumo.emTriagem,
+        emAtendimento: relatoriosResumo.emAtendimento,
+        aguardandoRevisao: relatoriosResumo.aguardandoRevisao,
+        aguardandoPeca: relatoriosResumo.aguardandoPeca,
+        criticas: relatoriosResumo.criticas,
         parceirosAtivos: parceirosResumo.total,
         parceirosPendentes: parceirosResumo.pendentes,
         clientes,
         notificacoes,
-        ordensTotal,
-        finalizadas,
+        ordensTotal: relatoriosResumo.ordensTotal,
+        finalizadas: relatoriosResumo.finalizadas,
         osSemTecnico3Dias,
         orcamentosPendentes,
         aReceberCliente: relatoriosResumo.aReceberCliente,
@@ -358,6 +368,28 @@ export default function DashboardPage() {
             <p className="text-slate-500">Bem-vindo ao CT Premium</p>
           </div>
 
+          <div className="flex flex-col gap-3 md:items-end">
+            <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+              {[
+                { value: 'TODOS', label: 'Todos' },
+                { value: 'CLIENTE', label: 'Particular' },
+                { value: 'GARANTIDOR', label: 'Garantia' },
+              ].map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setFiltroOrigem(item.value as FiltroOrigemDashboard)}
+                  className={`rounded-lg px-3 py-2 text-xs font-black transition ${
+                    filtroOrigem === item.value
+                      ? 'bg-orange-500 text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
           <div className="flex gap-3">
             <button
               onClick={() => router.push('/admin/os')}
@@ -374,6 +406,7 @@ export default function DashboardPage() {
               <RefreshIcon className="h-4 w-4" />
               Atualizar
             </button>
+          </div>
           </div>
         </header>
 
@@ -791,7 +824,7 @@ function InfoItem({
   )
 }
 
-async function carregarResumoRelatorios() {
+async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard) {
   try {
     const hoje = new Date()
     const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
@@ -799,11 +832,26 @@ async function carregarResumoRelatorios() {
       inicio: formatDateInput(inicio),
       fim: formatDateInput(hoje),
     })
+
+    if (filtroOrigem === 'CLIENTE') params.set('origemFinanceira', 'CLIENTE')
+    if (filtroOrigem === 'GARANTIDOR') params.set('origemFinanceira', 'GARANTIDOR')
+
     const response = await adminFetch(`/api/admin/relatorios?${params.toString()}`)
     const data = await response.json().catch(() => null)
     const cards = data?.cards ?? {}
+    const statusResumo = Array.isArray(data?.statusResumo) ? data.statusResumo : []
+    const countStatus = (status: string) =>
+      Number(statusResumo.find((item: { status?: string; total?: number }) => item.status === status)?.total ?? 0) || 0
 
     return {
+      osNovas: Number(cards.novas ?? 0) || 0,
+      emTriagem: countStatus('EM_TRIAGEM'),
+      emAtendimento: countStatus('EM_ATENDIMENTO'),
+      aguardandoRevisao: countStatus('AGUARDANDO_REVISAO'),
+      aguardandoPeca: countStatus('AGUARDANDO_PECA'),
+      criticas: countStatus('CRITICA'),
+      ordensTotal: Number(cards.totalOs ?? 0) || 0,
+      finalizadas: Number(cards.finalizadas ?? 0) || 0,
       aReceberCliente: Number(cards.aReceberCliente ?? 0) || 0,
       recebidoCliente: Number(cards.recebidoCliente ?? 0) || 0,
       aReceberGarantidor: Number(cards.aReceberGarantidor ?? 0) || 0,
@@ -815,6 +863,14 @@ async function carregarResumoRelatorios() {
     }
   } catch {
     return {
+      osNovas: 0,
+      emTriagem: 0,
+      emAtendimento: 0,
+      aguardandoRevisao: 0,
+      aguardandoPeca: 0,
+      criticas: 0,
+      ordensTotal: 0,
+      finalizadas: 0,
       aReceberCliente: 0,
       recebidoCliente: 0,
       aReceberGarantidor: 0,
