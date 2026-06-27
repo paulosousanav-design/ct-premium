@@ -174,7 +174,7 @@ type FormState = {
 }
 
 type PecaForm = {
-  origem: 'ESTOQUE' | 'AVULSA'
+  origem: 'ESTOQUE' | 'AVULSA' | 'SERVICO'
   pecaId: string
   descricao: string
   quantidade: string
@@ -659,7 +659,7 @@ export default function OrdemServicoAtendimentoPage() {
     if (name === 'origem') {
       setNovaPeca((prev) => ({
         ...prev,
-        origem: value === 'ESTOQUE' ? 'ESTOQUE' : 'AVULSA',
+        origem: value === 'ESTOQUE' ? 'ESTOQUE' : value === 'SERVICO' ? 'SERVICO' : 'AVULSA',
         pecaId: '',
         descricao: '',
         valorCusto: '0',
@@ -1608,7 +1608,7 @@ export default function OrdemServicoAtendimentoPage() {
 
                 <div className="rounded-xl border border-slate-200 p-3">
                   <h3 className="mb-3 text-sm font-semibold uppercase text-slate-500">
-                    Peças utilizadas
+                    Peças e serviços adicionais
                   </h3>
 
                   <div className="grid gap-3 lg:grid-cols-[135px_minmax(230px,1fr)_95px_120px_120px_auto] lg:items-end">
@@ -1623,6 +1623,7 @@ export default function OrdemServicoAtendimentoPage() {
                       >
                         <option value="AVULSA">Avulsa</option>
                         <option value="ESTOQUE">Estoque</option>
+                        <option value="SERVICO">Serviço adicional</option>
                       </select>
                     </div>
 

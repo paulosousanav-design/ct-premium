@@ -15,10 +15,12 @@ type OrdemFinanceira = {
   status: string | null
   status_financeiro: string | null
   data_pagamento?: string | null
+  forma_recebimento?: string | null
   total: number | string | null
   tecnico_total?: number | string | null
   tecnico_status_pagamento?: string | null
   tecnico_pago_em?: string | null
+  forma_pagamento_tecnico?: string | null
   cliente_total?: number | string | null
   parceiro_id?: number | null
   garantia?: boolean | null
@@ -151,6 +153,8 @@ export default function FinanceiroPage() {
 
   async function alterarFinanceiro(id: number, status: FiltroFinanceiro) {
     if (status === 'TODOS') return
+    const forma = status === 'RECEBIDO' ? pedirFormaPagamento('Forma de recebimento') : null
+    if (status === 'RECEBIDO' && !forma) return
     setSalvandoId(id)
     setErro('')
 
@@ -158,7 +162,7 @@ export default function FinanceiroPage() {
       const response = await adminFetch('/api/admin/financeiro', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: 'OS', id, status }),
+        body: JSON.stringify({ tipo: 'OS', id, status, forma }),
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error ?? 'Erro ao atualizar financeiro.')
@@ -191,6 +195,8 @@ export default function FinanceiroPage() {
   }
 
   async function marcarTecnicoPago(id: number) {
+    const forma = pedirFormaPagamento('Forma de pagamento ao tecnico')
+    if (!forma) return
     setSalvandoId(id)
     setErro('')
 
@@ -198,7 +204,7 @@ export default function FinanceiroPage() {
       const response = await adminFetch('/api/admin/financeiro', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: 'TECNICO', id }),
+        body: JSON.stringify({ tipo: 'TECNICO', id, forma }),
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error ?? 'Erro ao pagar tecnico.')
@@ -381,13 +387,14 @@ function RecebimentosTable({
             <th className="p-3">Cliente</th>
             <th className="p-3">Valor cliente</th>
             <th className="p-3">Status</th>
+            <th className="p-3">Forma</th>
             <th className="p-3">NF</th>
             <th className="p-3">Acoes</th>
           </tr>
         </thead>
         <tbody>
-          {loading && <LinhaMensagem colSpan={6} texto="Carregando..." />}
-          {!loading && ordens.length === 0 && <LinhaMensagem colSpan={6} texto="Nenhum registro encontrado." />}
+          {loading && <LinhaMensagem colSpan={7} texto="Carregando..." />}
+          {!loading && ordens.length === 0 && <LinhaMensagem colSpan={7} texto="Nenhum registro encontrado." />}
           {!loading &&
             ordens.map((os) => (
               <tr key={os.id} className="border-t border-slate-200">
@@ -395,6 +402,7 @@ function RecebimentosTable({
                 <td className="p-3">{nomeCliente(os)}</td>
                 <td className="p-3 font-semibold">{formatCurrency(valorCliente(os))}</td>
                 <td className="p-3"><StatusFinanceiro status={os.status_financeiro} /></td>
+                <td className="p-3">{formatarFormaPagamento(os.forma_recebimento)}</td>
                 <td className="p-3">{os.numero_nota_fiscal || '-'}</td>
                 <td className="p-3">
                   <div className="flex flex-wrap gap-2">
@@ -458,14 +466,15 @@ function PagamentosTecnicoTable({
               <th className="p-3">Tecnico</th>
               <th className="p-3">Valor tecnico</th>
               <th className="p-3">Status tecnico</th>
+              <th className="p-3">Forma</th>
               <th className="p-3">Recebimento OS</th>
               <th className="p-3">Documento</th>
               <th className="p-3">Acoes</th>
             </tr>
           </thead>
           <tbody>
-            {loading && <LinhaMensagem colSpan={7} texto="Carregando..." />}
-            {!loading && ordens.length === 0 && <LinhaMensagem colSpan={7} texto="Nenhuma OS finalizada para tecnico." />}
+            {loading && <LinhaMensagem colSpan={8} texto="Carregando..." />}
+            {!loading && ordens.length === 0 && <LinhaMensagem colSpan={8} texto="Nenhuma OS finalizada para tecnico." />}
             {!loading &&
               ordens.map((os) => {
                 const doc = documentoMaisRecente(documentos, os)
@@ -479,6 +488,7 @@ function PagamentosTecnicoTable({
                     <td className="p-3 font-semibold">{nomeTecnico(os)}</td>
                     <td className="p-3 font-black text-slate-950">{formatCurrency(valorTecnico(os))}</td>
                     <td className="p-3"><StatusFinanceiro status={tecnicoPago(os) ? 'RECEBIDO' : 'PENDENTE'} pagoLabel="PAGO" /></td>
+                    <td className="p-3">{formatarFormaPagamento(os.forma_pagamento_tecnico)}</td>
                     <td className="p-3"><StatusFinanceiro status={os.status_financeiro} /></td>
                     <td className="p-3">
                       {doc ? (
@@ -642,6 +652,34 @@ function formatarTipoHistorico(tipo?: string | null) {
     default:
       return tipo ?? 'Financeiro'
   }
+}
+
+function pedirFormaPagamento(titulo: string) {
+  const resposta = window.prompt(`${titulo}: PIX, CARTAO, DEPOSITO, BOLETO ou DINHEIRO`, 'PIX')
+  if (resposta === null) return null
+
+  const forma = resposta.trim().toUpperCase()
+  const permitidas = ['PIX', 'CARTAO', 'DEPOSITO', 'BOLETO', 'DINHEIRO']
+
+  if (!permitidas.includes(forma)) {
+    window.alert('Forma inválida. Use PIX, CARTAO, DEPOSITO, BOLETO ou DINHEIRO.')
+    return null
+  }
+
+  return forma
+}
+
+function formatarFormaPagamento(forma?: string | null) {
+  const value = String(forma ?? '').toUpperCase()
+  const labels: Record<string, string> = {
+    PIX: 'PIX',
+    CARTAO: 'Cartão',
+    DEPOSITO: 'Depósito',
+    BOLETO: 'Boleto',
+    DINHEIRO: 'Dinheiro',
+  }
+
+  return labels[value] ?? '-'
 }
 
 function formatDate(data?: string | null) {

@@ -522,7 +522,10 @@ export async function PATCH(request: NextRequest) {
           total_item: toNumber(p.total_item),
         }
 
-        if (osPecasTemOrigem) row.origem = String(p.origem ?? 'AVULSA').toUpperCase() === 'ESTOQUE' ? 'ESTOQUE' : 'AVULSA'
+        if (osPecasTemOrigem) {
+          const origem = String(p.origem ?? 'AVULSA').toUpperCase()
+          row.origem = origem === 'ESTOQUE' ? 'ESTOQUE' : origem === 'SERVICO' ? 'SERVICO' : 'AVULSA'
+        }
         if (osPecasTemPecaId) row.peca_id = p.peca_id ? Number(p.peca_id) : null
 
         return row

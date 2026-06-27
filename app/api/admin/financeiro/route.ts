@@ -39,32 +39,46 @@ export async function GET(request: NextRequest) {
 
     const supabase = getSupabaseAdmin()
     const temPagamentoTecnico = await colunaExiste(supabase, 'ordens_servico', 'tecnico_status_pagamento')
+    const temFormaRecebimento = await colunaExiste(supabase, 'ordens_servico', 'forma_recebimento')
+    const temFormaPagamentoTecnico = await colunaExiste(supabase, 'ordens_servico', 'forma_pagamento_tecnico')
     const selectPagamentoTecnico = temPagamentoTecnico
       ? `
         tecnico_status_pagamento,
         tecnico_pago_em,`
       : ''
+    const selectFormaRecebimento = temFormaRecebimento ? 'forma_recebimento,' : ''
+    const selectFormaPagamentoTecnico = temFormaPagamentoTecnico ? 'forma_pagamento_tecnico,' : ''
 
-    const { data: ordens, error: ordensError } = await supabase
-      .from('ordens_servico')
-      .select(`
+    const selectOrdens = `
         id,
         numero_os,
         created_at,
         status,
         status_financeiro,
         data_pagamento,
+        ${selectFormaRecebimento}
         total,
         cliente_total,
         tecnico_total,
         ${selectPagamentoTecnico}
+        ${selectFormaPagamentoTecnico}
         parceiro_id,
         garantia,
         tipo_atendimento,
         numero_nota_fiscal,
         clientes:cliente_id ( nome ),
         parceiros:parceiro_id ( responsavel, nome_fantasia, razao_social )
-      `)
+      `
+    const ordensQuery = supabase.from('ordens_servico') as unknown as {
+      select: (columns: string) => {
+        order: (
+          column: string,
+          options: { ascending: boolean }
+        ) => Promise<{ data: unknown[] | null; error: unknown }>
+      }
+    }
+    const { data: ordens, error: ordensError } = await ordensQuery
+      .select(selectOrdens)
       .order('created_at', { ascending: false })
 
     if (ordensError) throw ordensError
@@ -118,6 +132,7 @@ export async function PATCH(request: NextRequest) {
 
     if (tipo === 'OS') {
       const status = String(body?.status ?? 'RECEBIDO').trim().toUpperCase()
+      const forma = normalizarFormaPagamento(body?.forma)
       if (!['PENDENTE', 'FATURADO', 'RECEBIDO'].includes(status)) {
         return NextResponse.json({ error: 'Status financeiro invalido.' }, { status: 400 })
       }
@@ -135,12 +150,17 @@ export async function PATCH(request: NextRequest) {
         )
       }
 
+      const updatePayload: Record<string, unknown> = {
+        status_financeiro: status,
+        data_pagamento: status === 'RECEBIDO' ? new Date().toISOString() : null,
+      }
+      if (await colunaExiste(supabase, 'ordens_servico', 'forma_recebimento')) {
+        updatePayload.forma_recebimento = status === 'RECEBIDO' ? forma : null
+      }
+
       const { error } = await supabase
         .from('ordens_servico')
-        .update({
-          status_financeiro: status,
-          data_pagamento: status === 'RECEBIDO' ? new Date().toISOString() : null,
-        })
+        .update(updatePayload)
         .eq('id', id)
 
       if (error) throw error
@@ -150,13 +170,14 @@ export async function PATCH(request: NextRequest) {
         statusAnterior: ordemAtual?.status_financeiro ?? null,
         statusNovo: status,
         valor: valorPreferencial(ordemAtual?.cliente_total, ordemAtual?.total),
-        descricao: `${ordemAtual?.numero_os ?? `OS #${id}`} marcada como ${status}.`,
+        descricao: `${ordemAtual?.numero_os ?? `OS #${id}`} marcada como ${status}${status === 'RECEBIDO' ? ` via ${forma}` : ''}.`,
       })
       return NextResponse.json({ ok: true })
     }
 
     if (tipo === 'TECNICO') {
       const temPagamentoTecnico = await colunaExiste(supabase, 'ordens_servico', 'tecnico_status_pagamento')
+      const forma = normalizarFormaPagamento(body?.forma)
       const pagoEm = new Date().toISOString()
       const { data: ordemAtual } = await supabase
         .from('ordens_servico')
@@ -182,6 +203,7 @@ export async function PATCH(request: NextRequest) {
           .update({
             tecnico_status_pagamento: 'RECEBIDO',
             tecnico_pago_em: pagoEm,
+            ...((await colunaExiste(supabase, 'ordens_servico', 'forma_pagamento_tecnico')) ? { forma_pagamento_tecnico: forma } : {}),
             status_financeiro: ordemAtual?.status_financeiro ?? null,
           })
           .eq('id', id)
@@ -204,7 +226,7 @@ export async function PATCH(request: NextRequest) {
         statusAnterior: ordemAtual?.tecnico_status_pagamento ?? null,
         statusNovo: 'RECEBIDO',
         valor: valorPreferencial(ordemAtual?.tecnico_total, 0),
-        descricao: `${ordemAtual?.numero_os ?? `OS #${id}`} paga ao tecnico.`,
+        descricao: `${ordemAtual?.numero_os ?? `OS #${id}`} paga ao tecnico via ${forma}.`,
       })
 
       return NextResponse.json({ ok: true })
@@ -305,6 +327,13 @@ function toNumber(value: number | string | null | undefined) {
 
 function valorPreferencial(principal: unknown, fallback: unknown) {
   return principal === null || principal === undefined || principal === '' ? toNumber(fallback as never) : toNumber(principal as never)
+}
+
+function normalizarFormaPagamento(value: unknown) {
+  const forma = String(value ?? 'PIX').trim().toUpperCase()
+  const permitidas = ['PIX', 'CARTAO', 'DEPOSITO', 'BOLETO', 'DINHEIRO']
+
+  return permitidas.includes(forma) ? forma : 'PIX'
 }
 
 async function carregarDocumentosTecnicos(supabase: ReturnType<typeof getSupabaseAdmin>) {
