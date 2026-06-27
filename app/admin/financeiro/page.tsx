@@ -100,7 +100,7 @@ export default function FinanceiroPage() {
       const texto = `${os.numero_os ?? ''} ${nomeCliente(os)} ${nomeTecnico(os)}`.toLowerCase()
       const atendeFiltro = filtro === 'TODOS' || statusFinanceiro === filtro
       const atendeBusca = !busca.trim() || texto.includes(busca.trim().toLowerCase())
-      return os.status === 'FINALIZADA' && atendeFiltro && atendeBusca
+      return os.status === 'FINALIZADA' && valorCliente(os) > 0 && atendeFiltro && atendeBusca
     })
   }, [busca, filtro, ordens])
 
@@ -111,29 +111,29 @@ export default function FinanceiroPage() {
       const statusPagamentoTecnico = tecnicoPago(os) ? 'RECEBIDO' : 'PENDENTE'
       const atendeFiltro = filtro === 'TODOS' || filtro === statusPagamentoTecnico
 
-      return os.status === 'FINALIZADA' && Boolean(os.parceiro_id) && atendeFiltro && atendeBusca
+      return os.status === 'FINALIZADA' && Boolean(os.parceiro_id) && valorTecnico(os) > 0 && atendeFiltro && atendeBusca
     })
   }, [busca, filtro, ordens])
 
   const resumo = useMemo(() => {
     const ordensFinalizadas = ordens.filter((os) => os.status === 'FINALIZADA')
     const receberCliente = ordensFinalizadas
-      .filter((os) => !ehGarantidorOuSeguradora(os) && os.status_financeiro !== 'RECEBIDO')
+      .filter((os) => !ehGarantidorOuSeguradora(os) && os.status_financeiro !== 'RECEBIDO' && valorCliente(os) > 0)
       .reduce((acc, os) => acc + valorCliente(os), 0)
     const recebidoCliente = ordensFinalizadas
-      .filter((os) => !ehGarantidorOuSeguradora(os) && os.status_financeiro === 'RECEBIDO')
+      .filter((os) => !ehGarantidorOuSeguradora(os) && os.status_financeiro === 'RECEBIDO' && valorCliente(os) > 0)
       .reduce((acc, os) => acc + valorCliente(os), 0)
     const receberGarantidor = ordensFinalizadas
-      .filter((os) => ehGarantidorOuSeguradora(os) && os.status_financeiro !== 'RECEBIDO')
+      .filter((os) => ehGarantidorOuSeguradora(os) && os.status_financeiro !== 'RECEBIDO' && valorCliente(os) > 0)
       .reduce((acc, os) => acc + valorCliente(os), 0)
     const recebidoGarantidor = ordensFinalizadas
-      .filter((os) => ehGarantidorOuSeguradora(os) && os.status_financeiro === 'RECEBIDO')
+      .filter((os) => ehGarantidorOuSeguradora(os) && os.status_financeiro === 'RECEBIDO' && valorCliente(os) > 0)
       .reduce((acc, os) => acc + valorCliente(os), 0)
     const pagarTecnico = ordensFinalizadas
-      .filter((os) => !tecnicoPago(os))
+      .filter((os) => !tecnicoPago(os) && valorTecnico(os) > 0)
       .reduce((acc, os) => acc + valorTecnico(os), 0)
     const pagoTecnico = ordensFinalizadas
-      .filter((os) => tecnicoPago(os))
+      .filter((os) => tecnicoPago(os) && valorTecnico(os) > 0)
       .reduce((acc, os) => acc + valorTecnico(os), 0)
 
     return {
@@ -145,7 +145,7 @@ export default function FinanceiroPage() {
       caixaGeral: recebidoCliente + recebidoGarantidor - pagoTecnico,
       pagarTecnico,
       pagoTecnico,
-      finalizadasTecnico: ordensFinalizadas.filter((os) => Boolean(os.parceiro_id)).length,
+      finalizadasTecnico: ordensFinalizadas.filter((os) => Boolean(os.parceiro_id) && valorTecnico(os) > 0).length,
     }
   }, [ordens])
 

@@ -10,6 +10,7 @@ type PecaInput = {
   peca_id?: number | string | null
   descricao?: string | null
   quantidade?: number | string | null
+  valor_custo?: number | string | null
   valor_unitario?: number | string | null
   total_item?: number | string | null
 }
@@ -294,9 +295,20 @@ export async function GET(request: NextRequest) {
     if (historicoError) throw historicoError
 
     const osPecasTemEstoque = await colunaExiste(supabase, 'os_pecas', 'peca_id')
-    const osPecasSelect = osPecasTemEstoque
-      ? 'id, origem, peca_id, descricao, quantidade, valor_unitario, total_item, criado_em'
-      : 'id, descricao, quantidade, valor_unitario, total_item, criado_em'
+    const osPecasTemCusto = await colunaExiste(supabase, 'os_pecas', 'valor_custo')
+    const osPecasSelect = [
+      'id',
+      osPecasTemEstoque ? 'origem' : '',
+      osPecasTemEstoque ? 'peca_id' : '',
+      'descricao',
+      'quantidade',
+      osPecasTemCusto ? 'valor_custo' : '',
+      'valor_unitario',
+      'total_item',
+      'criado_em',
+    ]
+      .filter(Boolean)
+      .join(', ')
 
     const { data: pecas, error: pecasError } = await supabase
       .from('os_pecas')
@@ -311,7 +323,7 @@ export async function GET(request: NextRequest) {
     if (pecasEstoqueExiste) {
       const { data: estoqueData, error: estoqueError } = await supabase
         .from('pecas')
-        .select('id, codigo, descricao, categoria, marca, valor_venda, estoque, ativo')
+        .select('id, codigo, descricao, categoria, marca, valor_custo, valor_venda, estoque, ativo')
         .eq('ativo', true)
         .order('descricao', { ascending: true })
 
@@ -498,12 +510,14 @@ export async function PATCH(request: NextRequest) {
 
     const osPecasTemOrigem = await colunaExiste(supabase, 'os_pecas', 'origem')
     const osPecasTemPecaId = await colunaExiste(supabase, 'os_pecas', 'peca_id')
+    const osPecasTemCusto = await colunaExiste(supabase, 'os_pecas', 'valor_custo')
     const rows = pecas
       .map((p) => {
         const row: Record<string, unknown> = {
           os_id: osId,
           descricao: String(p.descricao ?? '').trim(),
           quantidade: toNumber(p.quantidade),
+          ...(osPecasTemCusto ? { valor_custo: toNumber(p.valor_custo) } : {}),
           valor_unitario: toNumber(p.valor_unitario),
           total_item: toNumber(p.total_item),
         }

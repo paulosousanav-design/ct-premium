@@ -73,6 +73,7 @@ type PecaItemDb = {
   peca_id?: number | string | null
   descricao: string | null
   quantidade: number | string | null
+  valor_custo?: number | string | null
   valor_unitario: number | string | null
   total_item: number | string | null
   criado_em: string | null
@@ -85,6 +86,7 @@ type PecaEstoque = {
   categoria: string | null
   marca: string | null
   valor_venda: number | string | null
+  valor_custo?: number | string | null
   estoque: number | string | null
   ativo: boolean | null
 }
@@ -176,6 +178,7 @@ type PecaForm = {
   pecaId: string
   descricao: string
   quantidade: string
+  valorCusto: string
   valorUnitario: string
 }
 
@@ -257,6 +260,7 @@ export default function OrdemServicoAtendimentoPage() {
     pecaId: '',
     descricao: '',
     quantidade: '1',
+    valorCusto: '0',
     valorUnitario: '0',
   })
   const [tecnicoAvulso, setTecnicoAvulso] = useState<TecnicoAvulsoForm>({
@@ -658,6 +662,7 @@ export default function OrdemServicoAtendimentoPage() {
         origem: value === 'ESTOQUE' ? 'ESTOQUE' : 'AVULSA',
         pecaId: '',
         descricao: '',
+        valorCusto: '0',
         valorUnitario: '0',
       }))
       return
@@ -669,6 +674,7 @@ export default function OrdemServicoAtendimentoPage() {
         ...prev,
         pecaId: value,
         descricao: peca?.descricao ?? '',
+        valorCusto: String(toNumber(peca?.valor_custo)),
         valorUnitario: String(toNumber(peca?.valor_venda)),
       }))
       return
@@ -682,9 +688,10 @@ export default function OrdemServicoAtendimentoPage() {
 
     const descricao = novaPeca.descricao.trim()
     const quantidade = Number(novaPeca.quantidade || 0)
+    const valorCusto = Number(novaPeca.valorCusto || 0)
     const valorUnitario = Number(novaPeca.valorUnitario || 0)
 
-    if (!descricao || quantidade <= 0 || valorUnitario < 0) {
+    if (!descricao || quantidade <= 0 || valorCusto < 0 || valorUnitario < 0) {
       setErro('Preencha descrição, quantidade e valor unitário da peça.')
       return
     }
@@ -699,6 +706,7 @@ export default function OrdemServicoAtendimentoPage() {
         peca_id: novaPeca.origem === 'ESTOQUE' && novaPeca.pecaId ? Number(novaPeca.pecaId) : null,
         descricao,
         quantidade,
+        valor_custo: valorCusto,
         valor_unitario: valorUnitario,
         total_item: totalItem,
         criado_em: new Date().toISOString(),
@@ -714,6 +722,7 @@ export default function OrdemServicoAtendimentoPage() {
       pecaId: '',
       descricao: '',
       quantidade: '1',
+      valorCusto: '0',
       valorUnitario: '0',
     })
     setErro('')
@@ -1602,7 +1611,7 @@ export default function OrdemServicoAtendimentoPage() {
                     Peças utilizadas
                   </h3>
 
-                  <div className="grid gap-3 lg:grid-cols-[150px_minmax(260px,1fr)_110px_140px_auto] lg:items-end">
+                  <div className="grid gap-3 lg:grid-cols-[135px_minmax(230px,1fr)_95px_120px_120px_auto] lg:items-end">
                     <div>
                       <label className="mb-1 block text-sm font-medium text-slate-700">Origem</label>
                       <select
@@ -1656,6 +1665,16 @@ export default function OrdemServicoAtendimentoPage() {
                     />
                     <Field
                       label="Valor unitário"
+                      name="valorCusto"
+                      value={novaPeca.valorCusto}
+                      onChange={handlePecaChange}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      disabled={isLocked}
+                    />
+                    <Field
+                      label="Valor unitario"
                       name="valorUnitario"
                       value={novaPeca.valorUnitario}
                       onChange={handlePecaChange}
@@ -2027,9 +2046,11 @@ function Field({
   placeholder?: string
   disabled?: boolean
 }) {
+  const labelExibido = name === 'valorCusto' ? 'Custo unit.' : label
+
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
+      <label className="mb-1 block text-sm font-medium text-slate-700">{labelExibido}</label>
       {textarea ? (
         <textarea
           name={name}
