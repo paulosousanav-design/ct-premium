@@ -428,7 +428,7 @@ export default function AprovacaoPage() {
           </div>
         )}
 
-        <section className="grid gap-2 md:grid-cols-4 xl:grid-cols-8">
+        <section className="grid gap-2 sm:grid-cols-2 md:grid-cols-4 2xl:grid-cols-8">
           <MetricCard
             title="Revisao Admin"
             value={loading ? '...' : String(estatisticas.revisao)}
@@ -645,9 +645,14 @@ function MetricCard({
           : 'border border-slate-200 bg-white text-slate-700'
 
   return (
-    <div className={`rounded-lg px-3 py-2.5 shadow-sm ${alert ? 'animate-pulse ring-2 ring-orange-300' : ''} ${cls}`}>
-      <p className="text-[11px] font-semibold leading-tight opacity-90">{title}</p>
-      <p className="mt-1 text-xl font-black leading-tight text-slate-900">{value}</p>
+    <div className={`min-w-0 rounded-lg px-3 py-2.5 shadow-sm ${alert ? 'animate-pulse ring-2 ring-orange-300' : ''} ${cls}`}>
+      <p className="truncate text-[11px] font-semibold leading-tight opacity-90">{title}</p>
+      <p
+        className="mt-1 truncate text-[clamp(1rem,1.25vw,1.25rem)] font-black leading-tight text-slate-900"
+        title={value}
+      >
+        {value}
+      </p>
     </div>
   )
 }
