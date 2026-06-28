@@ -10,6 +10,17 @@ type OrdemFinanceiro = Record<string, unknown> & {
   tecnico_status_pagamento?: string | null
 }
 
+type ContaPagar = {
+  id: number
+  descricao?: string | null
+  fornecedor?: string | null
+  categoria?: string | null
+  valor?: number | string | null
+  vencimento?: string | null
+  status?: string | null
+  forma_pagamento?: string | null
+}
+
 function getSupabaseAdmin() {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error('Configuracao do Supabase ausente no servidor.')
@@ -85,6 +96,7 @@ export async function GET(request: NextRequest) {
 
     const documentos = await carregarDocumentosTecnicos(supabase)
     const historico = await carregarHistoricoFinanceiro(supabase)
+    const contasPagar = await carregarContasPagar(supabase)
     const ordensData = (ordens ?? []) as unknown as OrdemFinanceiro[]
     const ordensComPagamentoTecnico = ordensData.map((ordem) => {
       const documentoPago = documentos.data.some(
@@ -104,6 +116,8 @@ export async function GET(request: NextRequest) {
       ordens: ordensComPagamentoTecnico,
       documentos: documentos.data,
       documentosPendentes: documentos.tabelaPendente,
+      contasPagar: contasPagar.data,
+      contasPagarPendente: contasPagar.tabelaPendente,
       historico: historico.data,
       historicoPendente: historico.tabelaPendente,
     })
@@ -111,6 +125,56 @@ export async function GET(request: NextRequest) {
     console.error('Erro ao carregar financeiro admin:', error)
     return NextResponse.json(
       { error: formatarErro(error, 'Erro ao carregar financeiro.') },
+      { status: 500 }
+    )
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const auth = await requireAdminPermission(request, 'financeiro')
+    if (!auth.ok) return auth.response
+
+    const body = await request.json().catch(() => null)
+    const descricao = String(body?.descricao ?? '').trim()
+    const valor = toNumber(body?.valor)
+    const vencimento = String(body?.vencimento ?? '').trim() || null
+
+    if (!descricao || valor <= 0) {
+      return NextResponse.json({ error: 'Informe descricao e valor da conta.' }, { status: 400 })
+    }
+
+    const supabase = getSupabaseAdmin()
+    const { data, error } = await supabase
+      .from('contas_pagar')
+      .insert({
+        descricao,
+        fornecedor: String(body?.fornecedor ?? '').trim() || null,
+        categoria: String(body?.categoria ?? '').trim() || 'OPERACIONAL',
+        valor,
+        vencimento,
+        status: 'PENDENTE',
+        observacao: String(body?.observacao ?? '').trim() || null,
+      })
+      .select('id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em')
+      .single()
+
+    if (error) throw error
+
+    await registrarHistoricoFinanceiro(supabase, {
+      contaId: Number(data?.id),
+      tipo: 'CONTA_PAGAR_CRIADA',
+      statusAnterior: null,
+      statusNovo: 'PENDENTE',
+      valor,
+      descricao: `Conta a pagar cadastrada: ${descricao}.`,
+    })
+
+    return NextResponse.json({ ok: true, data })
+  } catch (error) {
+    console.error('Erro ao criar conta a pagar:', error)
+    return NextResponse.json(
+      { error: formatarErro(error, 'Erro ao criar conta a pagar.') },
       { status: 500 }
     )
   }
@@ -126,8 +190,46 @@ export async function PATCH(request: NextRequest) {
     const id = Number(body?.id)
     const supabase = getSupabaseAdmin()
 
-    if (!id || !['OS', 'DOCUMENTO', 'TECNICO'].includes(tipo)) {
+    if (!id || !['OS', 'DOCUMENTO', 'TECNICO', 'CONTA'].includes(tipo)) {
       return NextResponse.json({ error: 'Dados invalidos para atualizar financeiro.' }, { status: 400 })
+    }
+
+    if (tipo === 'CONTA') {
+      const forma = normalizarFormaPagamento(body?.forma)
+      const status = String(body?.status ?? 'PAGO').trim().toUpperCase()
+
+      if (!['PENDENTE', 'PAGO', 'CANCELADO'].includes(status)) {
+        return NextResponse.json({ error: 'Status da conta invalido.' }, { status: 400 })
+      }
+
+      const { data: contaAtual } = await supabase
+        .from('contas_pagar')
+        .select('id, descricao, status, valor')
+        .eq('id', id)
+        .maybeSingle()
+
+      const updatePayload: Record<string, unknown> = {
+        status,
+        pago_em: status === 'PAGO' ? new Date().toISOString() : null,
+      }
+
+      if (await colunaExiste(supabase, 'contas_pagar', 'forma_pagamento')) {
+        updatePayload.forma_pagamento = status === 'PAGO' ? forma : null
+      }
+
+      const { error } = await supabase.from('contas_pagar').update(updatePayload).eq('id', id)
+      if (error) throw error
+
+      await registrarHistoricoFinanceiro(supabase, {
+        contaId: id,
+        tipo: 'CONTA_PAGAR',
+        statusAnterior: String(contaAtual?.status ?? 'PENDENTE'),
+        statusNovo: status,
+        valor: toNumber(contaAtual?.valor),
+        descricao: `${contaAtual?.descricao ?? `Conta #${id}`} marcada como ${status}${status === 'PAGO' ? ` via ${forma}` : ''}.`,
+      })
+
+      return NextResponse.json({ ok: true })
     }
 
     if (tipo === 'OS') {
@@ -281,7 +383,7 @@ export async function PATCH(request: NextRequest) {
 async function carregarHistoricoFinanceiro(supabase: ReturnType<typeof getSupabaseAdmin>) {
   const { data, error } = await supabase
     .from('financeiro_historico')
-    .select('id, os_id, documento_id, tipo, status_anterior, status_novo, valor, descricao, responsavel, criado_em')
+    .select('id, os_id, documento_id, conta_id, tipo, status_anterior, status_novo, valor, descricao, responsavel, criado_em')
     .order('criado_em', { ascending: false })
     .limit(12)
 
@@ -300,6 +402,7 @@ async function registrarHistoricoFinanceiro(
   item: {
     osId?: number | null
     documentoId?: number | null
+    contaId?: number | null
     tipo: string
     statusAnterior?: string | null
     statusNovo?: string | null
@@ -310,6 +413,7 @@ async function registrarHistoricoFinanceiro(
   const { error } = await supabase.from('financeiro_historico').insert({
     os_id: item.osId ?? null,
     documento_id: item.documentoId ?? null,
+    conta_id: item.contaId ?? null,
     tipo: item.tipo,
     status_anterior: item.statusAnterior ?? null,
     status_novo: item.statusNovo ?? null,
@@ -318,7 +422,14 @@ async function registrarHistoricoFinanceiro(
     responsavel: 'Admin',
   })
 
-  if (error && String(error.code) !== '42P01' && String(error.code) !== 'PGRST205') throw error
+  if (
+    error &&
+    String(error.code) !== '42P01' &&
+    String(error.code) !== 'PGRST205' &&
+    String(error.code) !== '42703'
+  ) {
+    throw error
+  }
 }
 
 function toNumber(value: number | string | null | undefined) {
@@ -358,6 +469,22 @@ async function carregarDocumentosTecnicos(supabase: ReturnType<typeof getSupabas
   }
 
   return { data: data ?? [], tabelaPendente: false }
+}
+
+async function carregarContasPagar(supabase: ReturnType<typeof getSupabaseAdmin>) {
+  const { data, error } = await supabase
+    .from('contas_pagar')
+    .select('id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em')
+    .order('vencimento', { ascending: true, nullsFirst: false })
+
+  if (error) {
+    if (String(error.code) === '42P01' || String(error.code) === 'PGRST205') {
+      return { data: [] as ContaPagar[], tabelaPendente: true }
+    }
+    throw error
+  }
+
+  return { data: (data ?? []) as ContaPagar[], tabelaPendente: false }
 }
 
 function formatarErro(error: unknown, fallback: string) {

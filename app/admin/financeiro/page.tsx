@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { adminFetch } from '@/lib/admin-fetch'
 
-type AbaFinanceiro = 'receber' | 'tecnicos'
+type AbaFinanceiro = 'receber' | 'tecnicos' | 'contas'
 type FiltroFinanceiro = 'TODOS' | 'PENDENTE' | 'FATURADO' | 'RECEBIDO'
 
 type RelacaoNome = { nome?: string | null; responsavel?: string | null; nome_fantasia?: string | null; razao_social?: string | null }
@@ -57,18 +57,53 @@ type HistoricoFinanceiro = {
   criado_em: string | null
 }
 
+type ContaPagar = {
+  id: number
+  descricao: string | null
+  fornecedor: string | null
+  categoria: string | null
+  valor: number | string | null
+  vencimento: string | null
+  status: string | null
+  forma_pagamento?: string | null
+  pago_em?: string | null
+  observacao?: string | null
+  criado_em?: string | null
+}
+
+type ContaForm = {
+  descricao: string
+  fornecedor: string
+  categoria: string
+  valor: string
+  vencimento: string
+  observacao: string
+}
+
+const contaInicial: ContaForm = {
+  descricao: '',
+  fornecedor: '',
+  categoria: 'OPERACIONAL',
+  valor: '',
+  vencimento: '',
+  observacao: '',
+}
+
 export default function FinanceiroPage() {
   const [aba, setAba] = useState<AbaFinanceiro>('tecnicos')
   const [ordens, setOrdens] = useState<OrdemFinanceira[]>([])
   const [documentos, setDocumentos] = useState<DocumentoTecnico[]>([])
+  const [contasPagar, setContasPagar] = useState<ContaPagar[]>([])
   const [historico, setHistorico] = useState<HistoricoFinanceiro[]>([])
   const [documentosPendentes, setDocumentosPendentes] = useState(false)
+  const [contasPagarPendente, setContasPagarPendente] = useState(false)
   const [historicoPendente, setHistoricoPendente] = useState(false)
   const [loading, setLoading] = useState(true)
   const [salvandoId, setSalvandoId] = useState<number | null>(null)
   const [erro, setErro] = useState('')
   const [filtro, setFiltro] = useState<FiltroFinanceiro>('TODOS')
   const [busca, setBusca] = useState('')
+  const [contaForm, setContaForm] = useState<ContaForm>(contaInicial)
 
   const carregarDados = useCallback(async () => {
     setLoading(true)
@@ -82,8 +117,10 @@ export default function FinanceiroPage() {
 
       setOrdens((data?.ordens ?? []) as OrdemFinanceira[])
       setDocumentos((data?.documentos ?? []) as DocumentoTecnico[])
+      setContasPagar((data?.contasPagar ?? []) as ContaPagar[])
       setHistorico((data?.historico ?? []) as HistoricoFinanceiro[])
       setDocumentosPendentes(Boolean(data?.documentosPendentes))
+      setContasPagarPendente(Boolean(data?.contasPagarPendente))
       setHistoricoPendente(Boolean(data?.historicoPendente))
     } catch (error) {
       setErro(formatarErro(error, 'Erro ao carregar financeiro.'))
@@ -117,6 +154,17 @@ export default function FinanceiroPage() {
     })
   }, [busca, filtro, ordens])
 
+  const contasFiltradas = useMemo(() => {
+    return contasPagar.filter((conta) => {
+      const status = String(conta.status ?? 'PENDENTE').toUpperCase()
+      const texto = `${conta.descricao ?? ''} ${conta.fornecedor ?? ''} ${conta.categoria ?? ''}`.toLowerCase()
+      const atendeFiltro = filtro === 'TODOS' || (filtro === 'RECEBIDO' ? status === 'PAGO' : status === filtro)
+      const atendeBusca = !busca.trim() || texto.includes(busca.trim().toLowerCase())
+
+      return atendeFiltro && atendeBusca
+    })
+  }, [busca, contasPagar, filtro])
+
   const resumo = useMemo(() => {
     const ordensFinalizadas = ordens.filter((os) => os.status === 'FINALIZADA')
     const receberCliente = ordensFinalizadas
@@ -137,6 +185,12 @@ export default function FinanceiroPage() {
     const pagoTecnico = ordensFinalizadas
       .filter((os) => tecnicoPago(os) && valorTecnico(os) > 0)
       .reduce((acc, os) => acc + valorTecnico(os), 0)
+    const contasPendentes = contasPagar
+      .filter((conta) => String(conta.status ?? 'PENDENTE').toUpperCase() === 'PENDENTE')
+      .reduce((acc, conta) => acc + toNumber(conta.valor), 0)
+    const contasPagas = contasPagar
+      .filter((conta) => String(conta.status ?? '').toUpperCase() === 'PAGO')
+      .reduce((acc, conta) => acc + toNumber(conta.valor), 0)
 
     return {
       receberCliente,
@@ -144,12 +198,59 @@ export default function FinanceiroPage() {
       receberGarantidor,
       recebidoGarantidor,
       totalRecebido: recebidoCliente + recebidoGarantidor,
-      caixaGeral: recebidoCliente + recebidoGarantidor - pagoTecnico,
+      caixaGeral: recebidoCliente + recebidoGarantidor - pagoTecnico - contasPagas,
       pagarTecnico,
       pagoTecnico,
+      contasPendentes,
+      contasPagas,
       finalizadasTecnico: ordensFinalizadas.filter((os) => Boolean(os.parceiro_id) && valorTecnico(os) > 0).length,
     }
-  }, [ordens])
+  }, [contasPagar, ordens])
+
+  async function criarContaPagar(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSalvandoId(-1)
+    setErro('')
+
+    try {
+      const response = await adminFetch('/api/admin/financeiro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(contaForm),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error ?? 'Erro ao criar conta a pagar.')
+
+      setContaForm(contaInicial)
+      await carregarDados()
+    } catch (error) {
+      setErro(formatarErro(error, 'Erro ao criar conta a pagar.'))
+    } finally {
+      setSalvandoId(null)
+    }
+  }
+
+  async function marcarContaPaga(id: number) {
+    const forma = pedirFormaPagamento('Forma de pagamento da conta')
+    if (!forma) return
+    setSalvandoId(id)
+    setErro('')
+
+    try {
+      const response = await adminFetch('/api/admin/financeiro', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo: 'CONTA', id, status: 'PAGO', forma }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error ?? 'Erro ao pagar conta.')
+      await carregarDados()
+    } catch (error) {
+      setErro(formatarErro(error, 'Erro ao pagar conta.'))
+    } finally {
+      setSalvandoId(null)
+    }
+  }
 
   async function alterarFinanceiro(id: number, status: FiltroFinanceiro) {
     if (status === 'TODOS') return
@@ -239,6 +340,8 @@ export default function FinanceiroPage() {
         <Card titulo="A receber garantidor/seguradora" valor={formatCurrency(resumo.receberGarantidor)} cor="orange" />
         <Card titulo="Recebido garantidor/seguradora" valor={formatCurrency(resumo.recebidoGarantidor)} cor="green" />
         <Card titulo="A pagar tecnico" valor={formatCurrency(resumo.pagarTecnico)} cor="blue" />
+        <Card titulo="Contas a pagar" valor={formatCurrency(resumo.contasPendentes)} cor="orange" />
+        <Card titulo="Contas pagas" valor={formatCurrency(resumo.contasPagas)} cor="slate" />
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -267,6 +370,18 @@ export default function FinanceiroPage() {
               }`}
             >
               Pagamento tecnicos
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAba('contas')
+                setFiltro('TODOS')
+              }}
+              className={`rounded-md px-3 py-1.5 text-xs font-black transition ${
+                aba === 'contas' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Contas a pagar
             </button>
           </div>
 
@@ -306,7 +421,7 @@ export default function FinanceiroPage() {
             salvandoId={salvandoId}
             onStatus={alterarFinanceiro}
           />
-        ) : (
+        ) : aba === 'tecnicos' ? (
           <PagamentosTecnicoTable
             loading={loading}
             ordens={ordensTecnicos}
@@ -315,6 +430,17 @@ export default function FinanceiroPage() {
             salvandoId={salvandoId}
             onPagar={marcarTecnicoPago}
             onDocumentoPago={marcarDocumentoPago}
+          />
+        ) : (
+          <ContasPagarPanel
+            loading={loading}
+            contas={contasFiltradas}
+            tabelaPendente={contasPagarPendente}
+            salvandoId={salvandoId}
+            form={contaForm}
+            onFormChange={setContaForm}
+            onSubmit={criarContaPagar}
+            onPagar={marcarContaPaga}
           />
         )}
       </section>
@@ -539,6 +665,129 @@ function PagamentosTecnicoTable({
   )
 }
 
+function ContasPagarPanel({
+  loading,
+  contas,
+  tabelaPendente,
+  salvandoId,
+  form,
+  onFormChange,
+  onSubmit,
+  onPagar,
+}: {
+  loading: boolean
+  contas: ContaPagar[]
+  tabelaPendente: boolean
+  salvandoId: number | null
+  form: ContaForm
+  onFormChange: (form: ContaForm) => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onPagar: (id: number) => void
+}) {
+  return (
+    <div className="space-y-4 p-3">
+      {tabelaPendente && (
+        <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">
+          Rode o SQL de contas a pagar para liberar o lançamento manual de despesas.
+        </div>
+      )}
+
+      <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[1.2fr_1fr_150px_140px_150px_auto] lg:items-end">
+        <FinanceField
+          label="Descrição"
+          value={form.descricao}
+          onChange={(value) => onFormChange({ ...form, descricao: value })}
+          placeholder="Ex.: Aluguel, internet, contador"
+          disabled={tabelaPendente}
+        />
+        <FinanceField
+          label="Fornecedor"
+          value={form.fornecedor}
+          onChange={(value) => onFormChange({ ...form, fornecedor: value })}
+          placeholder="Nome do fornecedor"
+          disabled={tabelaPendente}
+        />
+        <FinanceSelect
+          label="Categoria"
+          value={form.categoria}
+          onChange={(value) => onFormChange({ ...form, categoria: value })}
+          disabled={tabelaPendente}
+        />
+        <FinanceField
+          label="Valor"
+          value={form.valor}
+          onChange={(value) => onFormChange({ ...form, valor: value })}
+          type="number"
+          step="0.01"
+          min="0"
+          disabled={tabelaPendente}
+        />
+        <FinanceField
+          label="Vencimento"
+          value={form.vencimento}
+          onChange={(value) => onFormChange({ ...form, vencimento: value })}
+          type="date"
+          disabled={tabelaPendente}
+        />
+        <button
+          type="submit"
+          disabled={tabelaPendente || salvandoId === -1}
+          className="h-10 rounded-lg bg-slate-900 px-4 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Lançar
+        </button>
+      </form>
+
+      <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+              <th className="p-3">Conta</th>
+              <th className="p-3">Categoria</th>
+              <th className="p-3">Vencimento</th>
+              <th className="p-3">Valor</th>
+              <th className="p-3">Status</th>
+              <th className="p-3">Forma</th>
+              <th className="p-3">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && <LinhaMensagem colSpan={7} texto="Carregando..." />}
+            {!loading && contas.length === 0 && <LinhaMensagem colSpan={7} texto="Nenhuma conta encontrada." />}
+            {!loading &&
+              contas.map((conta) => {
+                const status = String(conta.status ?? 'PENDENTE').toUpperCase()
+                return (
+                  <tr key={conta.id} className="border-t border-slate-200">
+                    <td className="p-3">
+                      <div className="font-bold text-slate-950">{conta.descricao ?? '-'}</div>
+                      <div className="text-xs text-slate-500">{conta.fornecedor ?? '-'}</div>
+                    </td>
+                    <td className="p-3">{formatarCategoriaConta(conta.categoria)}</td>
+                    <td className="p-3">{formatDate(conta.vencimento)}</td>
+                    <td className="p-3 font-black text-slate-950">{formatCurrency(toNumber(conta.valor))}</td>
+                    <td className="p-3"><StatusFinanceiro status={status === 'PAGO' ? 'RECEBIDO' : status} pagoLabel="PAGO" /></td>
+                    <td className="p-3">{formatarFormaPagamento(conta.forma_pagamento)}</td>
+                    <td className="p-3">
+                      <button
+                        type="button"
+                        onClick={() => onPagar(conta.id)}
+                        disabled={status === 'PAGO' || salvandoId === conta.id}
+                        className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Marcar pago
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function LinhaMensagem({ colSpan, texto }: { colSpan: number; texto: string }) {
   return (
     <tr>
@@ -560,6 +809,73 @@ function StatusFinanceiro({ status, pagoLabel = 'RECEBIDO' }: { status?: string 
     <span className={`rounded-full px-3 py-1 text-xs font-black ${classe}`}>
       {atual === 'RECEBIDO' ? pagoLabel : atual}
     </span>
+  )
+}
+
+function FinanceField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = 'text',
+  step,
+  min,
+  disabled = false,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  type?: string
+  step?: string
+  min?: string
+  disabled?: boolean
+}) {
+  return (
+    <label className="block text-xs font-black text-slate-700">
+      {label}
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        step={step}
+        min={min}
+        disabled={disabled}
+        className="mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium outline-none focus:border-orange-500 disabled:cursor-not-allowed disabled:bg-slate-100"
+      />
+    </label>
+  )
+}
+
+function FinanceSelect({
+  label,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+}) {
+  return (
+    <label className="block text-xs font-black text-slate-700">
+      {label}
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        className="mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium outline-none focus:border-orange-500 disabled:cursor-not-allowed disabled:bg-slate-100"
+      >
+        <option value="OPERACIONAL">Operacional</option>
+        <option value="ADMINISTRATIVO">Administrativo</option>
+        <option value="IMPOSTOS">Impostos</option>
+        <option value="MARKETING">Marketing</option>
+        <option value="ESTOQUE">Estoque</option>
+        <option value="OUTROS">Outros</option>
+      </select>
+    </label>
   )
 }
 
@@ -680,6 +996,20 @@ function formatarFormaPagamento(forma?: string | null) {
   }
 
   return labels[value] ?? '-'
+}
+
+function formatarCategoriaConta(categoria?: string | null) {
+  const value = String(categoria ?? '').toUpperCase()
+  const labels: Record<string, string> = {
+    OPERACIONAL: 'Operacional',
+    ADMINISTRATIVO: 'Administrativo',
+    IMPOSTOS: 'Impostos',
+    MARKETING: 'Marketing',
+    ESTOQUE: 'Estoque',
+    OUTROS: 'Outros',
+  }
+
+  return labels[value] ?? (value || '-')
 }
 
 function formatDate(data?: string | null) {
