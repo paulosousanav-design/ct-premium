@@ -21,6 +21,7 @@ const menu: MenuItem[] = [
   { label: 'Aprovacao', href: '/admin/aprovacao', permissao: 'aprovacao' },
   { label: 'Financeiro', href: '/admin/financeiro', permissao: 'financeiro' },
   { label: 'Pecas', href: '/admin/pecas', permissao: 'pecas' },
+  { label: 'Clientes', href: '/admin/clientes', permissao: 'relatorios' },
   { label: 'Usuarios', href: '/admin/usuarios', permissao: 'usuarios' },
   { label: 'Relatorios', href: '/admin/relatorios', permissao: 'relatorios' },
   { label: 'Configuracoes', href: '/admin/configuracoes', permissao: 'configuracoes' },
