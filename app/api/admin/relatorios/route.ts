@@ -193,6 +193,9 @@ export async function GET(request: NextRequest) {
     )
 
     const pecas = await carregarResumoPecas(supabase)
+    const contasPagar = await carregarResumoContasPagar(supabase, inicioIso, fimIso)
+    const resultadoLiquido =
+      financeiro.recebidoCliente + financeiro.recebidoGarantidor - financeiro.pagoTecnico - contasPagar.pagas
 
     return NextResponse.json({
       periodo: { inicio, fim },
@@ -221,6 +224,9 @@ export async function GET(request: NextRequest) {
         aReceberTotal: financeiro.aReceberCliente + financeiro.aReceberGarantidor,
         aPagarTecnico: financeiro.aPagarTecnico,
         pagoTecnico: financeiro.pagoTecnico,
+        contasAPagar: contasPagar.pendentes,
+        contasPagas: contasPagar.pagas,
+        resultadoLiquido,
         margemTotal: financeiro.valorCliente + financeiro.valorGarantidor - financeiro.aPagarTecnico - financeiro.pagoTecnico,
         ticketMedioBruto: mediaValor(financeiro.valorCliente + financeiro.valorGarantidor, ordensComValor(ordensPeriodo).length),
         ticketMedioMargem: mediaValor(
@@ -236,6 +242,7 @@ export async function GET(request: NextRequest) {
       resumoMensal,
       ticketCategorias,
       pecas,
+      contasPagar,
       ultimasOrdens: ordensPeriodo.slice(0, 12).map((ordem) => ({
         id: ordem.id,
         numero_os: ordem.numero_os,
@@ -373,6 +380,53 @@ async function carregarResumoPecas(supabase: ReturnType<typeof getSupabaseAdmin>
         localizacao: peca.localizacao,
       })),
     movimentacoes,
+  }
+}
+
+async function carregarResumoContasPagar(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  inicioIso: string,
+  fimIso: string
+) {
+  const existe = await tabelaExiste(supabase, 'contas_pagar')
+  if (!existe) {
+    return { pendentes: 0, pagas: 0, total: 0, itens: [] }
+  }
+
+  const { data, error } = await supabase
+    .from('contas_pagar')
+    .select('id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, criado_em')
+    .gte('criado_em', inicioIso)
+    .lte('criado_em', fimIso)
+    .order('vencimento', { ascending: true, nullsFirst: false })
+
+  if (error) throw error
+
+  const lista = (data ?? []) as Array<{
+    id: number
+    descricao?: string | null
+    fornecedor?: string | null
+    categoria?: string | null
+    valor?: number | string | null
+    vencimento?: string | null
+    status?: string | null
+    forma_pagamento?: string | null
+    pago_em?: string | null
+    criado_em?: string | null
+  }>
+
+  const pendentes = lista
+    .filter((conta) => String(conta.status ?? 'PENDENTE').toUpperCase() === 'PENDENTE')
+    .reduce((acc, conta) => acc + toNumber(conta.valor), 0)
+  const pagas = lista
+    .filter((conta) => String(conta.status ?? '').toUpperCase() === 'PAGO')
+    .reduce((acc, conta) => acc + toNumber(conta.valor), 0)
+
+  return {
+    pendentes,
+    pagas,
+    total: pendentes + pagas,
+    itens: lista.slice(0, 12),
   }
 }
 

@@ -147,6 +147,9 @@ export default function RelatoriosPage() {
       ['Recebido total', formatCurrency(cards.recebidoTotal ?? 0)],
       ['A pagar tecnico', formatCurrency(cards.aPagarTecnico ?? 0)],
       ['Pago tecnico', formatCurrency(cards.pagoTecnico ?? 0)],
+      ['Contas a pagar', formatCurrency(cards.contasAPagar ?? 0)],
+      ['Contas pagas', formatCurrency(cards.contasPagas ?? 0)],
+      ['Resultado liquido', formatCurrency(cards.resultadoLiquido ?? 0)],
       ['Margem total', formatCurrency(cards.margemTotal ?? 0)],
       ['Ticket medio bruto', formatCurrency(cards.ticketMedioBruto ?? 0)],
       ['Ticket medio margem', formatCurrency(cards.ticketMedioMargem ?? 0)],
@@ -321,6 +324,9 @@ export default function RelatoriosPage() {
         <Metric label="A receber garantidor/seguradora" value={formatCurrency(cards.aReceberGarantidor ?? 0)} tone="amber" />
         <Metric label="A pagar tecnico" value={formatCurrency(cards.aPagarTecnico ?? 0)} tone="red" />
         <Metric label="Pago tecnico" value={formatCurrency(cards.pagoTecnico ?? 0)} tone="blue" />
+        <Metric label="Contas a pagar" value={formatCurrency(cards.contasAPagar ?? 0)} tone="red" />
+        <Metric label="Contas pagas" value={formatCurrency(cards.contasPagas ?? 0)} tone="blue" />
+        <Metric label="Resultado liquido" value={formatCurrency(cards.resultadoLiquido ?? 0)} tone={(cards.resultadoLiquido ?? 0) >= 0 ? 'green' : 'red'} />
         <Metric label="Ticket bruto medio" value={formatCurrency(cards.ticketMedioBruto ?? 0)} />
         <Metric label="Ticket margem medio" value={formatCurrency(cards.ticketMedioMargem ?? 0)} tone="green" />
         <Metric label="Margem total" value={formatCurrency(cards.margemTotal ?? 0)} tone="blue" />
@@ -400,12 +406,15 @@ export default function RelatoriosPage() {
       </section>
 
       <Panel title="Grafico financeiro">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <FinanceBar label="Recebido cliente" value={cards.recebidoCliente ?? 0} total={cards.valorCliente ?? 0} tone="green" />
           <FinanceBar label="A receber cliente" value={cards.aReceberCliente ?? 0} total={cards.valorCliente ?? 0} tone="amber" />
           <FinanceBar label="Recebido garantidor" value={cards.recebidoGarantidor ?? 0} total={cards.valorGarantidor ?? 0} tone="green" />
           <FinanceBar label="A receber garantidor" value={cards.aReceberGarantidor ?? 0} total={cards.valorGarantidor ?? 0} tone="amber" />
           <FinanceBar label="A pagar tecnico" value={cards.aPagarTecnico ?? 0} total={Math.max(cards.aPagarTecnico ?? 0, cards.pagoTecnico ?? 0)} tone="red" />
+          <FinanceBar label="Contas a pagar" value={cards.contasAPagar ?? 0} total={Math.max(cards.contasAPagar ?? 0, cards.contasPagas ?? 0)} tone="red" />
+          <FinanceBar label="Contas pagas" value={cards.contasPagas ?? 0} total={Math.max(cards.contasAPagar ?? 0, cards.contasPagas ?? 0)} tone="green" />
+          <FinanceBar label="Resultado liquido" value={Math.max(cards.resultadoLiquido ?? 0, 0)} total={Math.max(cards.recebidoTotal ?? 0, 1)} tone={(cards.resultadoLiquido ?? 0) >= 0 ? 'green' : 'red'} />
         </div>
       </Panel>
 
