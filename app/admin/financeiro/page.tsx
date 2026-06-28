@@ -89,6 +89,22 @@ const contaInicial: ContaForm = {
   observacao: '',
 }
 
+const categoriasConta = [
+  { value: 'OPERACIONAL', label: 'Operacional' },
+  { value: 'ADMINISTRATIVO', label: 'Administrativo' },
+  { value: 'IMPOSTOS', label: 'Impostos' },
+  { value: 'FORNECEDOR', label: 'Fornecedor' },
+  { value: 'PECAS_ESTOQUE', label: 'Pecas/estoque' },
+  { value: 'DESLOCAMENTO', label: 'Deslocamento' },
+  { value: 'COMBUSTIVEL', label: 'Combustivel' },
+  { value: 'SISTEMAS', label: 'Sistemas' },
+  { value: 'MARKETING', label: 'Marketing' },
+  { value: 'ALUGUEL', label: 'Aluguel' },
+  { value: 'CONTABILIDADE', label: 'Contabilidade' },
+  { value: 'TAXAS_BANCARIAS', label: 'Taxas bancarias' },
+  { value: 'OUTROS', label: 'Outros' },
+]
+
 export default function FinanceiroPage() {
   const [aba, setAba] = useState<AbaFinanceiro>('tecnicos')
   const [ordens, setOrdens] = useState<OrdemFinanceira[]>([])
@@ -204,6 +220,50 @@ export default function FinanceiroPage() {
       contasPendentes,
       contasPagas,
       finalizadasTecnico: ordensFinalizadas.filter((os) => Boolean(os.parceiro_id) && valorTecnico(os) > 0).length,
+    }
+  }, [contasPagar, ordens])
+
+  const visaoMensal = useMemo(() => {
+    const hoje = new Date()
+    const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+    const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0, 23, 59, 59)
+    const ordensFinalizadas = ordens.filter((os) => os.status === 'FINALIZADA')
+    const recebidasMes = ordensFinalizadas.filter((os) =>
+      os.status_financeiro === 'RECEBIDO' && estaNoPeriodo(os.data_pagamento ?? os.created_at, inicioMes, fimMes)
+    )
+    const tecnicosPagosMes = ordensFinalizadas.filter((os) =>
+      tecnicoPago(os) && estaNoPeriodo(os.tecnico_pago_em ?? os.created_at, inicioMes, fimMes)
+    )
+    const contasPagasMes = contasPagar.filter((conta) =>
+      String(conta.status ?? '').toUpperCase() === 'PAGO' && estaNoPeriodo(conta.pago_em ?? conta.criado_em, inicioMes, fimMes)
+    )
+    const contasVencidas = contasPagar.filter((conta) =>
+      String(conta.status ?? 'PENDENTE').toUpperCase() === 'PENDENTE' &&
+      conta.vencimento &&
+      new Date(`${conta.vencimento}T23:59:59`).getTime() < hoje.getTime()
+    )
+
+    const recebidoClienteMes = recebidasMes
+      .filter((os) => !ehGarantidorOuSeguradora(os))
+      .reduce((acc, os) => acc + valorCliente(os), 0)
+    const recebidoGarantidorMes = recebidasMes
+      .filter((os) => ehGarantidorOuSeguradora(os))
+      .reduce((acc, os) => acc + valorCliente(os), 0)
+    const pagoTecnicoMes = tecnicosPagosMes.reduce((acc, os) => acc + valorTecnico(os), 0)
+    const contasPagasValorMes = contasPagasMes.reduce((acc, conta) => acc + toNumber(conta.valor), 0)
+    const despesasPorCategoria = montarDespesasPorCategoria(contasPagasMes)
+
+    return {
+      label: hoje.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
+      recebidoCliente: recebidoClienteMes,
+      recebidoGarantidor: recebidoGarantidorMes,
+      recebidoTotal: recebidoClienteMes + recebidoGarantidorMes,
+      pagoTecnico: pagoTecnicoMes,
+      contasPagas: contasPagasValorMes,
+      lucroLiquido: recebidoClienteMes + recebidoGarantidorMes - pagoTecnicoMes - contasPagasValorMes,
+      contasVencidas: contasVencidas.reduce((acc, conta) => acc + toNumber(conta.valor), 0),
+      contasVencidasQtd: contasVencidas.length,
+      despesasPorCategoria,
     }
   }, [contasPagar, ordens])
 
@@ -343,6 +403,8 @@ export default function FinanceiroPage() {
         <Card titulo="Contas a pagar" valor={formatCurrency(resumo.contasPendentes)} cor="orange" />
         <Card titulo="Contas pagas" valor={formatCurrency(resumo.contasPagas)} cor="slate" />
       </div>
+
+      <MonthlyFinancePanel data={visaoMensal} />
 
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -788,6 +850,119 @@ function ContasPagarPanel({
   )
 }
 
+function MonthlyFinancePanel({
+  data,
+}: {
+  data: {
+    label: string
+    recebidoCliente: number
+    recebidoGarantidor: number
+    recebidoTotal: number
+    pagoTecnico: number
+    contasPagas: number
+    lucroLiquido: number
+    contasVencidas: number
+    contasVencidasQtd: number
+    despesasPorCategoria: Array<{ categoria: string; valor: number }>
+  }
+}) {
+  const maiorDespesa = Math.max(...data.despesasPorCategoria.map((item) => item.valor), 1)
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-base font-black text-slate-950">Visao financeira do mes</h2>
+          <p className="text-xs font-semibold uppercase text-slate-500">{data.label}</p>
+        </div>
+        {data.contasVencidasQtd > 0 && (
+          <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-black text-red-700">
+            {data.contasVencidasQtd} conta(s) vencida(s): {formatCurrency(data.contasVencidas)}
+          </span>
+        )}
+      </div>
+
+      <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        <MiniFinanceCard label="Recebido cliente" value={formatCurrency(data.recebidoCliente)} tone="green" />
+        <MiniFinanceCard label="Recebido garantidor" value={formatCurrency(data.recebidoGarantidor)} tone="green" />
+        <MiniFinanceCard label="Total recebido" value={formatCurrency(data.recebidoTotal)} tone="blue" />
+        <MiniFinanceCard label="Pago tecnico" value={formatCurrency(data.pagoTecnico)} tone="slate" />
+        <MiniFinanceCard label="Contas pagas" value={formatCurrency(data.contasPagas)} tone="orange" />
+        <MiniFinanceCard label="Lucro liquido" value={formatCurrency(data.lucroLiquido)} tone={data.lucroLiquido >= 0 ? 'green' : 'red'} />
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-black text-slate-900">Despesas pagas por categoria</h3>
+            <span className="text-xs font-bold text-slate-500">{data.despesasPorCategoria.length} categorias</span>
+          </div>
+
+          {data.despesasPorCategoria.length === 0 ? (
+            <p className="text-sm text-slate-500">Nenhuma conta paga neste mes.</p>
+          ) : (
+            <div className="space-y-2">
+              {data.despesasPorCategoria.slice(0, 8).map((item) => (
+                <div key={item.categoria}>
+                  <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+                    <span className="font-black text-slate-700">{formatarCategoriaConta(item.categoria)}</span>
+                    <span className="font-black text-slate-950">{formatCurrency(item.valor)}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-white">
+                    <div
+                      className="h-full rounded-full bg-orange-500"
+                      style={{ width: `${Math.max(6, (item.valor / maiorDespesa) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-950 p-3 text-white">
+          <h3 className="text-sm font-black">Leitura rapida</h3>
+          <p className="mt-2 text-xs leading-5 text-slate-300">
+            O lucro liquido considera o que entrou no mes menos pagamentos de tecnicos e contas pagas no mes.
+            Contas pendentes seguem aparecendo como compromisso futuro, sem baixar o caixa ate marcar como pago.
+          </p>
+          <div className="mt-3 rounded-lg bg-white/10 p-3">
+            <p className="text-xs uppercase text-slate-300">Resultado do mes</p>
+            <p className={`mt-1 text-2xl font-black ${data.lucroLiquido >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+              {formatCurrency(data.lucroLiquido)}
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function MiniFinanceCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone: 'green' | 'blue' | 'orange' | 'slate' | 'red'
+}) {
+  const tones = {
+    green: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    blue: 'border-blue-200 bg-blue-50 text-blue-800',
+    orange: 'border-orange-200 bg-orange-50 text-orange-800',
+    slate: 'border-slate-200 bg-slate-50 text-slate-800',
+    red: 'border-red-200 bg-red-50 text-red-800',
+  }
+
+  return (
+    <div className={`min-w-0 rounded-lg border px-3 py-2 ${tones[tone]}`}>
+      <p className="truncate text-[10px] font-black uppercase opacity-75">{label}</p>
+      <p className="mt-1 truncate text-lg font-black" title={value}>{value}</p>
+    </div>
+  )
+}
+
 function LinhaMensagem({ colSpan, texto }: { colSpan: number; texto: string }) {
   return (
     <tr>
@@ -868,12 +1043,11 @@ function FinanceSelect({
         disabled={disabled}
         className="mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium outline-none focus:border-orange-500 disabled:cursor-not-allowed disabled:bg-slate-100"
       >
-        <option value="OPERACIONAL">Operacional</option>
-        <option value="ADMINISTRATIVO">Administrativo</option>
-        <option value="IMPOSTOS">Impostos</option>
-        <option value="MARKETING">Marketing</option>
-        <option value="ESTOQUE">Estoque</option>
-        <option value="OUTROS">Outros</option>
+        {categoriasConta.map((categoria) => (
+          <option key={categoria.value} value={categoria.value}>
+            {categoria.label}
+          </option>
+        ))}
       </select>
     </label>
   )
@@ -950,6 +1124,26 @@ function valorPreferencial(principal: number | string | null | undefined, fallba
   return principal === null || principal === undefined || principal === '' ? toNumber(fallback) : toNumber(principal)
 }
 
+function estaNoPeriodo(value: string | null | undefined, inicio: Date, fim: Date) {
+  if (!value) return false
+  const time = new Date(value).getTime()
+  if (!Number.isFinite(time)) return false
+  return time >= inicio.getTime() && time <= fim.getTime()
+}
+
+function montarDespesasPorCategoria(contas: ContaPagar[]) {
+  const mapa = new Map<string, number>()
+
+  for (const conta of contas) {
+    const categoria = String(conta.categoria ?? 'OUTROS').toUpperCase()
+    mapa.set(categoria, (mapa.get(categoria) ?? 0) + toNumber(conta.valor))
+  }
+
+  return Array.from(mapa.entries())
+    .map(([categoria, valor]) => ({ categoria, valor }))
+    .sort((a, b) => b.valor - a.valor)
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -1000,14 +1194,7 @@ function formatarFormaPagamento(forma?: string | null) {
 
 function formatarCategoriaConta(categoria?: string | null) {
   const value = String(categoria ?? '').toUpperCase()
-  const labels: Record<string, string> = {
-    OPERACIONAL: 'Operacional',
-    ADMINISTRATIVO: 'Administrativo',
-    IMPOSTOS: 'Impostos',
-    MARKETING: 'Marketing',
-    ESTOQUE: 'Estoque',
-    OUTROS: 'Outros',
-  }
+  const labels = Object.fromEntries(categoriasConta.map((item) => [item.value, item.label]))
 
   return labels[value] ?? (value || '-')
 }
