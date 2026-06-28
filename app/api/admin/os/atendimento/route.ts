@@ -117,12 +117,14 @@ async function baixarEstoquePecas(
     const estoqueAnterior = toNumber(peca.estoque)
     const estoquePosterior = estoqueAnterior - quantidade
 
+    const updateEstoquePayload: Record<string, unknown> = { estoque: estoquePosterior }
+    if (await colunaExiste(supabase, 'pecas', 'atualizado_em')) {
+      updateEstoquePayload.atualizado_em = new Date().toISOString()
+    }
+
     const { error: updateEstoqueError } = await supabase
       .from('pecas')
-      .update({
-        estoque: estoquePosterior,
-        atualizado_em: new Date().toISOString(),
-      })
+      .update(updateEstoquePayload)
       .eq('id', pecaId)
 
     if (updateEstoqueError) throw updateEstoqueError

@@ -97,9 +97,6 @@ export async function POST(request: NextRequest) {
       localizacao: texto(body?.localizacao) || null,
       ativo: body?.ativo !== false,
     }
-    if (await colunaExiste(supabase, 'pecas', 'atualizado_em')) {
-      payload.atualizado_em = new Date().toISOString()
-    }
 
     const { data, error } = await supabase.from('pecas').insert(payload).select('*').single()
     if (error) throw error
@@ -150,9 +147,6 @@ export async function PATCH(request: NextRequest) {
       estoque_minimo: numero(body?.estoque_minimo),
       localizacao: texto(body?.localizacao) || null,
       ativo: body?.ativo !== false,
-    }
-    if (await colunaExiste(supabase, 'pecas', 'atualizado_em')) {
-      payload.atualizado_em = new Date().toISOString()
     }
 
     const { data, error } = await supabase
@@ -227,14 +221,9 @@ async function movimentarEstoque(supabase: ReturnType<typeof getSupabaseAdmin>, 
     throw new Error('Estoque nao pode ficar negativo.')
   }
 
-  const updatePayload: Record<string, unknown> = { estoque: estoquePosterior }
-  if (await colunaExiste(supabase, 'pecas', 'atualizado_em')) {
-    updatePayload.atualizado_em = new Date().toISOString()
-  }
-
   const { error: updateError } = await supabase
     .from('pecas')
-    .update(updatePayload)
+    .update({ estoque: estoquePosterior })
     .eq('id', pecaId)
 
   if (updateError) throw updateError
@@ -258,11 +247,6 @@ async function movimentarEstoque(supabase: ReturnType<typeof getSupabaseAdmin>, 
 
 async function tabelaExiste(supabase: ReturnType<typeof getSupabaseAdmin>, tabela: string) {
   const { error } = await supabase.from(tabela).select('id').limit(0)
-  return !error
-}
-
-async function colunaExiste(supabase: ReturnType<typeof getSupabaseAdmin>, tabela: string, coluna: string) {
-  const { error } = await supabase.from(tabela).select(coluna).limit(0)
   return !error
 }
 
