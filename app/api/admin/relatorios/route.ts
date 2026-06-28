@@ -12,11 +12,13 @@ type OrdemRelatorio = {
   finalizada_em?: string | null
   status: string | null
   status_financeiro?: string | null
+  data_pagamento?: string | null
   garantia?: boolean | null
   total?: number | string | null
   cliente_total?: number | string | null
   tecnico_total?: number | string | null
   tecnico_status_pagamento?: string | null
+  tecnico_pago_em?: string | null
   tipo_atendimento?: string | null
   parceiro_id?: number | null
   garantidor_id?: number | null
@@ -82,6 +84,8 @@ export async function GET(request: NextRequest) {
     const temTecnicoTotal = await colunaExiste(supabase, 'ordens_servico', 'tecnico_total')
     const temFinanceiro = await colunaExiste(supabase, 'ordens_servico', 'status_financeiro')
     const temPagamentoTecnico = await colunaExiste(supabase, 'ordens_servico', 'tecnico_status_pagamento')
+    const temDataPagamento = await colunaExiste(supabase, 'ordens_servico', 'data_pagamento')
+    const temTecnicoPagoEm = await colunaExiste(supabase, 'ordens_servico', 'tecnico_pago_em')
     const temGarantidor = await colunaExiste(supabase, 'ordens_servico', 'garantidor_id')
 
     const selectOrdens = `
@@ -95,7 +99,9 @@ export async function GET(request: NextRequest) {
       ${temClienteTotal ? 'cliente_total,' : ''}
       ${temTecnicoTotal ? 'tecnico_total,' : ''}
       ${temFinanceiro ? 'status_financeiro,' : ''}
+      ${temDataPagamento ? 'data_pagamento,' : ''}
       ${temPagamentoTecnico ? 'tecnico_status_pagamento,' : ''}
+      ${temTecnicoPagoEm ? 'tecnico_pago_em,' : ''}
       tipo_atendimento,
       parceiro_id,
       ${temGarantidor ? 'garantidor_id,' : ''}
@@ -133,17 +139,6 @@ export async function GET(request: NextRequest) {
       garantidor: garantidorFiltro,
     })
     const documentosTecnicosPagos = await carregarDocumentosTecnicosPagos(supabase)
-    const resumoMensal = montarResumoMensal(
-      filtrarOrdens((ordensMensais ?? []) as unknown as OrdemRelatorio[], {
-        origemFinanceira: origemFiltro,
-        statusFinanceiro: statusFinanceiroFiltro,
-        statusOs: statusOsFiltro,
-        tecnico: tecnicoFiltro,
-        garantidor: garantidorFiltro,
-      }),
-      inicioMensal,
-      hoje
-    )
     const statusResumo = agruparPorStatus(ordensPeriodo)
     const tecnicoResumo = agruparPorNome(ordensPeriodo, (ordem) => getNomeRelacao(ordem.parceiros) || 'Sem tecnico')
     const garantidorResumo = agruparPorNome(
@@ -194,6 +189,19 @@ export async function GET(request: NextRequest) {
 
     const pecas = await carregarResumoPecas(supabase)
     const contasPagar = await carregarResumoContasPagar(supabase, inicioIso, fimIso)
+    const contasPagarMensal = await carregarResumoContasPagar(supabase, inicioMensal.toISOString(), fimIso)
+    const resumoMensal = montarResumoMensal(
+      filtrarOrdens((ordensMensais ?? []) as unknown as OrdemRelatorio[], {
+        origemFinanceira: origemFiltro,
+        statusFinanceiro: statusFinanceiroFiltro,
+        statusOs: statusOsFiltro,
+        tecnico: tecnicoFiltro,
+        garantidor: garantidorFiltro,
+      }),
+      inicioMensal,
+      hoje,
+      contasPagarMensal.itens
+    )
     const resultadoLiquido =
       financeiro.recebidoCliente + financeiro.recebidoGarantidor - financeiro.pagoTecnico - contasPagar.pagas
 
@@ -243,6 +251,7 @@ export async function GET(request: NextRequest) {
       ticketCategorias,
       pecas,
       contasPagar,
+      despesasCategorias: contasPagar.despesasCategorias,
       ultimasOrdens: ordensPeriodo.slice(0, 12).map((ordem) => ({
         id: ordem.id,
         numero_os: ordem.numero_os,
@@ -390,14 +399,12 @@ async function carregarResumoContasPagar(
 ) {
   const existe = await tabelaExiste(supabase, 'contas_pagar')
   if (!existe) {
-    return { pendentes: 0, pagas: 0, total: 0, itens: [] }
+    return { pendentes: 0, pagas: 0, total: 0, despesasCategorias: [], itens: [] }
   }
 
   const { data, error } = await supabase
     .from('contas_pagar')
     .select('id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, criado_em')
-    .gte('criado_em', inicioIso)
-    .lte('criado_em', fimIso)
     .order('vencimento', { ascending: true, nullsFirst: false })
 
   if (error) throw error
@@ -415,19 +422,46 @@ async function carregarResumoContasPagar(
     criado_em?: string | null
   }>
 
-  const pendentes = lista
+  const inicioTime = new Date(inicioIso).getTime()
+  const fimTime = new Date(fimIso).getTime()
+  const listaPeriodo = lista.filter((conta) => {
+    const status = String(conta.status ?? 'PENDENTE').toUpperCase()
+    const dataBase = status === 'PAGO' ? conta.pago_em ?? conta.criado_em : conta.criado_em
+    return estaNoPeriodo(dataBase, inicioTime, fimTime)
+  })
+
+  const pendentes = listaPeriodo
     .filter((conta) => String(conta.status ?? 'PENDENTE').toUpperCase() === 'PENDENTE')
     .reduce((acc, conta) => acc + toNumber(conta.valor), 0)
-  const pagas = lista
+  const pagas = listaPeriodo
     .filter((conta) => String(conta.status ?? '').toUpperCase() === 'PAGO')
     .reduce((acc, conta) => acc + toNumber(conta.valor), 0)
+  const despesasCategorias = montarDespesasPorCategoria(
+    listaPeriodo.filter((conta) => String(conta.status ?? '').toUpperCase() === 'PAGO')
+  )
 
   return {
     pendentes,
     pagas,
     total: pendentes + pagas,
-    itens: lista.slice(0, 12),
+    despesasCategorias,
+    itens: listaPeriodo.slice(0, 24),
   }
+}
+
+function montarDespesasPorCategoria(
+  contas: Array<{ categoria?: string | null; valor?: number | string | null }>
+) {
+  const mapa = new Map<string, number>()
+
+  for (const conta of contas) {
+    const categoria = String(conta.categoria ?? 'OUTROS').toUpperCase()
+    mapa.set(categoria, (mapa.get(categoria) ?? 0) + toNumber(conta.valor))
+  }
+
+  return Array.from(mapa.entries())
+    .map(([categoria, valor]) => ({ categoria, valor }))
+    .sort((a, b) => b.valor - a.valor)
 }
 
 function agruparPorStatus(ordens: OrdemRelatorio[]) {
@@ -497,8 +531,22 @@ function mediaValor(total: number, quantidade: number) {
   return quantidade > 0 ? total / quantidade : 0
 }
 
-function montarResumoMensal(ordens: OrdemRelatorio[], inicio: Date, fim: Date) {
-  const meses: Array<{ chave: string; label: string; totalOs: number; valor: number; recebido: number }> = []
+function montarResumoMensal(
+  ordens: OrdemRelatorio[],
+  inicio: Date,
+  fim: Date,
+  contas: Array<{ valor?: number | string | null; status?: string | null; pago_em?: string | null; criado_em?: string | null }>
+) {
+  const meses: Array<{
+    chave: string
+    label: string
+    totalOs: number
+    valor: number
+    recebido: number
+    pagoTecnico: number
+    contasPagas: number
+    resultadoLiquido: number
+  }> = []
   const cursor = new Date(inicio.getFullYear(), inicio.getMonth(), 1)
   const fimMes = new Date(fim.getFullYear(), fim.getMonth(), 1)
 
@@ -510,6 +558,9 @@ function montarResumoMensal(ordens: OrdemRelatorio[], inicio: Date, fim: Date) {
       totalOs: 0,
       valor: 0,
       recebido: 0,
+      pagoTecnico: 0,
+      contasPagas: 0,
+      resultadoLiquido: 0,
     })
     cursor.setMonth(cursor.getMonth() + 1)
   }
@@ -524,9 +575,35 @@ function montarResumoMensal(ordens: OrdemRelatorio[], inicio: Date, fim: Date) {
     if (!mes) continue
 
     const valor = valorPreferencial(ordem.cliente_total, ordem.total)
+    const valorTecnico = valorPreferencial(ordem.tecnico_total, 0)
     mes.totalOs += 1
     mes.valor += valor
-    mes.recebido += String(ordem.status_financeiro ?? '').toUpperCase() === 'RECEBIDO' ? valor : 0
+    if (String(ordem.status_financeiro ?? '').toUpperCase() === 'RECEBIDO') {
+      const dataRecebimento = ordem.data_pagamento ? new Date(ordem.data_pagamento) : data
+      const chaveRecebimento = `${dataRecebimento.getFullYear()}-${String(dataRecebimento.getMonth() + 1).padStart(2, '0')}`
+      const mesRecebimento = mapa.get(chaveRecebimento)
+      if (mesRecebimento) mesRecebimento.recebido += valor
+    }
+    if (String(ordem.tecnico_status_pagamento ?? '').toUpperCase() === 'RECEBIDO') {
+      const dataPagamento = ordem.tecnico_pago_em ? new Date(ordem.tecnico_pago_em) : data
+      const chavePagamento = `${dataPagamento.getFullYear()}-${String(dataPagamento.getMonth() + 1).padStart(2, '0')}`
+      const mesPagamento = mapa.get(chavePagamento)
+      if (mesPagamento) mesPagamento.pagoTecnico += valorTecnico
+    }
+  }
+
+  for (const conta of contas) {
+    if (String(conta.status ?? '').toUpperCase() !== 'PAGO') continue
+    const data = new Date(conta.pago_em ?? conta.criado_em ?? '')
+    if (!Number.isFinite(data.getTime())) continue
+    const chave = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`
+    const mes = mapa.get(chave)
+    if (!mes) continue
+    mes.contasPagas += toNumber(conta.valor)
+  }
+
+  for (const mes of meses) {
+    mes.resultadoLiquido = mes.recebido - mes.pagoTecnico - mes.contasPagas
   }
 
   return meses
@@ -553,6 +630,13 @@ function toNumber(value: unknown) {
 
 function valorPreferencial(principal: unknown, fallback: unknown) {
   return principal === null || principal === undefined || principal === '' ? toNumber(fallback) : toNumber(principal)
+}
+
+function estaNoPeriodo(value: string | null | undefined, inicioTime: number, fimTime: number) {
+  if (!value) return false
+  const time = new Date(value).getTime()
+  if (!Number.isFinite(time)) return false
+  return time >= inicioTime && time <= fimTime
 }
 
 function formatDateInput(date: Date) {

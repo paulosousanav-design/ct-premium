@@ -31,7 +31,17 @@ type RelatoriosData = {
     ticketBruto: number
     ticketMargem: number
   }>
-  resumoMensal: Array<{ chave: string; label: string; totalOs: number; valor: number; recebido: number }>
+  resumoMensal: Array<{
+    chave: string
+    label: string
+    totalOs: number
+    valor: number
+    recebido: number
+    pagoTecnico?: number
+    contasPagas?: number
+    resultadoLiquido?: number
+  }>
+  despesasCategorias?: Array<{ categoria: string; valor: number }>
   pecas: {
     total: number
     estoqueBaixo: number
@@ -153,6 +163,25 @@ export default function RelatoriosPage() {
       ['Margem total', formatCurrency(cards.margemTotal ?? 0)],
       ['Ticket medio bruto', formatCurrency(cards.ticketMedioBruto ?? 0)],
       ['Ticket medio margem', formatCurrency(cards.ticketMedioMargem ?? 0)],
+      [],
+      ['Despesas por categoria'],
+      ['Categoria', 'Valor pago'],
+      ...(data.despesasCategorias ?? []).map((item) => [
+        formatarCategoriaConta(item.categoria),
+        formatCurrency(item.valor),
+      ]),
+      [],
+      ['Resumo mensal'],
+      ['Mes', 'OS', 'Faturamento', 'Recebido', 'Pago tecnico', 'Contas pagas', 'Resultado liquido'],
+      ...data.resumoMensal.map((item) => [
+        item.label,
+        String(item.totalOs),
+        formatCurrency(item.valor),
+        formatCurrency(item.recebido),
+        formatCurrency(item.pagoTecnico ?? 0),
+        formatCurrency(item.contasPagas ?? 0),
+        formatCurrency(item.resultadoLiquido ?? 0),
+      ]),
       [],
       ['Ticket por categoria'],
       ['Categoria', 'OS', 'Faturamento', 'Tecnico', 'Margem', 'Ticket bruto', 'Ticket margem'],
@@ -418,6 +447,16 @@ export default function RelatoriosPage() {
         </div>
       </Panel>
 
+      <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <Panel title="Despesas por categoria">
+          <ExpenseCategoryChart items={data?.despesasCategorias ?? []} />
+        </Panel>
+
+        <Panel title="Resultado liquido mensal">
+          <MonthlyResultChart items={data?.resumoMensal ?? []} />
+        </Panel>
+      </section>
+
       <Panel title="Ticket medio por categoria">
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-sm">
@@ -604,6 +643,69 @@ function PieChart({ items, empty }: { items: Array<{ label: string; value: numbe
   )
 }
 
+function ExpenseCategoryChart({ items }: { items: Array<{ categoria: string; valor: number }> }) {
+  if (items.length === 0) {
+    return <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">Nenhuma conta paga no periodo.</p>
+  }
+
+  const max = Math.max(...items.map((item) => item.valor), 1)
+
+  return (
+    <div className="space-y-2">
+      {items.slice(0, 10).map((item) => (
+        <div key={item.categoria} className="rounded-lg bg-slate-50 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="truncate text-xs font-black uppercase text-slate-600">{formatarCategoriaConta(item.categoria)}</p>
+            <p className="text-sm font-black text-slate-950">{formatCurrency(item.valor)}</p>
+          </div>
+          <div className="h-3 overflow-hidden rounded-full bg-white">
+            <div
+              className="h-full rounded-full bg-orange-500"
+              style={{ width: `${Math.max(5, (item.valor / max) * 100)}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function MonthlyResultChart({ items }: { items: RelatoriosData['resumoMensal'] }) {
+  if (items.length === 0) {
+    return <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">Sem resultado mensal.</p>
+  }
+
+  const max = Math.max(...items.map((item) => Math.abs(item.resultadoLiquido ?? 0)), 1)
+
+  return (
+    <div className="rounded-lg bg-slate-50 p-3">
+      <div className="flex h-52 items-end gap-3">
+        {items.map((item) => {
+          const resultado = item.resultadoLiquido ?? 0
+          const altura = Math.max(4, (Math.abs(resultado) / max) * 100)
+          return (
+            <div key={item.chave} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+              <div className="flex h-36 w-full max-w-12 items-end rounded-lg bg-white">
+                <div
+                  className={`w-full rounded-b-lg rounded-t-sm ${resultado >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
+                  style={{ height: `${altura}%` }}
+                />
+              </div>
+              <span className="text-[10px] font-black uppercase text-slate-600">{item.label}</span>
+              <span className="text-[10px] font-bold text-slate-500">{formatCurrency(resultado)}</span>
+            </div>
+          )
+        })}
+      </div>
+      <div className="mt-2 grid gap-2 text-xs font-bold text-slate-500 sm:grid-cols-3">
+        <span>Verde: lucro</span>
+        <span>Vermelho: prejuizo</span>
+        <span>Base: recebido - tecnico - contas</span>
+      </div>
+    </div>
+  )
+}
+
 function MonthlyChart({ items, meta }: { items: RelatoriosData['resumoMensal']; meta: number }) {
   if (items.length === 0) {
     return <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">Sem dados mensais.</p>
@@ -726,6 +828,28 @@ function formatStatus(status?: string | null) {
   }
 
   return map[String(status ?? '')] ?? String(status ?? '-')
+}
+
+function formatarCategoriaConta(categoria?: string | null) {
+  const value = String(categoria ?? '').toUpperCase()
+  const labels: Record<string, string> = {
+    OPERACIONAL: 'Operacional',
+    ADMINISTRATIVO: 'Administrativo',
+    IMPOSTOS: 'Impostos',
+    FORNECEDOR: 'Fornecedor',
+    PECAS_ESTOQUE: 'Pecas/estoque',
+    DESLOCAMENTO: 'Deslocamento',
+    COMBUSTIVEL: 'Combustivel',
+    SISTEMAS: 'Sistemas',
+    MARKETING: 'Marketing',
+    ALUGUEL: 'Aluguel',
+    CONTABILIDADE: 'Contabilidade',
+    TAXAS_BANCARIAS: 'Taxas bancarias',
+    ESTOQUE: 'Estoque',
+    OUTROS: 'Outros',
+  }
+
+  return labels[value] ?? (value || '-')
 }
 
 function formatFilterLabel(value: string) {
