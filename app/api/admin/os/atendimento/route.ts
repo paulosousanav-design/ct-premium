@@ -467,6 +467,7 @@ export async function PATCH(request: NextRequest) {
       garantia: body?.garantia === 'SIM',
       categoria_id: body?.categoriaId ? Number(body.categoriaId) : null,
       marca_id: body?.marcaId ? Number(body.marcaId) : null,
+      modelo: String(body?.modelo ?? '').trim() || null,
       numero_serie: String(body?.numeroSerie ?? '').trim() || null,
       bloqueada,
       finalizada_em: bloqueada ? new Date().toISOString() : null,

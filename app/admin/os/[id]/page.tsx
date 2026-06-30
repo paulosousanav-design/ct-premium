@@ -164,6 +164,7 @@ type FormState = {
   referenciaGarantidor: string
   categoriaId: string
   marcaId: string
+  modelo: string
   numeroSerie: string
   diagnosticoTecnico: string
   servicoExecutado: string
@@ -246,6 +247,7 @@ export default function OrdemServicoAtendimentoPage() {
     referenciaGarantidor: '',
     categoriaId: '',
     marcaId: '',
+    modelo: '',
     numeroSerie: '',
     diagnosticoTecnico: '',
     servicoExecutado: '',
@@ -372,6 +374,7 @@ export default function OrdemServicoAtendimentoPage() {
         referenciaGarantidor: osPayloadRelacoes.referencia_garantidor ?? '',
         categoriaId: osPayloadRelacoes.categoria_id ? String(osPayloadRelacoes.categoria_id) : '',
         marcaId: osPayloadRelacoes.marca_id ? String(osPayloadRelacoes.marca_id) : '',
+        modelo: osPayloadRelacoes.modelo ?? '',
         numeroSerie: osPayloadRelacoes.numero_serie ?? '',
         diagnosticoTecnico: osPayloadRelacoes.diagnostico_tecnico ?? '',
         servicoExecutado: osPayloadRelacoes.servico_executado ?? '',
@@ -538,6 +541,7 @@ export default function OrdemServicoAtendimentoPage() {
         referenciaGarantidor: osData.referencia_garantidor ?? '',
         categoriaId: osData.categoria_id ? String(osData.categoria_id) : '',
         marcaId: osData.marca_id ? String(osData.marca_id) : '',
+        modelo: osData.modelo ?? '',
         numeroSerie: osData.numero_serie ?? '',
         diagnosticoTecnico: osData.diagnostico_tecnico ?? '',
         servicoExecutado: osData.servico_executado ?? '',
@@ -779,6 +783,7 @@ export default function OrdemServicoAtendimentoPage() {
           referenciaGarantidor: form.referenciaGarantidor,
           categoriaId: form.categoriaId,
           marcaId: form.marcaId,
+          modelo: form.modelo,
           numeroSerie: form.numeroSerie,
           diagnosticoTecnico: form.diagnosticoTecnico,
           servicoExecutado: form.servicoExecutado,
@@ -1521,7 +1526,7 @@ export default function OrdemServicoAtendimentoPage() {
                 )}
               </div>
 
-              <div className="mb-3 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
+              <div className="mb-3 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-2 xl:grid-cols-4">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Categoria</label>
                   <select
@@ -1559,6 +1564,15 @@ export default function OrdemServicoAtendimentoPage() {
                     ))}
                   </select>
                 </div>
+
+                <Field
+                  label="Modelo"
+                  name="modelo"
+                  value={form.modelo}
+                  onChange={handleChange}
+                  placeholder="Modelo do aparelho"
+                  disabled={isLocked}
+                />
 
                 <Field
                   label="Numero de serie"
@@ -1949,6 +1963,7 @@ export default function OrdemServicoAtendimentoPage() {
                 />
                 <SummaryItem label="Categoria" value={categorias.find((item) => String(item.id) === form.categoriaId)?.nome ?? os.categoria?.nome ?? '-'} />
                 <SummaryItem label="Marca" value={marcas.find((item) => String(item.id) === form.marcaId)?.nome ?? os.marca?.nome ?? '-'} />
+                <SummaryItem label="Modelo" value={form.modelo || '-'} />
                 <SummaryItem label="Numero de serie" value={form.numeroSerie || '-'} />
                 <SummaryItem label="Garantia" value={form.garantia} />
                 {form.garantia === 'SIM' && (
