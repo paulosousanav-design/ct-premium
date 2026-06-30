@@ -18,6 +18,15 @@ function getSupabaseAdmin() {
   })
 }
 
+async function colunaExiste(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  tabela: string,
+  coluna: string
+) {
+  const { error } = await supabase.from(tabela).select(coluna).limit(0)
+  return !error
+}
+
 export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'os')
@@ -66,26 +75,32 @@ export async function POST(request: NextRequest) {
     const clienteId = novoCliente.id
 
     const numeroOS = gerarNumeroOS()
+    const origemOs = garantia ? 'GARANTIA_SEGURADORA' : 'ABERTURA_INTERNA'
+    const osPayload: Record<string, unknown> = {
+      numero_os: numeroOS,
+      cliente_id: Number(clienteId),
+      categoria_id: categoriaId,
+      marca_id: marcaId,
+      modelo,
+      numero_serie: String(body?.numeroSerie ?? '').trim() || null,
+      garantia,
+      data_compra: garantia ? String(body?.dataCompra ?? '').trim() || null : null,
+      numero_nf: garantia ? String(body?.numeroNf ?? '').trim() || null : null,
+      local_compra: garantia ? String(body?.localCompra ?? '').trim() || null : null,
+      defeito,
+      status: 'NOVA',
+      prioridade: body?.prioridade === 'URGENTE' ? 'URGENTE' : 'NORMAL',
+      parceiro_id: null,
+      sla_status: 'NORMAL',
+    }
+
+    if (await colunaExiste(supabase, 'ordens_servico', 'origem_os')) {
+      osPayload.origem_os = origemOs
+    }
 
     const { data: osCriada, error: osError } = await supabase
       .from('ordens_servico')
-      .insert({
-        numero_os: numeroOS,
-        cliente_id: Number(clienteId),
-        categoria_id: categoriaId,
-        marca_id: marcaId,
-        modelo,
-        numero_serie: String(body?.numeroSerie ?? '').trim() || null,
-        garantia,
-        data_compra: garantia ? String(body?.dataCompra ?? '').trim() || null : null,
-        numero_nf: garantia ? String(body?.numeroNf ?? '').trim() || null : null,
-        local_compra: garantia ? String(body?.localCompra ?? '').trim() || null : null,
-        defeito,
-        status: 'NOVA',
-        prioridade: body?.prioridade === 'URGENTE' ? 'URGENTE' : 'NORMAL',
-        parceiro_id: null,
-        sla_status: 'NORMAL',
-      })
+      .insert(osPayload)
       .select('id')
       .single()
 

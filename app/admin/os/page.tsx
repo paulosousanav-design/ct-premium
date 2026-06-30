@@ -26,6 +26,7 @@ type Marca = {
 type OrdemServico = {
   id: number
   numero_os: string | null
+  origem_os?: string | null
   created_at: string
   status: string | null
   prioridade: string | null
@@ -62,6 +63,7 @@ type TecnicoSugerido = {
 type OrdemServicoTriagemApi = {
   id: number
   numero_os: string | null
+  origem_os?: string | null
   created_at: string
   status: string | null
   prioridade: string | null
@@ -159,6 +161,14 @@ const STATUS_BOARD = [
   { value: 'CRITICA', label: 'Críticas', accent: 'bg-red-500' },
 ] as const
 
+const ORIGEM_FILTROS = [
+  { value: 'TODAS', label: 'Todas origens' },
+  { value: 'PORTAL_CLIENTE', label: 'Portal Cliente' },
+  { value: 'ABERTURA_INTERNA', label: 'Abertura Interna' },
+  { value: 'GARANTIA_SEGURADORA', label: 'Garantia/Seguradora' },
+  { value: 'AVULSO_ADMIN', label: 'Avulso/Admin' },
+] as const
+
 export default function OrdensServicoPage() {
   const router = useRouter()
 
@@ -176,6 +186,7 @@ export default function OrdensServicoPage() {
   const [mensagem, setMensagem] = useState('')
   const [busca, setBusca] = useState('')
   const [statusFiltro, setStatusFiltro] = useState('TODAS')
+  const [origemFiltro, setOrigemFiltro] = useState('TODAS')
   const [notificacoesAberta, setNotificacoesAberta] = useState(false)
 
   useEffect(() => {
@@ -201,14 +212,15 @@ export default function OrdensServicoPage() {
   const ordensFiltradas = useMemo(() => {
     return ordens.filter((os) => {
       const texto =
-        `${os.numero_os ?? ''} ${os.cliente_nome ?? ''} ${os.cliente_endereco ?? ''} ${os.categoria_nome ?? ''} ${os.marca_nome ?? ''} ${os.modelo ?? ''} ${os.tecnico_nome ?? ''}`.toLowerCase()
+        `${os.numero_os ?? ''} ${formatarOrigemOs(os.origem_os)} ${os.cliente_nome ?? ''} ${os.cliente_endereco ?? ''} ${os.categoria_nome ?? ''} ${os.marca_nome ?? ''} ${os.modelo ?? ''} ${os.tecnico_nome ?? ''}`.toLowerCase()
 
       const bateBusca = texto.includes(busca.toLowerCase().trim())
       const bateStatus = statusFiltro === 'TODAS' || os.status === statusFiltro
+      const bateOrigem = origemFiltro === 'TODAS' || normalizarOrigemOs(os.origem_os) === origemFiltro
 
-      return bateBusca && bateStatus
+      return bateBusca && bateStatus && bateOrigem
     })
-  }, [ordens, busca, statusFiltro])
+  }, [ordens, busca, statusFiltro, origemFiltro])
 
   const resumoStatus = useMemo(() => {
     return STATUS_FILTROS.map((status) => ({
@@ -287,6 +299,7 @@ export default function OrdensServicoPage() {
       (data?.data ?? []).map((item: OrdemServicoTriagemApi) => ({
         id: item.id,
         numero_os: item.numero_os,
+        origem_os: item.origem_os ?? null,
         created_at: item.created_at,
         status: item.status,
         prioridade: item.prioridade,
@@ -910,6 +923,18 @@ export default function OrdensServicoPage() {
                 <option value="CRITICA">Crítica</option>
                 <option value="FINALIZADA">Finalizada</option>
               </select>
+
+              <select
+                value={origemFiltro}
+                onChange={(e) => setOrigemFiltro(e.target.value)}
+                className="rounded-lg border border-slate-300 px-4 py-2 outline-none focus:border-orange-500"
+              >
+                {ORIGEM_FILTROS.map((origem) => (
+                  <option key={origem.value} value={origem.value}>
+                    {origem.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -1180,8 +1205,10 @@ function KanbanOSBoard({
               )}
             </div>
 
+            <OrigemBadge origem={os.origem_os} compact />
+
             {os.status === 'NOVA' && (
-              <div className="mb-2 animate-pulse rounded-md border border-emerald-500 bg-emerald-100 px-2 py-1 text-center text-[11px] font-bold text-emerald-800 shadow-sm">
+              <div className="mt-2 mb-2 animate-pulse rounded-md border border-emerald-500 bg-emerald-100 px-2 py-1 text-center text-[11px] font-bold text-emerald-800 shadow-sm">
                 NOVA OS
               </div>
             )}
@@ -1320,6 +1347,9 @@ function KanbanOSBoard({
                       <div className="font-semibold text-slate-900">{os.numero_os ?? '-'}</div>
                       <div className="text-xs text-slate-500">
                         {new Date(os.created_at).toLocaleString('pt-BR')}
+                      </div>
+                      <div className="mt-2">
+                        <OrigemBadge origem={os.origem_os} />
                       </div>
                     </div>
                     <StatusBadge status={os.status ?? 'NOVA'} />
@@ -1489,6 +1519,44 @@ function Select({
       </select>
     </div>
   )
+}
+
+function OrigemBadge({ origem, compact = false }: { origem?: string | null; compact?: boolean }) {
+  const origemNormalizada = normalizarOrigemOs(origem)
+  const cls =
+    origemNormalizada === 'PORTAL_CLIENTE'
+      ? 'border-blue-200 bg-blue-50 text-blue-700'
+      : origemNormalizada === 'GARANTIA_SEGURADORA'
+        ? 'border-amber-200 bg-amber-50 text-amber-700'
+        : origemNormalizada === 'AVULSO_ADMIN'
+          ? 'border-violet-200 bg-violet-50 text-violet-700'
+          : 'border-slate-200 bg-slate-50 text-slate-700'
+
+  return (
+    <span
+      className={`inline-flex max-w-full items-center rounded-full border font-bold ${cls} ${
+        compact ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-[11px]'
+      }`}
+    >
+      <span className="truncate">{formatarOrigemOs(origemNormalizada)}</span>
+    </span>
+  )
+}
+
+function normalizarOrigemOs(origem?: string | null) {
+  const valor = String(origem ?? '').trim().toUpperCase()
+  if (valor === 'PORTAL_CLIENTE') return valor
+  if (valor === 'GARANTIA_SEGURADORA') return valor
+  if (valor === 'AVULSO_ADMIN') return valor
+  return 'ABERTURA_INTERNA'
+}
+
+function formatarOrigemOs(origem?: string | null) {
+  const valor = normalizarOrigemOs(origem)
+  if (valor === 'PORTAL_CLIENTE') return 'Portal Cliente'
+  if (valor === 'GARANTIA_SEGURADORA') return 'Garantia/Seguradora'
+  if (valor === 'AVULSO_ADMIN') return 'Avulso/Admin'
+  return 'Abertura Interna'
 }
 
 function StatusBadge({ status }: { status: string }) {

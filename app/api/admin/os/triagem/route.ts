@@ -40,6 +40,7 @@ type Parceiro = {
 type OrdemServico = {
   id: number
   numero_os: string | null
+  origem_os?: string | null
   created_at: string
   status: string | null
   prioridade: string | null
@@ -73,18 +74,28 @@ function getSupabaseAdmin() {
   })
 }
 
+async function colunaExiste(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  tabela: string,
+  coluna: string
+) {
+  const { error } = await supabase.from(tabela).select(coluna).limit(0)
+  return !error
+}
+
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'os')
     if (!auth.ok) return auth.response
 
     const supabase = getSupabaseAdmin()
+    const temOrigemOs = await colunaExiste(supabase, 'ordens_servico', 'origem_os')
+    const origemOsSelect = temOrigemOs ? 'origem_os,' : ''
 
-    const { data: ordensData, error: ordensError } = await supabase
-      .from('ordens_servico')
-      .select(`
+    const ordensSelect = `
         id,
         numero_os,
+        ${origemOsSelect}
         created_at,
         status,
         prioridade,
@@ -114,7 +125,11 @@ export async function GET(request: NextRequest) {
         ),
         categorias:categoria_id ( nome ),
         marcas:marca_id ( nome )
-      `)
+      `
+
+    const { data: ordensData, error: ordensError } = await supabase
+      .from('ordens_servico')
+      .select(ordensSelect)
       .neq('status', 'FINALIZADA')
       .order('created_at', { ascending: false })
 

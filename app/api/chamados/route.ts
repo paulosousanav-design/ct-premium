@@ -20,6 +20,15 @@ function getSupabaseAdmin() {
   })
 }
 
+async function colunaExiste(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  tabela: string,
+  coluna: string
+) {
+  const { error } = await supabase.from(tabela).select(coluna).limit(0)
+  return !error
+}
+
 export async function GET() {
   try {
     const supabase = getSupabaseAdmin()
@@ -102,26 +111,33 @@ export async function POST(request: NextRequest) {
     if (clienteError) throw clienteError
 
     const numeroOS = gerarNumeroOS()
+    const origemOs = garantia ? 'GARANTIA_SEGURADORA' : 'PORTAL_CLIENTE'
+    const osPayload: Record<string, unknown> = {
+      numero_os: numeroOS,
+      cliente_id: novoCliente.id,
+      categoria_id: categoriaId,
+      marca_id: marcaId,
+      modelo,
+      numero_serie: getCampo(dados, 'numeroSerie') || null,
+      garantia,
+      data_compra: garantia ? getCampo(dados, 'dataCompra') || null : null,
+      numero_nf: garantia ? getCampo(dados, 'numeroNf') || null : null,
+      local_compra: garantia ? getCampo(dados, 'localCompra') || null : null,
+      defeito,
+      status: 'NOVA',
+      prioridade: 'NORMAL',
+      parceiro_id: null,
+      sla_status: 'NORMAL',
+      observacao_tecnica: getCampo(dados, 'observacao') || null,
+    }
+
+    if (await colunaExiste(supabase, 'ordens_servico', 'origem_os')) {
+      osPayload.origem_os = origemOs
+    }
+
     const { data: osCriada, error: osError } = await supabase
       .from('ordens_servico')
-      .insert({
-        numero_os: numeroOS,
-        cliente_id: novoCliente.id,
-        categoria_id: categoriaId,
-        marca_id: marcaId,
-        modelo,
-        numero_serie: getCampo(dados, 'numeroSerie') || null,
-        garantia,
-        data_compra: garantia ? getCampo(dados, 'dataCompra') || null : null,
-        numero_nf: garantia ? getCampo(dados, 'numeroNf') || null : null,
-        local_compra: garantia ? getCampo(dados, 'localCompra') || null : null,
-        defeito,
-        status: 'NOVA',
-        prioridade: 'NORMAL',
-        parceiro_id: null,
-        sla_status: 'NORMAL',
-        observacao_tecnica: getCampo(dados, 'observacao') || null,
-      })
+      .insert(osPayload)
       .select('id')
       .single()
 
