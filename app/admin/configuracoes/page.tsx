@@ -30,6 +30,22 @@ type EmpresaConfig = {
   ativa: boolean
 }
 
+type CategoriaEquipamento = {
+  id: number
+  nome: string | null
+}
+
+type MarcaEquipamento = {
+  id: number
+  nome: string | null
+  categoria_id: number | null
+}
+
+type MarcaForm = {
+  nome: string
+  categoriaId: string
+}
+
 const empresaInicial: EmpresaConfig = {
   id: null,
   nome_fantasia: 'Chame o Tecnico',
@@ -58,10 +74,20 @@ const empresaInicial: EmpresaConfig = {
   ativa: true,
 }
 
+const marcaInicial: MarcaForm = {
+  nome: '',
+  categoriaId: '',
+}
+
 export default function ConfiguracoesPage() {
   const [form, setForm] = useState<EmpresaConfig>(empresaInicial)
+  const [categoriasEquipamento, setCategoriasEquipamento] = useState<CategoriaEquipamento[]>([])
+  const [marcasEquipamento, setMarcasEquipamento] = useState<MarcaEquipamento[]>([])
+  const [categoriaForm, setCategoriaForm] = useState('')
+  const [marcaForm, setMarcaForm] = useState<MarcaForm>(marcaInicial)
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
+  const [salvandoEquipamento, setSalvandoEquipamento] = useState(false)
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [tabelaPendente, setTabelaPendente] = useState(false)
@@ -87,11 +113,21 @@ export default function ConfiguracoesPage() {
 
       setForm({ ...empresaInicial, ...(data?.data ?? {}) })
       setTabelaPendente(Boolean(data?.tabelaPendente))
+      await carregarEquipamentos()
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Erro ao carregar configuracoes.')
     } finally {
       setLoading(false)
     }
+  }
+
+  async function carregarEquipamentos() {
+    const response = await adminFetch('/api/admin/equipamentos')
+    const data = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(data?.error ?? 'Erro ao carregar tipos e marcas.')
+
+    setCategoriasEquipamento((data?.categorias ?? []) as CategoriaEquipamento[])
+    setMarcasEquipamento((data?.marcas ?? []) as MarcaEquipamento[])
   }
 
   function handleChange(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
@@ -152,6 +188,54 @@ export default function ConfiguracoesPage() {
     }
   }
 
+  async function salvarCategoria() {
+    setSalvandoEquipamento(true)
+    setErro('')
+    setMensagem('')
+
+    try {
+      const response = await adminFetch('/api/admin/equipamentos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo: 'CATEGORIA', nome: categoriaForm }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error ?? 'Erro ao cadastrar tipo.')
+
+      setCategoriaForm('')
+      await carregarEquipamentos()
+      setMensagem('Tipo de equipamento cadastrado com sucesso.')
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Erro ao cadastrar tipo.')
+    } finally {
+      setSalvandoEquipamento(false)
+    }
+  }
+
+  async function salvarMarca() {
+    setSalvandoEquipamento(true)
+    setErro('')
+    setMensagem('')
+
+    try {
+      const response = await adminFetch('/api/admin/equipamentos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo: 'MARCA', nome: marcaForm.nome, categoriaId: marcaForm.categoriaId }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error ?? 'Erro ao cadastrar marca.')
+
+      setMarcaForm(marcaInicial)
+      await carregarEquipamentos()
+      setMensagem('Marca cadastrada com sucesso.')
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Erro ao cadastrar marca.')
+    } finally {
+      setSalvandoEquipamento(false)
+    }
+  }
+
   return (
     <form onSubmit={salvar} className="space-y-4">
       <header className="flex flex-col gap-3 rounded-xl bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
@@ -202,6 +286,106 @@ export default function ConfiguracoesPage() {
                 <input type="checkbox" name="ativa" checked={form.ativa} onChange={handleChange} />
                 Empresa ativa
               </label>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-lg font-black text-slate-950">Tipos e marcas de equipamento</h2>
+                <p className="text-xs text-slate-500">
+                  Cadastre tipos como Monitor e vincule as marcas usadas nos chamados.
+                </p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
+                {categoriasEquipamento.length} tipos
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.4fr]">
+              <div className="rounded-lg border border-slate-200 p-3">
+                <label className="block text-sm font-bold text-slate-700">
+                  Novo tipo
+                  <input
+                    value={categoriaForm}
+                    onChange={(event) => setCategoriaForm(event.target.value)}
+                    placeholder="Ex.: Monitor"
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-500"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={salvarCategoria}
+                  disabled={salvandoEquipamento || !categoriaForm.trim()}
+                  className="mt-3 w-full rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cadastrar tipo
+                </button>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 p-3">
+                <div className="grid gap-3 md:grid-cols-[220px_1fr]">
+                  <label className="block text-sm font-bold text-slate-700">
+                    Tipo
+                    <select
+                      value={marcaForm.categoriaId}
+                      onChange={(event) => setMarcaForm((prev) => ({ ...prev, categoriaId: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-500"
+                    >
+                      <option value="">Selecione</option>
+                      {categoriasEquipamento.map((categoria) => (
+                        <option key={categoria.id} value={categoria.id}>
+                          {categoria.nome ?? `Tipo ${categoria.id}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-sm font-bold text-slate-700">
+                    Nova marca
+                    <input
+                      value={marcaForm.nome}
+                      onChange={(event) => setMarcaForm((prev) => ({ ...prev, nome: event.target.value }))}
+                      placeholder="Ex.: LG, Dell, Samsung"
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-500"
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  onClick={salvarMarca}
+                  disabled={salvandoEquipamento || !marcaForm.nome.trim() || !marcaForm.categoriaId}
+                  className="mt-3 w-full rounded-lg bg-orange-500 px-4 py-2 text-sm font-black text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cadastrar marca
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {categoriasEquipamento.map((categoria) => {
+                const marcasDaCategoria = marcasEquipamento.filter((marca) => marca.categoria_id === categoria.id)
+
+                return (
+                  <div key={categoria.id} className="rounded-lg border border-slate-200 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-black text-slate-900">{categoria.nome ?? `Tipo ${categoria.id}`}</p>
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-600">
+                        {marcasDaCategoria.length} marcas
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                      {marcasDaCategoria.length > 0
+                        ? marcasDaCategoria.map((marca) => marca.nome ?? `Marca ${marca.id}`).join(', ')
+                        : 'Sem marcas cadastradas'}
+                    </p>
+                  </div>
+                )
+              })}
+              {categoriasEquipamento.length === 0 && (
+                <div className="rounded-lg border border-dashed border-slate-300 p-3 text-sm font-bold text-slate-500">
+                  Nenhum tipo cadastrado ainda.
+                </div>
+              )}
             </div>
           </div>
 
