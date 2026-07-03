@@ -119,6 +119,11 @@ type OrdemServico = {
   cliente_valor_mao_obra?: number | null
   cliente_desconto?: number | null
   cliente_total?: number | null
+  status_financeiro?: string | null
+  data_pagamento?: string | null
+  data_ultimo_recebimento?: string | null
+  forma_recebimento?: string | null
+  valor_recebido_cliente?: number | string | null
   observacao_tecnica: string | null
   cliente_id: number | null
   categoria_id: number | null
@@ -168,6 +173,7 @@ type FormState = {
   numeroSerie: string
   diagnosticoTecnico: string
   servicoExecutado: string
+  tecnicoValorMaoObra: number
   valorPecasCliente: number
   valorMaoObra: number
   desconto: number
@@ -201,6 +207,14 @@ const PRIORIDADE_OPTIONS = [
 const GARANTIA_OPTIONS = [
   { value: 'SIM', label: 'Sim' },
   { value: 'NAO', label: 'Não' },
+]
+
+const FORMAS_RECEBIMENTO = [
+  { value: 'PIX', label: 'PIX' },
+  { value: 'CARTAO', label: 'Cartao' },
+  { value: 'DEPOSITO', label: 'Deposito' },
+  { value: 'BOLETO', label: 'Boleto' },
+  { value: 'DINHEIRO', label: 'Dinheiro' },
 ]
 
 const STATUS_ATALHOS = [
@@ -238,6 +252,8 @@ export default function OrdemServicoAtendimentoPage() {
   const [senhaMaster, setSenhaMaster] = useState('')
   const [desbloqueando, setDesbloqueando] = useState(false)
   const [masterUnlocked, setMasterUnlocked] = useState(false)
+  const [adiantamentoValor, setAdiantamentoValor] = useState('')
+  const [adiantamentoForma, setAdiantamentoForma] = useState('PIX')
 
   const [form, setForm] = useState<FormState>({
     status: 'NOVA',
@@ -251,6 +267,7 @@ export default function OrdemServicoAtendimentoPage() {
     numeroSerie: '',
     diagnosticoTecnico: '',
     servicoExecutado: '',
+    tecnicoValorMaoObra: 0,
     valorPecasCliente: 0,
     valorMaoObra: 0,
     desconto: 0,
@@ -282,15 +299,21 @@ export default function OrdemServicoAtendimentoPage() {
     const bruto = (form.valorPecasCliente || 0) + (form.valorMaoObra || 0) - (form.desconto || 0)
     return Math.max(0, bruto)
   }, [form.valorPecasCliente, form.valorMaoObra, form.desconto])
+  const valorRecebido = useMemo(() => valorRecebidoCliente(os, total), [os, total])
+  const saldoReceber = useMemo(() => Math.max(total - valorRecebido, 0), [total, valorRecebido])
 
   const custoTecnico = useMemo(() => {
+    const valorPecas = toNumber(os?.tecnico_valor_pecas ?? os?.valor_pecas)
+    const valorMaoObra = toNumber(form.tecnicoValorMaoObra)
+    const desconto = toNumber(os?.tecnico_desconto ?? os?.desconto)
+
     return {
-      valorPecas: toNumber(os?.tecnico_valor_pecas ?? os?.valor_pecas),
-      valorMaoObra: toNumber(os?.tecnico_valor_mao_obra ?? os?.valor_mao_obra),
-      desconto: toNumber(os?.tecnico_desconto ?? os?.desconto),
-      total: toNumber(os?.tecnico_total ?? os?.total),
+      valorPecas,
+      valorMaoObra,
+      desconto,
+      total: Math.max(0, valorPecas + valorMaoObra - desconto),
     }
-  }, [os])
+  }, [form.tecnicoValorMaoObra, os])
 
   const respostaTecnico = useMemo(
     () => historico.find((item) => item.acao === 'ACEITE_TECNICO' || item.acao === 'RECUSA_TECNICO') ?? null,
@@ -378,6 +401,7 @@ export default function OrdemServicoAtendimentoPage() {
         numeroSerie: osPayloadRelacoes.numero_serie ?? '',
         diagnosticoTecnico: osPayloadRelacoes.diagnostico_tecnico ?? '',
         servicoExecutado: osPayloadRelacoes.servico_executado ?? '',
+        tecnicoValorMaoObra: toNumber(osPayloadRelacoes.tecnico_valor_mao_obra ?? osPayloadRelacoes.valor_mao_obra),
         valorPecasCliente: temOrcamentoCliente
           ? toNumber(osPayloadRelacoes.cliente_valor_pecas)
           : toNumber(osPayloadRelacoes.valor_pecas) || toNumber(osPayloadRelacoes.tecnico_valor_pecas),
@@ -545,6 +569,7 @@ export default function OrdemServicoAtendimentoPage() {
         numeroSerie: osData.numero_serie ?? '',
         diagnosticoTecnico: osData.diagnostico_tecnico ?? '',
         servicoExecutado: osData.servico_executado ?? '',
+        tecnicoValorMaoObra: toNumber(osData.valor_mao_obra),
         valorPecasCliente: toNumber(osData.valor_pecas),
         valorMaoObra: toNumber(osData.valor_mao_obra),
         desconto: toNumber(osData.desconto),
@@ -573,7 +598,7 @@ export default function OrdemServicoAtendimentoPage() {
       return
     }
 
-    if (name === 'valorPecasCliente' || name === 'valorMaoObra' || name === 'desconto') {
+    if (name === 'valorPecasCliente' || name === 'valorMaoObra' || name === 'desconto' || name === 'tecnicoValorMaoObra') {
       setForm((prev) => ({ ...prev, [name]: value === '' ? 0 : Number(value) }))
       return
     }
@@ -787,6 +812,9 @@ export default function OrdemServicoAtendimentoPage() {
           numeroSerie: form.numeroSerie,
           diagnosticoTecnico: form.diagnosticoTecnico,
           servicoExecutado: form.servicoExecutado,
+          tecnicoValorPecas: custoTecnico.valorPecas,
+          tecnicoValorMaoObra: form.tecnicoValorMaoObra,
+          tecnicoDesconto: custoTecnico.desconto,
           observacaoTecnica: form.observacaoTecnica,
           valorPecas: form.valorPecasCliente,
           valorMaoObra: form.valorMaoObra,
@@ -871,6 +899,81 @@ export default function OrdemServicoAtendimentoPage() {
       await carregarOS()
     } catch (err) {
       setErro(formatarErro(err, 'Erro ao salvar atendimento técnico.'))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  async function registrarAdiantamento() {
+    if (!os || isLocked) return
+
+    if (total <= 0) {
+      setErro('Informe o orçamento da OS antes de lançar um adiantamento.')
+      return
+    }
+
+    const saldo = Math.max(total - valorRecebido, 0)
+    if (saldo <= 0) {
+      setErro('Esta OS nao possui saldo em aberto para adiantamento.')
+      return
+    }
+
+    const forma = adiantamentoForma
+    const valor = parseMoneyInput(adiantamentoValor)
+    if (!Number.isFinite(valor) || valor <= 0 || valor > saldo) {
+      setErro(`Informe um adiantamento maior que zero e ate ${formatCurrency(saldo)}.`)
+      return
+    }
+
+    setSalvando(true)
+    setErro('')
+    setMensagem('')
+
+    try {
+      const salvarResponse = await adminFetch('/api/admin/os/atendimento', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          osId: os.id,
+          status: form.status,
+          prioridade: form.prioridade,
+          garantia: form.garantia,
+          garantidorId: form.garantidorId,
+          referenciaGarantidor: form.referenciaGarantidor,
+          categoriaId: form.categoriaId,
+          marcaId: form.marcaId,
+          modelo: form.modelo,
+          numeroSerie: form.numeroSerie,
+          diagnosticoTecnico: form.diagnosticoTecnico,
+          servicoExecutado: form.servicoExecutado,
+          tecnicoValorPecas: custoTecnico.valorPecas,
+          tecnicoValorMaoObra: form.tecnicoValorMaoObra,
+          tecnicoDesconto: custoTecnico.desconto,
+          observacaoTecnica: form.observacaoTecnica,
+          valorPecas: form.valorPecasCliente,
+          valorMaoObra: form.valorMaoObra,
+          desconto: form.desconto,
+          total,
+          pecas,
+          fotosCount: 0,
+        }),
+      })
+      const salvarPayload = await salvarResponse.json().catch(() => null)
+      if (!salvarResponse.ok) throw new Error(salvarPayload?.error ?? 'Erro ao salvar orçamento antes do adiantamento.')
+
+      const financeiroResponse = await adminFetch('/api/admin/financeiro', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo: 'OS', id: os.id, status: 'PARCIAL', forma, valor }),
+      })
+      const financeiroPayload = await financeiroResponse.json().catch(() => null)
+      if (!financeiroResponse.ok) throw new Error(financeiroPayload?.error ?? 'Erro ao registrar adiantamento.')
+
+      setMensagem('Adiantamento registrado com sucesso.')
+      setAdiantamentoValor('')
+      await carregarOS()
+    } catch (err) {
+      setErro(formatarErro(err, 'Erro ao registrar adiantamento.'))
     } finally {
       setSalvando(false)
     }
@@ -1757,7 +1860,16 @@ export default function OrdemServicoAtendimentoPage() {
 
               <div className="mb-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-4">
                 <InfoCard label="Custo peças técnico" value={formatCurrency(custoTecnico.valorPecas)} />
-                <InfoCard label="Custo mão de obra" value={formatCurrency(custoTecnico.valorMaoObra)} />
+                <Field
+                  label="Mão de obra técnico"
+                  name="tecnicoValorMaoObra"
+                  value={String(form.tecnicoValorMaoObra)}
+                  onChange={handleChange}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  disabled={isLocked}
+                />
                 <InfoCard label="Desconto técnico" value={formatCurrency(custoTecnico.desconto)} />
                 <InfoCard label="Total técnico" value={formatCurrency(custoTecnico.total)} />
               </div>
@@ -1794,6 +1906,58 @@ export default function OrdemServicoAtendimentoPage() {
                   disabled={isLocked}
                 />
                 <InfoCard label="Total calculado" value={formatCurrency(total)} />
+              </div>
+
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <div className="grid gap-3 md:grid-cols-3">
+                  <InfoCard label="Recebido cliente" value={formatCurrency(valorRecebido)} />
+                  <InfoCard label="Saldo cliente" value={formatCurrency(saldoReceber)} />
+                  <InfoCard label="Forma recebimento" value={formatarFormaPagamento(os.forma_recebimento)} />
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-[160px_170px_auto] md:items-end">
+                  <label className="block text-xs font-black text-emerald-900">
+                    Receber parcial
+                    <input
+                      type="number"
+                      value={adiantamentoValor}
+                      onChange={(event) => setAdiantamentoValor(event.target.value)}
+                      step="0.01"
+                      min="0"
+                      max={saldoReceber}
+                      disabled={salvando || isLocked || saldoReceber <= 0}
+                      placeholder="0,00"
+                      className="mt-1 h-10 w-full rounded-lg border border-emerald-300 bg-white px-3 text-sm font-semibold outline-none focus:border-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+                    />
+                  </label>
+                  <label className="block text-xs font-black text-emerald-900">
+                    Forma
+                    <select
+                      value={adiantamentoForma}
+                      onChange={(event) => setAdiantamentoForma(event.target.value)}
+                      disabled={salvando || isLocked || saldoReceber <= 0}
+                      className="mt-1 h-10 w-full rounded-lg border border-emerald-300 bg-white px-3 text-sm font-semibold outline-none focus:border-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+                    >
+                      {FORMAS_RECEBIMENTO.map((forma) => (
+                        <option key={forma.value} value={forma.value}>
+                          {forma.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={registrarAdiantamento}
+                    disabled={salvando || isLocked || total <= 0 || saldoReceber <= 0 || !adiantamentoValor.trim()}
+                    className="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Registrar recebimento parcial
+                  </button>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <span className="text-xs font-semibold text-emerald-800">
+                    Status financeiro: {os.status_financeiro ?? 'PENDENTE'}
+                  </span>
+                </div>
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -2126,6 +2290,32 @@ function formatCurrency(value: number) {
     style: 'currency',
     currency: 'BRL',
   }).format(value || 0)
+}
+
+function valorRecebidoCliente(os: OrdemServico | null, totalAtual: number) {
+  if (!os) return 0
+  const recebido = toNumber(os.valor_recebido_cliente)
+  if (recebido > 0) return Math.min(recebido, totalAtual)
+  return os.status_financeiro === 'RECEBIDO' ? totalAtual : 0
+}
+
+function parseMoneyInput(value: string) {
+  const normalizado = value.trim().replace(/\./g, '').replace(',', '.')
+  const valor = Number(normalizado)
+  return Number.isFinite(valor) ? valor : Number.NaN
+}
+
+function formatarFormaPagamento(forma?: string | null) {
+  const value = String(forma ?? '').toUpperCase()
+  const labels: Record<string, string> = {
+    PIX: 'PIX',
+    CARTAO: 'Cartao',
+    DEPOSITO: 'Deposito',
+    BOLETO: 'Boleto',
+    DINHEIRO: 'Dinheiro',
+  }
+
+  return labels[value] ?? '-'
 }
 
 function normalizarTexto(value: string) {

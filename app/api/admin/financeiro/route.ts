@@ -52,6 +52,8 @@ export async function GET(request: NextRequest) {
     const temPagamentoTecnico = await colunaExiste(supabase, 'ordens_servico', 'tecnico_status_pagamento')
     const temFormaRecebimento = await colunaExiste(supabase, 'ordens_servico', 'forma_recebimento')
     const temFormaPagamentoTecnico = await colunaExiste(supabase, 'ordens_servico', 'forma_pagamento_tecnico')
+    const temValorRecebidoCliente = await colunaExiste(supabase, 'ordens_servico', 'valor_recebido_cliente')
+    const temDataUltimoRecebimento = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
     const selectPagamentoTecnico = temPagamentoTecnico
       ? `
         tecnico_status_pagamento,
@@ -59,6 +61,8 @@ export async function GET(request: NextRequest) {
       : ''
     const selectFormaRecebimento = temFormaRecebimento ? 'forma_recebimento,' : ''
     const selectFormaPagamentoTecnico = temFormaPagamentoTecnico ? 'forma_pagamento_tecnico,' : ''
+    const selectValorRecebidoCliente = temValorRecebidoCliente ? 'valor_recebido_cliente,' : ''
+    const selectDataUltimoRecebimento = temDataUltimoRecebimento ? 'data_ultimo_recebimento,' : ''
 
     const selectOrdens = `
         id,
@@ -67,9 +71,11 @@ export async function GET(request: NextRequest) {
         status,
         status_financeiro,
         data_pagamento,
+        ${selectDataUltimoRecebimento}
         ${selectFormaRecebimento}
         total,
         cliente_total,
+        ${selectValorRecebidoCliente}
         tecnico_total,
         ${selectPagamentoTecnico}
         ${selectFormaPagamentoTecnico}
@@ -235,29 +241,85 @@ export async function PATCH(request: NextRequest) {
     if (tipo === 'OS') {
       const status = String(body?.status ?? 'RECEBIDO').trim().toUpperCase()
       const forma = normalizarFormaPagamento(body?.forma)
-      if (!['PENDENTE', 'FATURADO', 'RECEBIDO'].includes(status)) {
+      if (!['PENDENTE', 'FATURADO', 'PARCIAL', 'RECEBIDO'].includes(status)) {
         return NextResponse.json({ error: 'Status financeiro invalido.' }, { status: 400 })
       }
 
-      const { data: ordemAtual } = await supabase
-        .from('ordens_servico')
-        .select('id, numero_os, status, status_financeiro, total, cliente_total')
+      const temValorRecebidoCliente = await colunaExiste(supabase, 'ordens_servico', 'valor_recebido_cliente')
+      const temDataUltimoRecebimento = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
+      const selectValorRecebido = temValorRecebidoCliente ? ', valor_recebido_cliente' : ''
+      const ordemAtualQuery = supabase.from('ordens_servico') as unknown as {
+        select: (columns: string) => {
+          eq: (column: string, value: number) => {
+            maybeSingle: () => Promise<{ data: (Record<string, unknown> & {
+              id?: number
+              numero_os?: string | null
+              status?: string | null
+              status_financeiro?: string | null
+              total?: number | string | null
+              cliente_total?: number | string | null
+              valor_recebido_cliente?: number | string | null
+            }) | null; error: unknown }>
+          }
+        }
+      }
+      const { data: ordemAtual, error: ordemAtualError } = await ordemAtualQuery
+        .select(`id, numero_os, status, status_financeiro, total, cliente_total${selectValorRecebido}`)
         .eq('id', id)
         .maybeSingle()
 
-      if (ordemAtual?.status !== 'FINALIZADA') {
+      if (ordemAtualError) throw ordemAtualError
+
+      const pagamento = status === 'PARCIAL' || status === 'RECEBIDO'
+      if (ordemAtual?.status !== 'FINALIZADA' && !(pagamento && status === 'PARCIAL')) {
         return NextResponse.json(
-          { error: 'Somente OS finalizadas podem ser baixadas no recebimento.' },
+          { error: 'Somente OS finalizadas podem ser baixadas no recebimento. Para OS em andamento, lance como adiantamento parcial.' },
           { status: 400 }
         )
       }
 
+      const totalCliente = valorPreferencial(ordemAtual?.cliente_total, ordemAtual?.total)
+      const recebidoAtual = valorRecebidoCliente(ordemAtual)
+      const valorLancado = toNumber(body?.valor)
+      const agora = new Date().toISOString()
+      const proximoRecebido = pagamento
+        ? Math.min(totalCliente, recebidoAtual + (valorLancado > 0 ? valorLancado : totalCliente - recebidoAtual))
+        : status === 'PENDENTE'
+          ? 0
+          : recebidoAtual
+      const statusFinal = pagamento
+        ? proximoRecebido >= totalCliente
+          ? 'RECEBIDO'
+          : 'PARCIAL'
+        : status
+
+      if (pagamento && totalCliente <= 0) {
+        return NextResponse.json({ error: 'OS sem valor para recebimento.' }, { status: 400 })
+      }
+
+      if (pagamento && !temValorRecebidoCliente) {
+        return NextResponse.json(
+          { error: 'Rode o SQL de recebimento parcial antes de baixar valores parciais.' },
+          { status: 400 }
+        )
+      }
+
+      if (pagamento && (valorLancado <= 0 || valorLancado > Math.max(totalCliente - recebidoAtual, 0))) {
+        return NextResponse.json({ error: 'Informe um valor de recebimento valido para o saldo da OS.' }, { status: 400 })
+      }
+
       const updatePayload: Record<string, unknown> = {
-        status_financeiro: status,
-        data_pagamento: status === 'RECEBIDO' ? new Date().toISOString() : null,
+        status_financeiro: statusFinal,
+        data_pagamento: statusFinal === 'RECEBIDO' ? agora : null,
+      }
+      if (temDataUltimoRecebimento && pagamento) {
+        updatePayload.data_ultimo_recebimento = agora
+      }
+      if (temValorRecebidoCliente) {
+        updatePayload.valor_recebido_cliente = statusFinal === 'RECEBIDO' ? totalCliente : proximoRecebido
       }
       if (await colunaExiste(supabase, 'ordens_servico', 'forma_recebimento')) {
-        updatePayload.forma_recebimento = status === 'RECEBIDO' ? forma : null
+        updatePayload.forma_recebimento = pagamento ? forma : null
       }
 
       const { error } = await supabase
@@ -270,9 +332,11 @@ export async function PATCH(request: NextRequest) {
         osId: id,
         tipo: 'RECEBIMENTO_OS',
         statusAnterior: ordemAtual?.status_financeiro ?? null,
-        statusNovo: status,
-        valor: valorPreferencial(ordemAtual?.cliente_total, ordemAtual?.total),
-        descricao: `${ordemAtual?.numero_os ?? `OS #${id}`} marcada como ${status}${status === 'RECEBIDO' ? ` via ${forma}` : ''}.`,
+        statusNovo: statusFinal,
+        valor: pagamento ? valorLancado : totalCliente,
+        descricao: pagamento
+          ? `${ordemAtual?.numero_os ?? `OS #${id}`} recebeu ${formatCurrency(valorLancado)} via ${forma}. Saldo: ${formatCurrency(Math.max(totalCliente - proximoRecebido, 0))}.`
+          : `${ordemAtual?.numero_os ?? `OS #${id}`} marcada como ${statusFinal}.`,
       })
       return NextResponse.json({ ok: true })
     }
@@ -438,6 +502,22 @@ function toNumber(value: number | string | null | undefined) {
 
 function valorPreferencial(principal: unknown, fallback: unknown) {
   return principal === null || principal === undefined || principal === '' ? toNumber(fallback as never) : toNumber(principal as never)
+}
+
+function valorRecebidoCliente(ordem: Record<string, unknown> | null | undefined) {
+  if (!ordem) return 0
+  const recebido = toNumber(ordem.valor_recebido_cliente as never)
+  if (recebido > 0) return recebido
+  return String(ordem.status_financeiro ?? '').toUpperCase() === 'RECEBIDO'
+    ? valorPreferencial(ordem.cliente_total, ordem.total)
+    : 0
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(value || 0)
 }
 
 function normalizarFormaPagamento(value: unknown) {

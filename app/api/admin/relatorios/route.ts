@@ -13,9 +13,11 @@ type OrdemRelatorio = {
   status: string | null
   status_financeiro?: string | null
   data_pagamento?: string | null
+  data_ultimo_recebimento?: string | null
   garantia?: boolean | null
   total?: number | string | null
   cliente_total?: number | string | null
+  valor_recebido_cliente?: number | string | null
   tecnico_total?: number | string | null
   tecnico_status_pagamento?: string | null
   tecnico_pago_em?: string | null
@@ -85,6 +87,8 @@ export async function GET(request: NextRequest) {
     const temFinanceiro = await colunaExiste(supabase, 'ordens_servico', 'status_financeiro')
     const temPagamentoTecnico = await colunaExiste(supabase, 'ordens_servico', 'tecnico_status_pagamento')
     const temDataPagamento = await colunaExiste(supabase, 'ordens_servico', 'data_pagamento')
+    const temValorRecebidoCliente = await colunaExiste(supabase, 'ordens_servico', 'valor_recebido_cliente')
+    const temDataUltimoRecebimento = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
     const temTecnicoPagoEm = await colunaExiste(supabase, 'ordens_servico', 'tecnico_pago_em')
     const temGarantidor = await colunaExiste(supabase, 'ordens_servico', 'garantidor_id')
 
@@ -100,6 +104,8 @@ export async function GET(request: NextRequest) {
       ${temTecnicoTotal ? 'tecnico_total,' : ''}
       ${temFinanceiro ? 'status_financeiro,' : ''}
       ${temDataPagamento ? 'data_pagamento,' : ''}
+      ${temValorRecebidoCliente ? 'valor_recebido_cliente,' : ''}
+      ${temDataUltimoRecebimento ? 'data_ultimo_recebimento,' : ''}
       ${temPagamentoTecnico ? 'tecnico_status_pagamento,' : ''}
       ${temTecnicoPagoEm ? 'tecnico_pago_em,' : ''}
       tipo_atendimento,
@@ -151,7 +157,8 @@ export async function GET(request: NextRequest) {
       (acc, ordem) => {
         const valorCliente = valorPreferencial(ordem.cliente_total, ordem.total)
         const valorTecnico = valorPreferencial(ordem.tecnico_total, 0)
-        const recebido = String(ordem.status_financeiro ?? '').toUpperCase() === 'RECEBIDO'
+        const recebidoCliente = valorRecebidoCliente(ordem)
+        const aReceberCliente = ordem.status === 'FINALIZADA' ? Math.max(valorCliente - recebidoCliente, 0) : 0
         const tecnicoPago =
           String(ordem.tecnico_status_pagamento ?? '').toUpperCase() === 'RECEBIDO' ||
           documentosTecnicosPagos.has(ordem.id)
@@ -160,12 +167,12 @@ export async function GET(request: NextRequest) {
 
         if (origemGarantidor) {
           acc.valorGarantidor += valorCliente
-          acc.recebidoGarantidor += recebido ? valorCliente : 0
-          acc.aReceberGarantidor += recebido ? 0 : valorCliente
+          acc.recebidoGarantidor += recebidoCliente
+          acc.aReceberGarantidor += aReceberCliente
         } else {
           acc.valorCliente += valorCliente
-          acc.recebidoCliente += recebido ? valorCliente : 0
-          acc.aReceberCliente += recebido ? 0 : valorCliente
+          acc.recebidoCliente += recebidoCliente
+          acc.aReceberCliente += aReceberCliente
         }
 
         if (contaPagamentoTecnico) {
@@ -578,11 +585,14 @@ function montarResumoMensal(
     const valorTecnico = valorPreferencial(ordem.tecnico_total, 0)
     mes.totalOs += 1
     mes.valor += valor
-    if (String(ordem.status_financeiro ?? '').toUpperCase() === 'RECEBIDO') {
-      const dataRecebimento = ordem.data_pagamento ? new Date(ordem.data_pagamento) : data
+    const recebido = valorRecebidoCliente(ordem)
+    if (recebido > 0) {
+      const dataRecebimento = ordem.data_ultimo_recebimento || ordem.data_pagamento
+        ? new Date(ordem.data_ultimo_recebimento ?? ordem.data_pagamento ?? '')
+        : data
       const chaveRecebimento = `${dataRecebimento.getFullYear()}-${String(dataRecebimento.getMonth() + 1).padStart(2, '0')}`
       const mesRecebimento = mapa.get(chaveRecebimento)
-      if (mesRecebimento) mesRecebimento.recebido += valor
+      if (mesRecebimento) mesRecebimento.recebido += recebido
     }
     if (String(ordem.tecnico_status_pagamento ?? '').toUpperCase() === 'RECEBIDO') {
       const dataPagamento = ordem.tecnico_pago_em ? new Date(ordem.tecnico_pago_em) : data
@@ -630,6 +640,13 @@ function toNumber(value: unknown) {
 
 function valorPreferencial(principal: unknown, fallback: unknown) {
   return principal === null || principal === undefined || principal === '' ? toNumber(fallback) : toNumber(principal)
+}
+
+function valorRecebidoCliente(ordem: OrdemRelatorio) {
+  const total = valorPreferencial(ordem.cliente_total, ordem.total)
+  const recebido = toNumber(ordem.valor_recebido_cliente)
+  if (recebido > 0) return Math.min(recebido, total)
+  return String(ordem.status_financeiro ?? '').toUpperCase() === 'RECEBIDO' ? total : 0
 }
 
 function estaNoPeriodo(value: string | null | undefined, inicioTime: number, fimTime: number) {

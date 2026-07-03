@@ -4,7 +4,7 @@ import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react
 import { adminFetch } from '@/lib/admin-fetch'
 
 type AbaFinanceiro = 'receber' | 'tecnicos' | 'contas'
-type FiltroFinanceiro = 'TODOS' | 'PENDENTE' | 'FATURADO' | 'RECEBIDO'
+type FiltroFinanceiro = 'TODOS' | 'PENDENTE' | 'FATURADO' | 'PARCIAL' | 'RECEBIDO'
 
 type RelacaoNome = { nome?: string | null; responsavel?: string | null; nome_fantasia?: string | null; razao_social?: string | null }
 
@@ -15,8 +15,10 @@ type OrdemFinanceira = {
   status: string | null
   status_financeiro: string | null
   data_pagamento?: string | null
+  data_ultimo_recebimento?: string | null
   forma_recebimento?: string | null
   total: number | string | null
+  valor_recebido_cliente?: number | string | null
   tecnico_total?: number | string | null
   tecnico_status_pagamento?: string | null
   tecnico_pago_em?: string | null
@@ -183,18 +185,19 @@ export default function FinanceiroPage() {
 
   const resumo = useMemo(() => {
     const ordensFinalizadas = ordens.filter((os) => os.status === 'FINALIZADA')
+    const ordensComRecebimento = ordens.filter((os) => valorRecebidoCliente(os) > 0)
     const receberCliente = ordensFinalizadas
-      .filter((os) => !ehGarantidorOuSeguradora(os) && os.status_financeiro !== 'RECEBIDO' && valorCliente(os) > 0)
-      .reduce((acc, os) => acc + valorCliente(os), 0)
-    const recebidoCliente = ordensFinalizadas
-      .filter((os) => !ehGarantidorOuSeguradora(os) && os.status_financeiro === 'RECEBIDO' && valorCliente(os) > 0)
-      .reduce((acc, os) => acc + valorCliente(os), 0)
+      .filter((os) => !ehGarantidorOuSeguradora(os) && saldoCliente(os) > 0)
+      .reduce((acc, os) => acc + saldoCliente(os), 0)
+    const recebidoCliente = ordensComRecebimento
+      .filter((os) => !ehGarantidorOuSeguradora(os) && valorRecebidoCliente(os) > 0)
+      .reduce((acc, os) => acc + valorRecebidoCliente(os), 0)
     const receberGarantidor = ordensFinalizadas
-      .filter((os) => ehGarantidorOuSeguradora(os) && os.status_financeiro !== 'RECEBIDO' && valorCliente(os) > 0)
-      .reduce((acc, os) => acc + valorCliente(os), 0)
-    const recebidoGarantidor = ordensFinalizadas
-      .filter((os) => ehGarantidorOuSeguradora(os) && os.status_financeiro === 'RECEBIDO' && valorCliente(os) > 0)
-      .reduce((acc, os) => acc + valorCliente(os), 0)
+      .filter((os) => ehGarantidorOuSeguradora(os) && saldoCliente(os) > 0)
+      .reduce((acc, os) => acc + saldoCliente(os), 0)
+    const recebidoGarantidor = ordensComRecebimento
+      .filter((os) => ehGarantidorOuSeguradora(os) && valorRecebidoCliente(os) > 0)
+      .reduce((acc, os) => acc + valorRecebidoCliente(os), 0)
     const pagarTecnico = ordensFinalizadas
       .filter((os) => !tecnicoPago(os) && valorTecnico(os) > 0)
       .reduce((acc, os) => acc + valorTecnico(os), 0)
@@ -228,8 +231,8 @@ export default function FinanceiroPage() {
     const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
     const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0, 23, 59, 59)
     const ordensFinalizadas = ordens.filter((os) => os.status === 'FINALIZADA')
-    const recebidasMes = ordensFinalizadas.filter((os) =>
-      os.status_financeiro === 'RECEBIDO' && estaNoPeriodo(os.data_pagamento ?? os.created_at, inicioMes, fimMes)
+    const recebidasMes = ordens.filter((os) =>
+      valorRecebidoCliente(os) > 0 && estaNoPeriodo(os.data_ultimo_recebimento ?? os.data_pagamento ?? os.created_at, inicioMes, fimMes)
     )
     const tecnicosPagosMes = ordensFinalizadas.filter((os) =>
       tecnicoPago(os) && estaNoPeriodo(os.tecnico_pago_em ?? os.created_at, inicioMes, fimMes)
@@ -245,10 +248,10 @@ export default function FinanceiroPage() {
 
     const recebidoClienteMes = recebidasMes
       .filter((os) => !ehGarantidorOuSeguradora(os))
-      .reduce((acc, os) => acc + valorCliente(os), 0)
+      .reduce((acc, os) => acc + valorRecebidoCliente(os), 0)
     const recebidoGarantidorMes = recebidasMes
       .filter((os) => ehGarantidorOuSeguradora(os))
-      .reduce((acc, os) => acc + valorCliente(os), 0)
+      .reduce((acc, os) => acc + valorRecebidoCliente(os), 0)
     const pagoTecnicoMes = tecnicosPagosMes.reduce((acc, os) => acc + valorTecnico(os), 0)
     const contasPagasValorMes = contasPagasMes.reduce((acc, conta) => acc + toNumber(conta.valor), 0)
     const despesasPorCategoria = montarDespesasPorCategoria(contasPagasMes)
@@ -314,8 +317,11 @@ export default function FinanceiroPage() {
 
   async function alterarFinanceiro(id: number, status: FiltroFinanceiro) {
     if (status === 'TODOS') return
-    const forma = status === 'RECEBIDO' ? pedirFormaPagamento('Forma de recebimento') : null
-    if (status === 'RECEBIDO' && !forma) return
+    const ordem = ordens.find((item) => item.id === id)
+    const pagamento = status === 'PARCIAL' || status === 'RECEBIDO'
+    const forma = pagamento ? pedirFormaPagamento('Forma de recebimento') : null
+    const valor = pagamento && ordem ? pedirValorRecebimento(ordem, status === 'RECEBIDO') : null
+    if (pagamento && (!forma || valor === null)) return
     setSalvandoId(id)
     setErro('')
 
@@ -323,7 +329,7 @@ export default function FinanceiroPage() {
       const response = await adminFetch('/api/admin/financeiro', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: 'OS', id, status, forma }),
+        body: JSON.stringify({ tipo: 'OS', id, status, forma, valor }),
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error ?? 'Erro ao atualizar financeiro.')
@@ -464,6 +470,7 @@ export default function FinanceiroPage() {
                 <>
                   <option value="PENDENTE">Pendentes</option>
                   <option value="FATURADO">Faturados</option>
+                  <option value="PARCIAL">Parciais</option>
                   <option value="RECEBIDO">Recebidos</option>
                 </>
               ) : (
@@ -574,6 +581,8 @@ function RecebimentosTable({
             <th className="p-3">OS</th>
             <th className="p-3">Cliente</th>
             <th className="p-3">Valor cliente</th>
+            <th className="p-3">Recebido</th>
+            <th className="p-3">Saldo</th>
             <th className="p-3">Status</th>
             <th className="p-3">Forma</th>
             <th className="p-3">NF</th>
@@ -581,40 +590,52 @@ function RecebimentosTable({
           </tr>
         </thead>
         <tbody>
-          {loading && <LinhaMensagem colSpan={7} texto="Carregando..." />}
-          {!loading && ordens.length === 0 && <LinhaMensagem colSpan={7} texto="Nenhum registro encontrado." />}
+          {loading && <LinhaMensagem colSpan={9} texto="Carregando..." />}
+          {!loading && ordens.length === 0 && <LinhaMensagem colSpan={9} texto="Nenhum registro encontrado." />}
           {!loading &&
-            ordens.map((os) => (
-              <tr key={os.id} className="border-t border-slate-200">
-                <td className="p-3 font-bold text-slate-950">{os.numero_os ?? `#${os.id}`}</td>
-                <td className="p-3">{nomeCliente(os)}</td>
-                <td className="p-3 font-semibold">{formatCurrency(valorCliente(os))}</td>
-                <td className="p-3"><StatusFinanceiro status={os.status_financeiro} /></td>
-                <td className="p-3">{formatarFormaPagamento(os.forma_recebimento)}</td>
-                <td className="p-3">{os.numero_nota_fiscal || '-'}</td>
-                <td className="p-3">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => onStatus(os.id, 'FATURADO')}
-                      disabled={salvandoId === os.id}
-                      className="rounded-lg border border-orange-300 px-3 py-1 text-xs font-bold text-orange-700 disabled:opacity-50"
-                    >
-                      Faturar
-                    </button>
-                    <button
-                      onClick={() => onStatus(os.id, 'RECEBIDO')}
-                      disabled={salvandoId === os.id}
-                      className="rounded-lg bg-green-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-50"
-                    >
-                      Recebido
-                    </button>
-                    <a href={`/admin/os/${os.id}`} className="rounded-lg bg-slate-900 px-3 py-1 text-xs font-bold text-white">
-                      Abrir
-                    </a>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            ordens.map((os) => {
+              const saldo = saldoCliente(os)
+              return (
+                <tr key={os.id} className="border-t border-slate-200">
+                  <td className="p-3 font-bold text-slate-950">{os.numero_os ?? `#${os.id}`}</td>
+                  <td className="p-3">{nomeCliente(os)}</td>
+                  <td className="p-3 font-semibold">{formatCurrency(valorCliente(os))}</td>
+                  <td className="p-3 font-semibold text-emerald-700">{formatCurrency(valorRecebidoCliente(os))}</td>
+                  <td className="p-3 font-semibold text-orange-700">{formatCurrency(saldo)}</td>
+                  <td className="p-3"><StatusFinanceiro status={os.status_financeiro} /></td>
+                  <td className="p-3">{formatarFormaPagamento(os.forma_recebimento)}</td>
+                  <td className="p-3">{os.numero_nota_fiscal || '-'}</td>
+                  <td className="p-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => onStatus(os.id, 'FATURADO')}
+                        disabled={salvandoId === os.id || os.status_financeiro === 'RECEBIDO'}
+                        className="rounded-lg border border-orange-300 px-3 py-1 text-xs font-bold text-orange-700 disabled:opacity-50"
+                      >
+                        Faturar
+                      </button>
+                      <button
+                        onClick={() => onStatus(os.id, 'PARCIAL')}
+                        disabled={salvandoId === os.id || saldo <= 0}
+                        className="rounded-lg border border-green-300 px-3 py-1 text-xs font-bold text-green-700 disabled:opacity-50"
+                      >
+                        Receber parcial
+                      </button>
+                      <button
+                        onClick={() => onStatus(os.id, 'RECEBIDO')}
+                        disabled={salvandoId === os.id || saldo <= 0}
+                        className="rounded-lg bg-green-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-50"
+                      >
+                        Receber saldo
+                      </button>
+                      <a href={`/admin/os/${os.id}`} className="rounded-lg bg-slate-900 px-3 py-1 text-xs font-bold text-white">
+                        Abrir
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
         </tbody>
       </table>
     </div>
@@ -976,6 +997,8 @@ function StatusFinanceiro({ status, pagoLabel = 'RECEBIDO' }: { status?: string 
   const classe =
     atual === 'RECEBIDO'
       ? 'bg-green-100 text-green-700'
+      : atual === 'PARCIAL'
+        ? 'bg-blue-100 text-blue-700'
       : atual === 'FATURADO'
         ? 'bg-orange-100 text-orange-700'
         : 'bg-red-100 text-red-700'
@@ -1094,6 +1117,16 @@ function valorCliente(os: OrdemFinanceira) {
   return valorPreferencial(os.cliente_total, os.total)
 }
 
+function valorRecebidoCliente(os: OrdemFinanceira) {
+  const recebido = toNumber(os.valor_recebido_cliente)
+  if (recebido > 0) return Math.min(recebido, valorCliente(os))
+  return os.status_financeiro === 'RECEBIDO' ? valorCliente(os) : 0
+}
+
+function saldoCliente(os: OrdemFinanceira) {
+  return Math.max(valorCliente(os) - valorRecebidoCliente(os), 0)
+}
+
 function valorTecnico(os: OrdemFinanceira) {
   return valorPreferencial(os.tecnico_total, 0)
 }
@@ -1177,6 +1210,29 @@ function pedirFormaPagamento(titulo: string) {
   }
 
   return forma
+}
+
+function pedirValorRecebimento(os: OrdemFinanceira, usarSaldoComoPadrao: boolean) {
+  const saldo = saldoCliente(os)
+  if (saldo <= 0) {
+    window.alert('Esta OS nao possui saldo em aberto.')
+    return null
+  }
+
+  const valorPadrao = usarSaldoComoPadrao ? saldo : 0
+  const resposta = window.prompt(
+    `Valor recebido agora. Saldo atual: ${formatCurrency(saldo)}`,
+    valorPadrao > 0 ? String(valorPadrao.toFixed(2)).replace('.', ',') : ''
+  )
+  if (resposta === null) return null
+
+  const valor = Number(resposta.replace(/\./g, '').replace(',', '.'))
+  if (!Number.isFinite(valor) || valor <= 0 || valor > saldo) {
+    window.alert(`Valor invalido. Informe um valor maior que zero e ate ${formatCurrency(saldo)}.`)
+    return null
+  }
+
+  return valor
 }
 
 function formatarFormaPagamento(forma?: string | null) {

@@ -159,6 +159,9 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin()
     const colunasOrcamentoSeparadoExistem = await colunaExiste(supabase, 'ordens_servico', 'tecnico_total')
     const colunaReferenciaGarantidorExiste = await colunaExiste(supabase, 'ordens_servico', 'referencia_garantidor')
+    const colunaValorRecebidoClienteExiste = await colunaExiste(supabase, 'ordens_servico', 'valor_recebido_cliente')
+    const colunaDataUltimoRecebimentoExiste = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
+    const colunaFormaRecebimentoExiste = await colunaExiste(supabase, 'ordens_servico', 'forma_recebimento')
 
     const selectBase = `
         id,
@@ -180,6 +183,11 @@ export async function GET(request: NextRequest) {
         valor_mao_obra,
         desconto,
         total,
+        status_financeiro,
+        data_pagamento,
+        ${colunaDataUltimoRecebimentoExiste ? 'data_ultimo_recebimento,' : ''}
+        ${colunaFormaRecebimentoExiste ? 'forma_recebimento,' : ''}
+        ${colunaValorRecebidoClienteExiste ? 'valor_recebido_cliente,' : ''}
         ${
           colunasOrcamentoSeparadoExistem
             ? `
@@ -450,6 +458,10 @@ export async function PATCH(request: NextRequest) {
     const valorMaoObra = toNumber(body?.valorMaoObra)
     const desconto = toNumber(body?.desconto)
     const total = toNumber(body?.total)
+    const tecnicoValorPecas = toNumber(body?.tecnicoValorPecas)
+    const tecnicoValorMaoObra = toNumber(body?.tecnicoValorMaoObra)
+    const tecnicoDesconto = toNumber(body?.tecnicoDesconto)
+    const tecnicoTotal = Math.max(0, tecnicoValorPecas + tecnicoValorMaoObra - tecnicoDesconto)
     const bloqueada = statusFinal === 'FINALIZADA'
 
     const pecasResumo = pecas
@@ -483,6 +495,10 @@ export async function PATCH(request: NextRequest) {
 
     const colunasOrcamentoSeparadoExistem = await colunaExiste(supabase, 'ordens_servico', 'cliente_total')
     if (colunasOrcamentoSeparadoExistem) {
+      updatePayload.tecnico_valor_pecas = tecnicoValorPecas
+      updatePayload.tecnico_valor_mao_obra = tecnicoValorMaoObra
+      updatePayload.tecnico_desconto = tecnicoDesconto
+      updatePayload.tecnico_total = tecnicoTotal
       updatePayload.cliente_valor_pecas = valorPecas
       updatePayload.cliente_valor_mao_obra = valorMaoObra
       updatePayload.cliente_desconto = desconto
@@ -555,6 +571,8 @@ export async function PATCH(request: NextRequest) {
       String(body?.diagnosticoTecnico ?? '').trim() ? `Diagnostico: ${String(body.diagnosticoTecnico).trim()}` : '',
       String(body?.servicoExecutado ?? '').trim() ? `Servico: ${String(body.servicoExecutado).trim()}` : '',
       pecasResumo ? `Pecas: ${pecasResumo}` : '',
+      `Mao de obra tecnico: ${formatCurrency(tecnicoValorMaoObra)}`,
+      `Total tecnico: ${formatCurrency(tecnicoTotal)}`,
       `Pecas total: ${formatCurrency(valorPecas)}`,
       `Mao de obra: ${formatCurrency(valorMaoObra)}`,
       `Desconto: ${formatCurrency(desconto)}`,
