@@ -28,6 +28,10 @@ type DashboardStats = {
   aPagarTecnico: number
   ticketMedioMargem: number
   estoqueBaixo: number
+  slaParticularPercentual: number
+  slaGarantiaPercentual: number
+  slaParticularForaPrazo: number
+  slaGarantiaForaPrazo: number
 }
 
 type OrdemResumo = {
@@ -60,6 +64,11 @@ type ParceiroResumo = {
   status?: string | null
 }
 
+type GarantidorFiltro = {
+  id: number
+  nome: string | null
+}
+
 type FiltroOrigemDashboard = 'TODOS' | 'CLIENTE' | 'GARANTIDOR'
 
 const STATUS_RAPIDOS = [
@@ -90,6 +99,16 @@ function aplicarFiltroOrigemQuery<T>(query: T, filtro: FiltroOrigemDashboard): T
   return query
 }
 
+function aplicarFiltroGarantidorQuery<T>(query: T, garantidorId: string): T {
+  if (garantidorId === 'TODOS') return query
+
+  const builder = query as T & {
+    eq: (column: string, value: unknown) => T
+  }
+
+  return builder.eq('garantidor_id', Number(garantidorId))
+}
+
 export default function DashboardPage() {
   const router = useRouter()
 
@@ -116,6 +135,10 @@ export default function DashboardPage() {
     aPagarTecnico: 0,
     ticketMedioMargem: 0,
     estoqueBaixo: 0,
+    slaParticularPercentual: 0,
+    slaGarantiaPercentual: 0,
+    slaParticularForaPrazo: 0,
+    slaGarantiaForaPrazo: 0,
   })
 
   const [volume, setVolume] = useState<VolumeDia[]>(DIAS.map((dia) => ({ dia, valor: 0 })))
@@ -126,10 +149,12 @@ export default function DashboardPage() {
   const [erro, setErro] = useState('')
   const [salvandoStatusId, setSalvandoStatusId] = useState<number | null>(null)
   const [filtroOrigem, setFiltroOrigem] = useState<FiltroOrigemDashboard>('TODOS')
+  const [filtroGarantidor, setFiltroGarantidor] = useState('TODOS')
+  const [garantidoresFiltro, setGarantidoresFiltro] = useState<GarantidorFiltro[]>([])
 
   useEffect(() => {
     void carregarDashboard()
-  }, [filtroOrigem])
+  }, [filtroOrigem, filtroGarantidor])
 
   async function carregarDashboard() {
     setLoading(true)
@@ -146,6 +171,7 @@ export default function DashboardPage() {
             .not('status', 'in', '("FINALIZADA","CANCELADA")')
 
           query = aplicarFiltroOrigemQuery(query, filtroOrigem)
+          query = aplicarFiltroGarantidorQuery(query, filtroGarantidor)
 
           const { count } = await query
           return count ?? 0
@@ -161,6 +187,7 @@ export default function DashboardPage() {
             .eq('status', 'AGUARDANDO_APROVACAO')
 
           query = aplicarFiltroOrigemQuery(query, filtroOrigem)
+          query = aplicarFiltroGarantidorQuery(query, filtroGarantidor)
 
           const { count } = await query
           return count ?? 0
@@ -196,13 +223,15 @@ export default function DashboardPage() {
         orcamentosPendentes,
         parceirosResumo,
         relatoriosResumo,
+        garantidoresResumo,
       ] = await Promise.all([
         contarTabela('clientes').catch(() => 0),
         contarTabela('notificacoes').catch(() => 0),
         countOsSemTecnico3Dias(),
         countOrcamentosPendentes(),
         carregarResumoParceiros(),
-        carregarResumoRelatorios(filtroOrigem),
+        carregarResumoRelatorios(filtroOrigem, filtroGarantidor),
+        carregarGarantidoresFiltro(),
       ])
 
       let ultimasOsQuery = supabase
@@ -212,6 +241,7 @@ export default function DashboardPage() {
         .limit(8)
 
       ultimasOsQuery = aplicarFiltroOrigemQuery(ultimasOsQuery, filtroOrigem)
+      ultimasOsQuery = aplicarFiltroGarantidorQuery(ultimasOsQuery, filtroGarantidor)
 
       const { data: ultimasOsData, error: ultimasOsError } = await ultimasOsQuery
 
@@ -243,6 +273,7 @@ export default function DashboardPage() {
         .limit(500)
 
       volumeQuery = aplicarFiltroOrigemQuery(volumeQuery, filtroOrigem)
+      volumeQuery = aplicarFiltroGarantidorQuery(volumeQuery, filtroGarantidor)
 
       const { data: volumeData, error: volumeError } = await volumeQuery
 
@@ -299,10 +330,15 @@ export default function DashboardPage() {
         aPagarTecnico: relatoriosResumo.aPagarTecnico,
         ticketMedioMargem: relatoriosResumo.ticketMedioMargem,
         estoqueBaixo: relatoriosResumo.estoqueBaixo,
+        slaParticularPercentual: relatoriosResumo.slaParticularPercentual,
+        slaGarantiaPercentual: relatoriosResumo.slaGarantiaPercentual,
+        slaParticularForaPrazo: relatoriosResumo.slaParticularForaPrazo,
+        slaGarantiaForaPrazo: relatoriosResumo.slaGarantiaForaPrazo,
       })
       setVolume(volumeArray)
       setUltimasOs((ultimasOsData ?? []) as OrdemResumo[])
       setHistorico((historicoData ?? []) as HistoricoResumo[])
+      setGarantidoresFiltro(garantidoresResumo)
     } catch (err) {
       setErro(formatarErro(err, 'Erro ao carregar o dashboard.'))
     } finally {
@@ -378,7 +414,10 @@ export default function DashboardPage() {
                 <button
                   key={item.value}
                   type="button"
-                  onClick={() => setFiltroOrigem(item.value as FiltroOrigemDashboard)}
+                  onClick={() => {
+                    setFiltroOrigem(item.value as FiltroOrigemDashboard)
+                    if (item.value === 'CLIENTE') setFiltroGarantidor('TODOS')
+                  }}
                   className={`rounded-lg px-3 py-2 text-xs font-black transition ${
                     filtroOrigem === item.value
                       ? 'bg-orange-500 text-white shadow-sm'
@@ -389,6 +428,22 @@ export default function DashboardPage() {
                 </button>
               ))}
             </div>
+
+            <select
+              value={filtroGarantidor}
+              onChange={(event) => {
+                setFiltroGarantidor(event.target.value)
+                if (event.target.value !== 'TODOS') setFiltroOrigem('GARANTIDOR')
+              }}
+              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm outline-none focus:border-orange-500"
+            >
+              <option value="TODOS">Todos os garantidores</option>
+              {garantidoresFiltro.map((garantidor) => (
+                <option key={garantidor.id} value={garantidor.id}>
+                  {garantidor.nome ?? `Garantidor #${garantidor.id}`}
+                </option>
+              ))}
+            </select>
 
           <div className="flex gap-3">
             <button
@@ -451,6 +506,29 @@ export default function DashboardPage() {
             detail="Itens abaixo do minimo"
             onClick={() => router.push('/admin/pecas')}
             tone={stats.estoqueBaixo > 0 ? 'red' : 'slate'}
+          />
+        </section>
+
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <FinanceMiniCard
+            title="SLA particular"
+            value={loading ? '...' : `${stats.slaParticularPercentual}% dentro`}
+            tone={stats.slaParticularForaPrazo > 0 ? 'amber' : 'green'}
+          />
+          <FinanceMiniCard
+            title="Particular fora SLA"
+            value={loading ? '...' : String(stats.slaParticularForaPrazo)}
+            tone={stats.slaParticularForaPrazo > 0 ? 'amber' : 'green'}
+          />
+          <FinanceMiniCard
+            title="SLA garantia/seguradora"
+            value={loading ? '...' : `${stats.slaGarantiaPercentual}% dentro`}
+            tone={stats.slaGarantiaForaPrazo > 0 ? 'amber' : 'green'}
+          />
+          <FinanceMiniCard
+            title="Garantia fora SLA"
+            value={loading ? '...' : String(stats.slaGarantiaForaPrazo)}
+            tone={stats.slaGarantiaForaPrazo > 0 ? 'amber' : 'green'}
           />
         </section>
 
@@ -824,7 +902,21 @@ function InfoItem({
   )
 }
 
-async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard) {
+async function carregarGarantidoresFiltro() {
+  try {
+    const { data, error } = await supabase
+      .from('garantidores')
+      .select('id, nome')
+      .order('nome', { ascending: true })
+
+    if (error) return []
+    return (data ?? []) as GarantidorFiltro[]
+  } catch {
+    return []
+  }
+}
+
+async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard, garantidorId: string) {
   try {
     const hoje = new Date()
     const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
@@ -835,10 +927,13 @@ async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard) {
 
     if (filtroOrigem === 'CLIENTE') params.set('origemFinanceira', 'CLIENTE')
     if (filtroOrigem === 'GARANTIDOR') params.set('origemFinanceira', 'GARANTIDOR')
+    if (garantidorId !== 'TODOS') params.set('garantidor', garantidorId)
 
     const response = await adminFetch(`/api/admin/relatorios?${params.toString()}`)
     const data = await response.json().catch(() => null)
     const cards = data?.cards ?? {}
+    const slaParticular = data?.slaResumo?.particular ?? {}
+    const slaGarantia = data?.slaResumo?.garantia ?? {}
     const statusResumo = Array.isArray(data?.statusResumo) ? data.statusResumo : []
     const countStatus = (status: string) =>
       Number(statusResumo.find((item: { status?: string; total?: number }) => item.status === status)?.total ?? 0) || 0
@@ -860,6 +955,10 @@ async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard) {
       aPagarTecnico: Number(cards.aPagarTecnico ?? 0) || 0,
       ticketMedioMargem: Number(cards.ticketMedioMargem ?? 0) || 0,
       estoqueBaixo: Number(cards.estoqueBaixo ?? 0) || 0,
+      slaParticularPercentual: Number(slaParticular.percentualDentro ?? 0) || 0,
+      slaGarantiaPercentual: Number(slaGarantia.percentualDentro ?? 0) || 0,
+      slaParticularForaPrazo: Number(slaParticular.foraPrazo ?? 0) || 0,
+      slaGarantiaForaPrazo: Number(slaGarantia.foraPrazo ?? 0) || 0,
     }
   } catch {
     return {
@@ -879,6 +978,10 @@ async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard) {
       aPagarTecnico: 0,
       ticketMedioMargem: 0,
       estoqueBaixo: 0,
+      slaParticularPercentual: 0,
+      slaGarantiaPercentual: 0,
+      slaParticularForaPrazo: 0,
+      slaGarantiaForaPrazo: 0,
     }
   }
 }

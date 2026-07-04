@@ -11,6 +11,8 @@ type RelatoriosData = {
     statusOs: string
     tecnico: string
     garantidor: string
+    slaParticularDias?: number
+    slaGarantiaDias?: number
     opcoes: {
       statusOs: string[]
       statusFinanceiro: string[]
@@ -22,6 +24,11 @@ type RelatoriosData = {
   statusResumo: Array<{ status: string; total: number }>
   tecnicoResumo: Array<{ nome: string; total: number; valor: number }>
   garantidorResumo: Array<{ nome: string; total: number; valor: number }>
+  slaResumo?: {
+    particular: SlaResumo
+    garantia: SlaResumo
+  }
+  slaGarantidores?: Array<SlaResumo & { garantidor: string }>
   ticketCategorias: Array<{
     categoria: string
     totalOs: number
@@ -62,6 +69,18 @@ type RelatoriosData = {
   }>
 }
 
+type SlaResumo = {
+  label: string
+  limiteDias: number
+  total: number
+  abertas: number
+  finalizadas: number
+  dentroPrazo: number
+  foraPrazo: number
+  percentualDentro: number
+  mediaDias: number
+}
+
 function getPeriodoInicial() {
   const hoje = new Date()
   const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
@@ -80,6 +99,8 @@ export default function RelatoriosPage() {
   const [statusOs, setStatusOs] = useState('TODOS')
   const [tecnico, setTecnico] = useState('TODOS')
   const [garantidor, setGarantidor] = useState('TODOS')
+  const [slaParticularDias, setSlaParticularDias] = useState('3')
+  const [slaGarantiaDias, setSlaGarantiaDias] = useState('7')
   const [data, setData] = useState<RelatoriosData | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
@@ -101,6 +122,8 @@ export default function RelatoriosPage() {
         statusOs,
         tecnico,
         garantidor,
+        slaParticularDias,
+        slaGarantiaDias,
       })
       const response = await adminFetch(`/api/admin/relatorios?${params.toString()}`)
       const payload = await response.json().catch(() => null)
@@ -112,7 +135,7 @@ export default function RelatoriosPage() {
     } finally {
       setLoading(false)
     }
-  }, [fim, garantidor, inicio, origemFinanceira, statusFinanceiro, statusOs, tecnico])
+  }, [fim, garantidor, inicio, origemFinanceira, slaGarantiaDias, slaParticularDias, statusFinanceiro, statusOs, tecnico])
 
   useEffect(() => {
     // Carregamento inicial do relatorio ao abrir a tela.
@@ -140,6 +163,8 @@ export default function RelatoriosPage() {
       [`Status OS: ${formatStatus(statusOs)}`],
       [`Tecnico: ${formatFilterLabel(tecnico)}`],
       [`Garantidor: ${formatFilterLabel(garantidor)}`],
+      [`SLA particular: ${slaParticularDias} dias`],
+      [`SLA garantia/seguradora: ${slaGarantiaDias} dias`],
       [],
       ['Indicador', 'Valor'],
       ['OS no periodo', String(cards.totalOs ?? 0)],
@@ -163,6 +188,29 @@ export default function RelatoriosPage() {
       ['Margem total', formatCurrency(cards.margemTotal ?? 0)],
       ['Ticket medio bruto', formatCurrency(cards.ticketMedioBruto ?? 0)],
       ['Ticket medio margem', formatCurrency(cards.ticketMedioMargem ?? 0)],
+      [],
+      ['SLA'],
+      ['Origem', 'Total', 'Dentro SLA', 'Fora SLA', '% dentro', 'Media dias', 'Limite'],
+      ...[data.slaResumo?.particular, data.slaResumo?.garantia].filter(Boolean).map((item) => [
+        item?.label ?? '-',
+        String(item?.total ?? 0),
+        String(item?.dentroPrazo ?? 0),
+        String(item?.foraPrazo ?? 0),
+        `${item?.percentualDentro ?? 0}%`,
+        String(item?.mediaDias ?? 0),
+        `${item?.limiteDias ?? 0} dias`,
+      ]),
+      [],
+      ['SLA por garantidor'],
+      ['Garantidor', 'Total', 'Dentro SLA', 'Fora SLA', '% dentro', 'Media dias'],
+      ...(data.slaGarantidores ?? []).map((item) => [
+        item.garantidor,
+        String(item.total),
+        String(item.dentroPrazo),
+        String(item.foraPrazo),
+        `${item.percentualDentro}%`,
+        String(item.mediaDias),
+      ]),
       [],
       ['Despesas por categoria'],
       ['Categoria', 'Valor pago'],
@@ -307,6 +355,26 @@ export default function RelatoriosPage() {
                 ))}
               </select>
             </FilterInput>
+            <FilterInput label="SLA particular (dias)">
+              <input
+                type="number"
+                min="1"
+                max="365"
+                value={slaParticularDias}
+                onChange={(event) => setSlaParticularDias(event.target.value)}
+                className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-orange-500"
+              />
+            </FilterInput>
+            <FilterInput label="SLA garantia (dias)">
+              <input
+                type="number"
+                min="1"
+                max="365"
+                value={slaGarantiaDias}
+                onChange={(event) => setSlaGarantiaDias(event.target.value)}
+                className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-orange-500"
+              />
+            </FilterInput>
             <button className="self-end rounded-lg bg-slate-900 px-4 py-2 text-sm font-black text-white">
               Atualizar
             </button>
@@ -342,6 +410,21 @@ export default function RelatoriosPage() {
         <Metric label="Finalizadas" value={loading ? '...' : String(cards.finalizadas ?? 0)} />
         <Metric label="Garantia" value={loading ? '...' : String(cards.garantia ?? 0)} tone="amber" />
         <Metric label="Estoque baixo" value={loading ? '...' : String(cards.estoqueBaixo ?? 0)} tone={(cards.estoqueBaixo ?? 0) > 0 ? 'red' : 'green'} />
+      </section>
+
+      <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <SlaMetric title="SLA particular" item={data?.slaResumo?.particular} loading={loading} />
+        <SlaMetric title="SLA garantia/seguradora" item={data?.slaResumo?.garantia} loading={loading} />
+        <Metric
+          label="Particular fora SLA"
+          value={loading ? '...' : String(data?.slaResumo?.particular.foraPrazo ?? 0)}
+          tone={(data?.slaResumo?.particular.foraPrazo ?? 0) > 0 ? 'red' : 'green'}
+        />
+        <Metric
+          label="Garantia fora SLA"
+          value={loading ? '...' : String(data?.slaResumo?.garantia.foraPrazo ?? 0)}
+          tone={(data?.slaResumo?.garantia.foraPrazo ?? 0) > 0 ? 'red' : 'green'}
+        />
       </section>
 
       <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
@@ -418,6 +501,12 @@ export default function RelatoriosPage() {
           />
         </Panel>
 
+        <Panel title="SLA por garantidor">
+          <SlaGarantidorList items={data?.slaGarantidores ?? []} />
+        </Panel>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <Panel title="Estoque">
           <div className="mb-3 grid grid-cols-2 gap-3">
             <MiniCard label="Pecas cadastradas" value={String(data?.pecas.total ?? 0)} />
@@ -544,12 +633,81 @@ function Metric({ label, value, tone = 'slate' }: { label: string; value: string
   )
 }
 
+function SlaMetric({ title, item, loading }: { title: string; item?: SlaResumo; loading: boolean }) {
+  const foraPrazo = item?.foraPrazo ?? 0
+  const tone = foraPrazo > 0 ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+
+  return (
+    <div className={`rounded-lg border px-3 py-2.5 shadow-sm ${tone}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase opacity-70">{title}</p>
+          <p className="mt-0.5 text-xl font-black leading-tight">
+            {loading ? '...' : `${item?.percentualDentro ?? 0}%`}
+          </p>
+        </div>
+        <span className="rounded-full bg-white/70 px-2 py-1 text-[10px] font-black">
+          {item?.limiteDias ?? 0} dias
+        </span>
+      </div>
+      <p className="mt-1 text-xs font-bold opacity-80">
+        {loading
+          ? 'Calculando...'
+          : `${item?.dentroPrazo ?? 0} dentro • ${foraPrazo} fora • media ${item?.mediaDias ?? 0}d`}
+      </p>
+    </div>
+  )
+}
+
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-xl bg-white p-4 shadow-sm">
       <h2 className="mb-3 text-base font-black text-slate-950">{title}</h2>
       {children}
     </section>
+  )
+}
+
+function SlaGarantidorList({ items }: { items: Array<SlaResumo & { garantidor: string }> }) {
+  if (items.length === 0) {
+    return <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">Nenhuma OS em garantia no periodo.</p>
+  }
+
+  return (
+    <div className="space-y-2">
+      {items.map((item) => {
+        const alerta = item.foraPrazo > 0
+        return (
+          <div
+            key={item.garantidor}
+            className={`rounded-lg px-3 py-2 ${alerta ? 'border border-red-200 bg-red-50' : 'bg-slate-50'}`}
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className={`truncate text-sm font-black ${alerta ? 'text-red-700' : 'text-slate-950'}`}>
+                  {item.garantidor}
+                </p>
+                <p className="truncate text-xs text-slate-500">
+                  {item.total} OS • limite {item.limiteDias} dias • media {item.mediaDias}d
+                </p>
+              </div>
+              <span className={`shrink-0 text-sm font-black ${alerta ? 'text-red-700' : 'text-emerald-700'}`}>
+                {item.percentualDentro}%
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
+              <div
+                className={`h-full rounded-full ${alerta ? 'bg-red-500' : 'bg-emerald-500'}`}
+                style={{ width: `${Math.min(100, Math.max(0, item.percentualDentro))}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs font-bold text-slate-500">
+              {item.dentroPrazo} dentro SLA • {item.foraPrazo} fora SLA
+            </p>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

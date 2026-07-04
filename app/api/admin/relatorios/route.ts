@@ -79,6 +79,8 @@ export async function GET(request: NextRequest) {
     const statusOsFiltro = normalizarFiltro(request.nextUrl.searchParams.get('statusOs'))
     const tecnicoFiltro = normalizarFiltro(request.nextUrl.searchParams.get('tecnico'))
     const garantidorFiltro = normalizarFiltro(request.nextUrl.searchParams.get('garantidor'))
+    const slaParticularDias = normalizarSlaDias(request.nextUrl.searchParams.get('slaParticularDias'), 3)
+    const slaGarantiaDias = normalizarSlaDias(request.nextUrl.searchParams.get('slaGarantiaDias'), 7)
     const inicioIso = `${inicio}T00:00:00.000Z`
     const fimIso = `${fim}T23:59:59.999Z`
 
@@ -151,6 +153,15 @@ export async function GET(request: NextRequest) {
       ordensPeriodo.filter(ehGarantidorOuSeguradora),
       (ordem) => getNomeRelacao(ordem.garantidores) || 'Sem garantidor'
     )
+    const slaResumo = montarSlaResumo(ordensPeriodo, hoje, {
+      particularDias: slaParticularDias,
+      garantiaDias: slaGarantiaDias,
+    })
+    const slaGarantidores = montarSlaGarantidores(
+      ordensPeriodo.filter(ehGarantidorOuSeguradora),
+      hoje,
+      slaGarantiaDias
+    )
     const ticketCategorias = montarTicketPorCategoria(ordensPeriodo)
 
     const financeiro = ordensPeriodo.reduce(
@@ -220,6 +231,8 @@ export async function GET(request: NextRequest) {
         statusOs: statusOsFiltro,
         tecnico: tecnicoFiltro,
         garantidor: garantidorFiltro,
+        slaParticularDias,
+        slaGarantiaDias,
         opcoes: montarOpcoesFiltro(ordensPeriodoBase),
       },
       cards: {
@@ -254,6 +267,8 @@ export async function GET(request: NextRequest) {
       statusResumo,
       tecnicoResumo,
       garantidorResumo,
+      slaResumo,
+      slaGarantidores,
       resumoMensal,
       ticketCategorias,
       pecas,
@@ -281,6 +296,12 @@ function normalizarFiltro(value: string | null) {
   return String(value || 'TODOS').trim() || 'TODOS'
 }
 
+function normalizarSlaDias(value: string | null, fallback: number) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return Math.min(Math.max(Math.round(parsed), 1), 365)
+}
+
 function filtrarOrdens(
   ordens: OrdemRelatorio[],
   filtros: {
@@ -298,13 +319,14 @@ function filtrarOrdens(
     const statusOs = String(ordem.status ?? 'SEM_STATUS').toUpperCase()
     const tecnico = getNomeRelacao(ordem.parceiros) || 'Sem tecnico'
     const garantidor = getNomeRelacao(ordem.garantidores) || 'Sem garantidor'
+    const garantidorId = ordem.garantidor_id ? String(ordem.garantidor_id) : 'SEM_GARANTIDOR'
 
     return (
       (filtros.origemFinanceira === 'TODOS' || filtros.origemFinanceira === origem) &&
       (filtros.statusFinanceiro === 'TODOS' || filtros.statusFinanceiro === statusFinanceiro) &&
       (filtros.statusOs === 'TODOS' || filtros.statusOs === statusOs) &&
       (filtros.tecnico === 'TODOS' || filtros.tecnico === tecnico) &&
-      (filtros.garantidor === 'TODOS' || filtros.garantidor === garantidor)
+      (filtros.garantidor === 'TODOS' || filtros.garantidor === garantidor || filtros.garantidor === garantidorId)
     )
   })
 }
@@ -494,6 +516,88 @@ function agruparPorNome(ordens: OrdemRelatorio[], getNome: (ordem: OrdemRelatori
   }
 
   return Array.from(mapa.values()).sort((a, b) => b.total - a.total).slice(0, 8)
+}
+
+function montarSlaResumo(
+  ordens: OrdemRelatorio[],
+  dataReferencia: Date,
+  limites: { particularDias: number; garantiaDias: number }
+) {
+  const particular = calcularSla(
+    ordens.filter((ordem) => !ehGarantidorOuSeguradora(ordem)),
+    dataReferencia,
+    limites.particularDias,
+    'Particular'
+  )
+  const garantia = calcularSla(
+    ordens.filter(ehGarantidorOuSeguradora),
+    dataReferencia,
+    limites.garantiaDias,
+    'Garantia/Seguradora'
+  )
+
+  return { particular, garantia }
+}
+
+function montarSlaGarantidores(ordens: OrdemRelatorio[], dataReferencia: Date, limiteDias: number) {
+  const mapa = new Map<string, OrdemRelatorio[]>()
+
+  for (const ordem of ordens) {
+    const garantidor = getNomeRelacao(ordem.garantidores) || 'Sem garantidor'
+    const atual = mapa.get(garantidor) ?? []
+    atual.push(ordem)
+    mapa.set(garantidor, atual)
+  }
+
+  return Array.from(mapa.entries())
+    .map(([garantidor, itens]) => ({
+      garantidor,
+      ...calcularSla(itens, dataReferencia, limiteDias, garantidor),
+    }))
+    .sort((a, b) => b.foraPrazo - a.foraPrazo || b.total - a.total)
+    .slice(0, 10)
+}
+
+function calcularSla(ordens: OrdemRelatorio[], dataReferencia: Date, limiteDias: number, label: string) {
+  const itens = ordens
+    .map((ordem) => {
+      const dias = diasCiclo(ordem, dataReferencia)
+      return dias === null ? null : { ordem, dias }
+    })
+    .filter((item): item is { ordem: OrdemRelatorio; dias: number } => Boolean(item))
+  const total = itens.length
+  const finalizadas = itens.filter((item) => item.ordem.status === 'FINALIZADA').length
+  const abertas = total - finalizadas
+  const foraPrazo = itens.filter((item) => item.dias > limiteDias).length
+  const dentroPrazo = total - foraPrazo
+  const somaDias = itens.reduce((acc, item) => acc + item.dias, 0)
+
+  return {
+    label,
+    limiteDias,
+    total,
+    abertas,
+    finalizadas,
+    dentroPrazo,
+    foraPrazo,
+    percentualDentro: total > 0 ? Math.round((dentroPrazo / total) * 100) : 0,
+    mediaDias: total > 0 ? Number((somaDias / total).toFixed(1)) : 0,
+  }
+}
+
+function diasCiclo(ordem: OrdemRelatorio, dataReferencia: Date) {
+  if (!ordem.created_at) return null
+  const inicio = new Date(ordem.created_at)
+  if (!Number.isFinite(inicio.getTime())) return null
+
+  const fim =
+    ordem.status === 'FINALIZADA' && ordem.finalizada_em
+      ? new Date(ordem.finalizada_em)
+      : dataReferencia
+
+  if (!Number.isFinite(fim.getTime())) return null
+  const diffMs = Math.max(fim.getTime() - inicio.getTime(), 0)
+  return Math.ceil(diffMs / 86400000)
 }
 
 function montarTicketPorCategoria(ordens: OrdemRelatorio[]) {
