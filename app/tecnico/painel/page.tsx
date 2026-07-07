@@ -753,6 +753,13 @@ function getStatusAlerta(status?: string | null) {
         bannerStyle: alertStyle('#7c3aed', '#ffffff'),
         badgeStyle: alertStyle('#7c3aed', '#ffffff'),
       }
+    case 'PRONTO_AGUARDANDO_ENTREGA':
+      return {
+        label: 'Pronto: aguardando entrega ou retirada pelo cliente.',
+        cardStyle: statusStyle('#34d399', '#ecfdf5'),
+        bannerStyle: alertStyle('#059669', '#ffffff'),
+        badgeStyle: alertStyle('#059669', '#ffffff'),
+      }
     case 'CRITICA':
       return {
         label: 'Crítica: atendimento precisa de prioridade.',

@@ -94,6 +94,7 @@ const STATUS_STEPS = [
   { key: 'NOVA', label: 'Recebido' },
   { key: 'EM_TRIAGEM', label: 'Triagem' },
   { key: 'EM_ATENDIMENTO', label: 'Atendimento' },
+  { key: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto/entrega' },
   { key: 'AGUARDANDO_APROVACAO', label: 'Aprovação' },
   { key: 'AGUARDANDO_PECA', label: 'Peça' },
   { key: 'CRITICA', label: 'Crítica' },
@@ -319,7 +320,7 @@ export default function ConsultaPage() {
           <>
             <section className="grid gap-4 md:grid-cols-4">
               <InfoCard label="OS" value={resultado.os.numero_os ?? '-'} />
-              <InfoCard label="Status" value={resultado.os.status ?? '-'} />
+              <InfoCard label="Status" value={formatarStatusOs(resultado.os.status)} />
               <InfoCard label="Prioridade" value={resultado.os.prioridade ?? '-'} />
               <InfoCard
                 label="Última atualização"
@@ -683,6 +684,21 @@ function getConsultaInicial(): { form: ConsultaForm; acao: 'APROVAR' | 'REPROVAR
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString('pt-BR')
+}
+
+function formatarStatusOs(status?: string | null) {
+  const labels: Record<string, string> = {
+    NOVA: 'Recebido',
+    EM_TRIAGEM: 'Em triagem',
+    EM_ATENDIMENTO: 'Em atendimento',
+    AGUARDANDO_APROVACAO: 'Aguardando aprovacao',
+    AGUARDANDO_PECA: 'Aguardando peca',
+    PRONTO_AGUARDANDO_ENTREGA: 'Pronto aguardando entrega',
+    CRITICA: 'Critica',
+    FINALIZADA: 'Finalizada',
+  }
+
+  return labels[String(status ?? '')] ?? String(status ?? '-')
 }
 
 function toNumber(value: number | string | null | undefined) {

@@ -193,6 +193,7 @@ const STATUS_OPTIONS = [
   { value: 'NOVA', label: 'Nova' },
   { value: 'EM_TRIAGEM', label: 'Em Triagem' },
   { value: 'EM_ATENDIMENTO', label: 'Em Atendimento' },
+  { value: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto aguardando entrega' },
   { value: 'AGUARDANDO_APROVACAO', label: 'Aguardando Aprovação' },
   { value: 'AGUARDANDO_PECA', label: 'Aguardando Peça' },
   { value: 'CRITICA', label: 'Crítica' },
@@ -219,6 +220,7 @@ const FORMAS_RECEBIMENTO = [
 
 const STATUS_ATALHOS = [
   { value: 'EM_ATENDIMENTO', label: 'Em atendimento', className: 'border-emerald-300 text-emerald-700 hover:bg-emerald-50' },
+  { value: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto aguardando entrega', className: 'border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600' },
   { value: 'AGUARDANDO_APROVACAO', label: 'Aguardando aprovação', className: 'border-cyan-300 text-cyan-700 hover:bg-cyan-50' },
   { value: 'AGUARDANDO_PECA', label: 'Aguardando peça', className: 'border-violet-300 text-violet-700 hover:bg-violet-50' },
   { value: 'CRITICA', label: 'Crítica', className: 'border-red-500 bg-red-500 text-white hover:bg-red-600' },

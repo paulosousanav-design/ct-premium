@@ -75,6 +75,7 @@ const STATUS_RAPIDOS = [
   { value: 'NOVA', label: 'Nova', className: 'border-slate-300 text-slate-700 hover:bg-slate-50', icon: UserIcon },
   { value: 'EM_TRIAGEM', label: 'Triagem', className: 'border-amber-300 text-amber-700 hover:bg-amber-50', icon: ListIcon },
   { value: 'EM_ATENDIMENTO', label: 'Atendimento', className: 'border-emerald-300 text-emerald-700 hover:bg-emerald-50', icon: WrenchIcon },
+  { value: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto/entrega', className: 'border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600', icon: CheckIcon },
   { value: 'AGUARDANDO_PECA', label: 'Aguard. Peça', className: 'border-violet-300 text-violet-700 hover:bg-violet-50', icon: SettingsIcon },
   { value: 'CRITICA', label: 'Crítica', className: 'border-red-500 bg-red-500 text-white hover:bg-red-600', icon: AlertIcon },
   { value: 'FINALIZADA', label: 'Finalizar', className: 'border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600', icon: CheckIcon },
@@ -942,6 +943,7 @@ async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard, gar
       osNovas: Number(cards.novas ?? 0) || 0,
       emTriagem: countStatus('EM_TRIAGEM'),
       emAtendimento: countStatus('EM_ATENDIMENTO'),
+      prontoEntrega: countStatus('PRONTO_AGUARDANDO_ENTREGA'),
       aguardandoRevisao: countStatus('AGUARDANDO_REVISAO'),
       aguardandoPeca: countStatus('AGUARDANDO_PECA'),
       criticas: countStatus('CRITICA'),
@@ -1014,6 +1016,7 @@ function LineItem({
 function getEventColor(acao: string | null, statusNovo: string | null) {
   if (statusNovo === 'CRITICA' || acao === 'ALERTA') return '#ef4444'
   if (statusNovo === 'AGUARDANDO_PECA') return '#f59e0b'
+  if (statusNovo === 'PRONTO_AGUARDANDO_ENTREGA') return '#10b981'
   if (statusNovo === 'EM_ATENDIMENTO') return '#22c55e'
   if (statusNovo === 'EM_TRIAGEM') return '#3b82f6'
   if (statusNovo === 'FINALIZADA') return '#16a34a'

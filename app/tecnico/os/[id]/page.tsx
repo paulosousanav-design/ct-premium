@@ -60,6 +60,7 @@ type FormState = {
 
 const statusOptions = [
   { value: 'EM_ATENDIMENTO', label: 'Em atendimento' },
+  { value: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto aguardando entrega' },
   { value: 'AGUARDANDO_REVISAO', label: 'Aguardando revisao admin' },
   { value: 'AGUARDANDO_PECA', label: 'Aguardando peça' },
   { value: 'CRITICA', label: 'Crítica' },

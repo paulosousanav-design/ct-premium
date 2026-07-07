@@ -145,6 +145,7 @@ const STATUS_FILTROS = [
   { value: 'NOVA', label: 'Novas' },
   { value: 'EM_TRIAGEM', label: 'Triagem' },
   { value: 'EM_ATENDIMENTO', label: 'Atendimento' },
+  { value: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto/entrega' },
   { value: 'AGUARDANDO_REVISAO', label: 'Revisao admin' },
   { value: 'AGUARDANDO_APROVACAO', label: 'Aguard. aprovação' },
   { value: 'AGUARDANDO_PECA', label: 'Aguard. peça' },
@@ -155,6 +156,7 @@ const STATUS_BOARD = [
   { value: 'NOVA', label: 'Novas', accent: 'bg-slate-500' },
   { value: 'EM_TRIAGEM', label: 'Triagem', accent: 'bg-amber-500' },
   { value: 'EM_ATENDIMENTO', label: 'Atendimento', accent: 'bg-blue-500' },
+  { value: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto / Entrega', accent: 'bg-emerald-500' },
   { value: 'AGUARDANDO_REVISAO', label: 'Revisao Admin', accent: 'bg-indigo-500' },
   { value: 'AGUARDANDO_APROVACAO', label: 'Aguardando Aprovação', accent: 'bg-cyan-500' },
   { value: 'AGUARDANDO_PECA', label: 'Aguardando Peça', accent: 'bg-violet-500' },
@@ -246,6 +248,7 @@ export default function OrdensServicoPage() {
     const novas = ordens.filter((os) => os.status === 'NOVA').length
     const revisaoAdmin = ordens.filter((os) => os.status === 'AGUARDANDO_REVISAO').length
     const aguardandoAprovacao = ordens.filter((os) => os.status === 'AGUARDANDO_APROVACAO').length
+    const prontoEntrega = ordens.filter((os) => os.status === 'PRONTO_AGUARDANDO_ENTREGA').length
     const criticas = ordens.filter((os) => os.status === 'CRITICA').length
 
     return [
@@ -253,6 +256,7 @@ export default function OrdensServicoPage() {
       { label: 'OS ha 3+ dias sem tecnico', total: semTecnicoTresDias, tone: 'bg-red-100 text-red-700', filtro: 'TODAS' },
       { label: 'Aguardando revisao admin', total: revisaoAdmin, tone: 'bg-indigo-100 text-indigo-700', filtro: 'AGUARDANDO_REVISAO' },
       { label: 'Aguardando aprovacao', total: aguardandoAprovacao, tone: 'bg-cyan-100 text-cyan-700', filtro: 'AGUARDANDO_APROVACAO' },
+      { label: 'Prontas aguardando entrega', total: prontoEntrega, tone: 'bg-emerald-100 text-emerald-700', filtro: 'PRONTO_AGUARDANDO_ENTREGA' },
       { label: 'OS criticas', total: criticas, tone: 'bg-orange-100 text-orange-700', filtro: 'CRITICA' },
     ].filter((item) => item.total > 0)
   }, [ordens])
@@ -917,7 +921,8 @@ export default function OrdensServicoPage() {
                 <option value="TODAS">Todas</option>
                 <option value="NOVA">Nova</option>
                 <option value="EM_TRIAGEM">Em Triagem</option>
-                <option value="EM_ATENDIMENTO">Em Atendimento</option>
+              <option value="EM_ATENDIMENTO">Em Atendimento</option>
+                <option value="PRONTO_AGUARDANDO_ENTREGA">Pronto aguardando entrega</option>
                 <option value="AGUARDANDO_APROVACAO">Aguardando Aprovação</option>
                 <option value="AGUARDANDO_PECA">Aguardando Peça</option>
                 <option value="CRITICA">Crítica</option>
@@ -991,6 +996,7 @@ export default function OrdensServicoPage() {
                         <option value="NOVA">Nova</option>
                         <option value="EM_TRIAGEM">Em Triagem</option>
                         <option value="EM_ATENDIMENTO">Em Atendimento</option>
+                        <option value="PRONTO_AGUARDANDO_ENTREGA">Pronto aguardando entrega</option>
                         <option value="AGUARDANDO_APROVACAO">Aguardando Aprovação</option>
                         <option value="AGUARDANDO_PECA">Aguardando Peça</option>
                         <option value="CRITICA">Crítica</option>
@@ -1237,6 +1243,7 @@ function KanbanOSBoard({
               <option value="NOVA">Nova</option>
               <option value="EM_TRIAGEM">Em Triagem</option>
               <option value="EM_ATENDIMENTO">Em Atendimento</option>
+              <option value="PRONTO_AGUARDANDO_ENTREGA">Pronto aguardando entrega</option>
               <option value="AGUARDANDO_APROVACAO">Aguard. Aprov.</option>
               <option value="AGUARDANDO_PECA">Aguard. Peça</option>
               <option value="CRITICA">Crítica</option>
@@ -1381,6 +1388,7 @@ function KanbanOSBoard({
                       <option value="NOVA">Nova</option>
                       <option value="EM_TRIAGEM">Em Triagem</option>
                       <option value="EM_ATENDIMENTO">Em Atendimento</option>
+                      <option value="PRONTO_AGUARDANDO_ENTREGA">Pronto aguardando entrega</option>
                       <option value="AGUARDANDO_APROVACAO">Aguardando Aprovação</option>
                       <option value="AGUARDANDO_PECA">Aguardando Peça</option>
                       <option value="CRITICA">Crítica</option>
@@ -1569,6 +1577,8 @@ function StatusBadge({ status }: { status: string }) {
         ? 'bg-blue-100 text-blue-700'
         : status === 'EM_TRIAGEM'
           ? 'bg-amber-100 text-amber-700'
+          : status === 'PRONTO_AGUARDANDO_ENTREGA'
+            ? 'bg-emerald-100 text-emerald-700'
           : status === 'AGUARDANDO_APROVACAO'
             ? 'bg-cyan-100 text-cyan-700'
             : status === 'AGUARDANDO_PECA'
@@ -1577,7 +1587,23 @@ function StatusBadge({ status }: { status: string }) {
                 ? 'bg-red-100 text-red-700'
                 : 'bg-slate-100 text-slate-700'
 
-  return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${cls}`}>{status}</span>
+  return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${cls}`}>{formatarStatusOs(status)}</span>
+}
+
+function formatarStatusOs(status?: string | null) {
+  const labels: Record<string, string> = {
+    NOVA: 'Nova',
+    EM_TRIAGEM: 'Em triagem',
+    EM_ATENDIMENTO: 'Em atendimento',
+    AGUARDANDO_REVISAO: 'Revisao admin',
+    AGUARDANDO_APROVACAO: 'Aguardando aprovacao',
+    AGUARDANDO_PECA: 'Aguardando peca',
+    PRONTO_AGUARDANDO_ENTREGA: 'Pronto/entrega',
+    CRITICA: 'Critica',
+    FINALIZADA: 'Finalizada',
+  }
+
+  return labels[String(status ?? '')] ?? String(status ?? '-')
 }
 
 function formatarCEP(valor: string) {

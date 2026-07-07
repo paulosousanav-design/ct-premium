@@ -979,6 +979,7 @@ function formatStatus(status?: string | null) {
     NOVA: 'Nova',
     EM_TRIAGEM: 'Em triagem',
     EM_ATENDIMENTO: 'Em atendimento',
+    PRONTO_AGUARDANDO_ENTREGA: 'Pronto aguardando entrega',
     AGUARDANDO_APROVACAO: 'Aguard. aprovacao',
     AGUARDANDO_PECA: 'Aguard. peca',
     CRITICA: 'Critica',

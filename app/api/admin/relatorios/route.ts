@@ -238,7 +238,7 @@ export async function GET(request: NextRequest) {
       cards: {
         totalOs: ordensPeriodo.length,
         novas: ordensPeriodo.filter((ordem) => ordem.status === 'NOVA').length,
-        emAndamento: ordensPeriodo.filter((ordem) => ['EM_TRIAGEM', 'EM_ATENDIMENTO'].includes(ordem.status ?? '')).length,
+        emAndamento: ordensPeriodo.filter((ordem) => ['EM_TRIAGEM', 'EM_ATENDIMENTO', 'PRONTO_AGUARDANDO_ENTREGA'].includes(ordem.status ?? '')).length,
         finalizadas: ordensPeriodo.filter((ordem) => ordem.status === 'FINALIZADA').length,
         garantia: ordensPeriodo.filter((ordem) => ordem.garantia).length,
         valorCliente: financeiro.valorCliente,
