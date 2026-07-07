@@ -32,6 +32,7 @@ const permissoes = [
   { id: 'aprovacao', label: 'Aprovacao' },
   { id: 'financeiro', label: 'Financeiro' },
   { id: 'pecas', label: 'Pecas e estoque' },
+  { id: 'clientes', label: 'Clientes' },
   { id: 'usuarios', label: 'Usuarios e acessos' },
   { id: 'relatorios', label: 'Relatorios' },
   { id: 'configuracoes', label: 'Configuracoes' },

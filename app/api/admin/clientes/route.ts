@@ -56,7 +56,7 @@ async function colunaExiste(
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'relatorios')
+    const auth = await requireAdminPermission(request, 'clientes')
     if (!auth.ok) return auth.response
 
     const supabase = getSupabaseAdmin()
@@ -153,7 +153,7 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'relatorios')
+    const auth = await requireAdminPermission(request, 'clientes')
     if (!auth.ok) return auth.response
 
     const body = await request.json().catch(() => null)
