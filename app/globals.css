@@ -398,6 +398,50 @@ body {
           padding: 12px;
         }
 
+        .file-box {
+          border: 1px dashed rgba(219, 231, 245, 0.45);
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.08);
+          padding: 12px;
+        }
+
+        .file-input {
+          display: block;
+          width: 100%;
+          border-radius: 9px;
+          background: #ffffff;
+          color: #071126;
+          font-size: 12px;
+          font-weight: 700;
+          padding: 9px;
+        }
+
+        .file-box p {
+          margin: 8px 0 0;
+          color: #dbe7f5;
+          font-size: 11px;
+          font-weight: 700;
+          line-height: 1.35;
+        }
+
+        .file-list {
+          display: grid;
+          gap: 6px;
+          margin-top: 10px;
+        }
+
+        .file-list span {
+          overflow: hidden;
+          border-radius: 7px;
+          background: rgba(255, 255, 255, 0.1);
+          color: #f8fafc;
+          padding: 6px 8px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 11px;
+          font-weight: 800;
+        }
+
         .cep-row,
         .street-row,
         .city-row {

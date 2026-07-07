@@ -95,6 +95,7 @@ export default function Home() {
   const [marcas, setMarcas] = useState<Marca[]>(prepararMarcasPublicas(marcasPadrao, categoriasPadrao))
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState('')
+  const [anexos, setAnexos] = useState<File[]>([])
   const [salvando, setSalvando] = useState(false)
   const [buscandoCep, setBuscandoCep] = useState(false)
   const [cookiesAceitos, setCookiesAceitos] = useState<boolean | null>(null)
@@ -186,6 +187,11 @@ export default function Home() {
     setForm((prev) => ({ ...prev, [name]: formatted }))
   }
 
+  function handleAnexos(event: ChangeEvent<HTMLInputElement>) {
+    const arquivos = Array.from(event.target.files ?? [])
+    setAnexos(arquivos.slice(0, 6))
+  }
+
   async function buscarCep(cepInformado = form.cep) {
     const cepLimpo = cepInformado.replace(/\D/g, '')
     if (cepLimpo.length !== 8) return
@@ -221,19 +227,22 @@ export default function Home() {
 
     try {
       const formData = new FormData(event.currentTarget)
+      formData.set('garantia', 'NAO')
+      formData.set('dataCompra', '')
+      formData.set('numeroNf', '')
+      formData.set('localCompra', '')
+      formData.set('observacao', '')
+      const temAnexos = anexos.some((arquivo) => arquivo.size > 0)
       const payload = Object.fromEntries(formData.entries())
 
       const response = await fetch('/api/chamados', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...payload,
-          garantia: 'NAO',
-          dataCompra: '',
-          numeroNf: '',
-          localCompra: '',
-          observacao: '',
-        }),
+        ...(temAnexos
+          ? { body: formData }
+          : {
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            }),
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error ?? 'Nao foi possivel abrir o chamado.')
@@ -241,6 +250,7 @@ export default function Home() {
       setSucesso(`Chamado aberto com sucesso: ${data.numeroOS}`)
       router.push(`/consulta?os=${encodeURIComponent(String(data.numeroOS))}&whatsapp=${encodeURIComponent(String(payload.whatsapp ?? ''))}`)
       setForm(formInicial)
+      setAnexos([])
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Erro ao abrir chamado.')
     } finally {
@@ -301,7 +311,7 @@ export default function Home() {
           </div>
         </div>
 
-        <form onSubmit={enviarChamado} action="/api/chamados" method="post" data-public-os-form className="call-form">
+        <form onSubmit={enviarChamado} action="/api/chamados" method="post" encType="multipart/form-data" data-public-os-form className="call-form">
           <div className="form-title">
             <span className="form-title-icon">▤</span>
             <div>
@@ -370,6 +380,26 @@ export default function Home() {
             required
             className="textarea"
           />
+
+          <p className="form-label">Fotos ou arquivo</p>
+          <div className="file-box">
+            <input
+              name="anexos"
+              type="file"
+              accept="image/*,.pdf"
+              multiple
+              onChange={handleAnexos}
+              className="file-input"
+            />
+            <p>Fotos do produto, defeito ou NF em PDF. Maximo 6 arquivos.</p>
+            {anexos.length > 0 && (
+              <div className="file-list">
+                {anexos.map((arquivo) => (
+                  <span key={`${arquivo.name}-${arquivo.size}`}>{arquivo.name}</span>
+                ))}
+              </div>
+            )}
+          </div>
 
           <label className="lgpd-check">
             <input type="checkbox" name="lgpdConsentimento" value="SIM" required />
