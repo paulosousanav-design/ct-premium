@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { type ChangeEvent, type CSSProperties, type FormEvent, useCallback, useEffect, useState } from 'react'
+import { type ChangeEvent, type CSSProperties, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 
 type OSItem = {
   id: number
@@ -20,6 +20,7 @@ type OSItem = {
   clientes?: {
     nome: string | null
     whatsapp: string | null
+    cep?: string | null
     logradouro: string | null
     numero: string | null
     bairro: string | null
@@ -79,6 +80,7 @@ export default function PainelTecnicoPage() {
   const [erro, setErro] = useState('')
   const [abaAtiva, setAbaAtiva] = useState<'tratamento' | 'finalizadas'>('tratamento')
   const [osDocumentoId, setOsDocumentoId] = useState('')
+  const [agendaDatas, setAgendaDatas] = useState<Record<string, string>>(() => carregarAgendaLocal(tecnicoId))
 
   const carregarSessao = useCallback(async () => {
     if (tecnicoId) return
@@ -139,14 +141,32 @@ export default function PainelTecnicoPage() {
     void Promise.resolve().then(carregarOrdens)
   }, [carregarOrdens])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(getAgendaStorageKey(tecnicoId), JSON.stringify(agendaDatas))
+  }, [agendaDatas, tecnicoId])
+
   const tecnicoNome = tecnicoLogado?.nome || getNomeTecnico(ordens[0])
   const ordensAbertas = ordens.filter((os) => os.status !== 'FINALIZADA')
   const ordensFinalizadas = ordens.filter((os) => os.status === 'FINALIZADA')
   const ordensAReceber = ordensFinalizadas.filter((os) => !tecnicoPago(os))
+  const agendaItens = useMemo(
+    () => ordensAbertas
+      .map((os) => ({
+        os,
+        dataHora: agendaDatas[String(os.id)] || defaultAgendaDateTime(os.created_at),
+      }))
+      .sort((a, b) => new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime()),
+    [agendaDatas, ordensAbertas]
+  )
 
   async function sair() {
     await fetch('/api/tecnico/login', { method: 'DELETE' }).catch(() => null)
     window.location.href = '/tecnico/login'
+  }
+
+  function atualizarAgenda(osId: number, dataHora: string) {
+    setAgendaDatas((atual) => ({ ...atual, [String(osId)]: dataHora }))
   }
 
   return (
@@ -308,6 +328,10 @@ export default function PainelTecnicoPage() {
           </section>
 
           <aside className="space-y-3">
+            <AgendaTecnicoPanel
+              itens={agendaItens}
+              onDataHoraChange={atualizarAgenda}
+            />
             <ResumoTecnicoPanel resumo={resumo} />
             <DocumentoPagamentoPanel
               tecnicoId={tecnicoId}
@@ -322,6 +346,64 @@ export default function PainelTecnicoPage() {
         </div>
       </div>
     </main>
+  )
+}
+
+function AgendaTecnicoPanel({
+  itens,
+  onDataHoraChange,
+}: {
+  itens: Array<{ os: OSItem; dataHora: string }>
+  onDataHoraChange: (osId: number, dataHora: string) => void
+}) {
+  return (
+    <section className="rounded-xl bg-white p-3 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-base font-bold text-slate-950">Agenda</h2>
+          <p className="text-xs text-slate-500">Atendimentos em aberto e sincronizacao com Google.</p>
+        </div>
+        <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-black text-orange-700">
+          {itens.length}
+        </span>
+      </div>
+
+      {itens.length ? (
+        <div className="space-y-2">
+          {itens.slice(0, 5).map(({ os, dataHora }) => (
+            <article key={os.id} className="rounded-lg border border-slate-200 p-2">
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black text-orange-600">{os.numero_os ?? `OS #${os.id}`}</p>
+                  <h3 className="truncate text-sm font-bold text-slate-950">{os.clientes?.nome ?? 'Cliente'}</h3>
+                </div>
+                <StatusBadge status={os.status ?? 'NOVA'} compact />
+              </div>
+
+              <input
+                type="datetime-local"
+                value={dataHora}
+                onChange={(event) => onDataHoraChange(os.id, event.target.value)}
+                className="mb-2 h-9 w-full rounded-lg border border-slate-300 px-2 text-xs font-semibold text-slate-700 outline-none focus:border-orange-500"
+              />
+
+              <p className="mb-2 line-clamp-2 text-xs text-slate-600">{formatarEndereco(os)}</p>
+
+              <a
+                href={criarGoogleCalendarUrl(os, dataHora)}
+                target="_blank"
+                rel="noreferrer"
+                className="block rounded-lg bg-emerald-600 px-3 py-2 text-center text-xs font-bold text-white transition hover:bg-emerald-700"
+              >
+                Sincronizar Google
+              </a>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">Nenhuma OS aberta para agendar.</p>
+      )}
+    </section>
   )
 }
 
@@ -725,7 +807,7 @@ function formatarEndereco(os: OSItem) {
   const c = os.clientes
   const linha1 = [c?.logradouro, c?.numero].filter(Boolean).join(', ')
   const linha2 = [c?.bairro, c?.cidade, c?.estado].filter(Boolean).join(' / ')
-  return [linha1, linha2].filter(Boolean).join(' - ') || '-'
+  return [linha1, linha2, c?.cep].filter(Boolean).join(' - ') || '-'
 }
 
 function valorTotalTecnico(os: OSItem) {
@@ -742,4 +824,67 @@ function formatCurrency(value: number) {
     style: 'currency',
     currency: 'BRL',
   }).format(value || 0)
+}
+
+function getAgendaStorageKey(tecnicoId: string) {
+  return `ct-premium:agenda-tecnico:${tecnicoId || 'sessao'}`
+}
+
+function carregarAgendaLocal(tecnicoId: string) {
+  if (typeof window === 'undefined') return {}
+  const salvo = window.localStorage.getItem(getAgendaStorageKey(tecnicoId))
+  if (!salvo) return {}
+
+  try {
+    return JSON.parse(salvo) as Record<string, string>
+  } catch {
+    return {}
+  }
+}
+
+function defaultAgendaDateTime(createdAt: string) {
+  const base = new Date(createdAt)
+  const data = Number.isNaN(base.getTime()) ? new Date() : base
+  const agora = new Date()
+  const agenda = data > agora ? data : agora
+  agenda.setMinutes(Math.ceil(agenda.getMinutes() / 30) * 30, 0, 0)
+  agenda.setHours(agenda.getHours() + 1)
+  return toDateTimeLocalValue(agenda)
+}
+
+function toDateTimeLocalValue(date: Date) {
+  const ano = date.getFullYear()
+  const mes = String(date.getMonth() + 1).padStart(2, '0')
+  const dia = String(date.getDate()).padStart(2, '0')
+  const hora = String(date.getHours()).padStart(2, '0')
+  const minuto = String(date.getMinutes()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}T${hora}:${minuto}`
+}
+
+function criarGoogleCalendarUrl(os: OSItem, dataHora: string) {
+  const inicio = new Date(dataHora)
+  const inicioSeguro = Number.isNaN(inicio.getTime()) ? new Date() : inicio
+  const fim = new Date(inicioSeguro.getTime() + 90 * 60 * 1000)
+  const titulo = `${os.numero_os ?? `OS #${os.id}`} - ${os.clientes?.nome ?? 'Cliente'}`
+  const detalhes = [
+    `Cliente: ${os.clientes?.nome ?? '-'}`,
+    os.clientes?.whatsapp ? `WhatsApp: ${os.clientes.whatsapp}` : '',
+    `Equipamento: ${formatarEquipamento(os)}`,
+    `Defeito: ${os.defeito ?? '-'}`,
+    `Status: ${os.status ?? '-'}`,
+  ].filter(Boolean).join('\n')
+
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: titulo,
+    dates: `${formatGoogleCalendarDate(inicioSeguro)}/${formatGoogleCalendarDate(fim)}`,
+    details: detalhes,
+    location: formatarEndereco(os),
+  })
+
+  return `https://calendar.google.com/calendar/render?${params.toString()}`
+}
+
+function formatGoogleCalendarDate(date: Date) {
+  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
 }

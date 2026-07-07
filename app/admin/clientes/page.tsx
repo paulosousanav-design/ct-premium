@@ -11,6 +11,9 @@ type ClienteResumo = {
   whatsapp: string | null
   email: string | null
   cep: string | null
+  logradouro: string | null
+  numero: string | null
+  bairro: string | null
   endereco: string | null
   cidade: string | null
   estado: string | null
@@ -22,6 +25,19 @@ type ClienteResumo = {
   ultimo_status: string | null
   ultima_os: string | null
   ultimo_atendimento: string | null
+}
+
+type ClienteForm = {
+  nome: string
+  cpf_cnpj: string
+  whatsapp: string
+  email: string
+  cep: string
+  logradouro: string
+  numero: string
+  bairro: string
+  cidade: string
+  estado: string
 }
 
 type ClientesResponse = {
@@ -65,11 +81,16 @@ export default function ClientesPage() {
   const [data, setData] = useState<ClientesResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
+  const [mensagem, setMensagem] = useState('')
+  const [clienteEditando, setClienteEditando] = useState<ClienteResumo | null>(null)
+  const [formCliente, setFormCliente] = useState<ClienteForm>(clienteFormInicial())
+  const [salvandoCliente, setSalvandoCliente] = useState(false)
 
   const carregar = useCallback(async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
     setLoading(true)
     setErro('')
+    setMensagem('')
 
     try {
       const params = new URLSearchParams({
@@ -105,6 +126,58 @@ export default function ClientesPage() {
     setCidade('')
     setInicio(periodoInicial.inicio)
     setFim(periodoInicial.fim)
+  }
+
+  function abrirEdicao(cliente: ClienteResumo) {
+    setErro('')
+    setMensagem('')
+    setClienteEditando(cliente)
+    setFormCliente({
+      nome: cliente.nome === '-' ? '' : cliente.nome,
+      cpf_cnpj: cliente.cpf_cnpj ?? '',
+      whatsapp: cliente.whatsapp ?? '',
+      email: cliente.email ?? '',
+      cep: cliente.cep ?? '',
+      logradouro: cliente.logradouro ?? '',
+      numero: cliente.numero ?? '',
+      bairro: cliente.bairro ?? '',
+      cidade: cliente.cidade ?? '',
+      estado: cliente.estado ?? '',
+    })
+  }
+
+  async function salvarCliente(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!clienteEditando) return
+
+    setSalvandoCliente(true)
+    setErro('')
+    setMensagem('')
+
+    try {
+      const response = await adminFetch('/api/admin/clientes', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: clienteEditando.ids,
+          ...formCliente,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Erro ao salvar cliente.')
+
+      setMensagem('Cliente atualizado com sucesso.')
+      setClienteEditando(null)
+      await carregar()
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Erro ao salvar cliente.')
+    } finally {
+      setSalvandoCliente(false)
+    }
+  }
+
+  function atualizarFormCliente(campo: keyof ClienteForm, valor: string) {
+    setFormCliente((atual) => ({ ...atual, [campo]: valor }))
   }
 
   function exportarCsv() {
@@ -174,6 +247,7 @@ export default function ClientesPage() {
       </header>
 
       {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{erro}</div>}
+      {mensagem && <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{mensagem}</div>}
 
       <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
         <Metric label="Clientes" value={String(resumo?.total ?? 0)} />
@@ -277,6 +351,7 @@ export default function ClientesPage() {
                 <th className="px-3 py-2">Ticket medio</th>
                 <th className="px-3 py-2">Ultima OS</th>
                 <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2 text-right">Acoes</th>
               </tr>
             </thead>
             <tbody>
@@ -308,12 +383,74 @@ export default function ClientesPage() {
                       {formatStatus(cliente.ultimo_status)}
                     </span>
                   </td>
+                  <td className="px-3 py-2 text-right">
+                    <button
+                      type="button"
+                      onClick={() => abrirEdicao(cliente)}
+                      className="rounded-lg border border-orange-300 px-3 py-1.5 text-xs font-black text-orange-700 transition hover:bg-orange-50"
+                    >
+                      Editar
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
+
+      {clienteEditando && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-6">
+          <form onSubmit={salvarCliente} className="w-full max-w-3xl rounded-xl bg-white p-5 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase text-orange-600">Editar cliente</p>
+                <h2 className="text-xl font-black text-slate-950">{clienteEditando.nome}</h2>
+                {clienteEditando.ids.length > 1 && (
+                  <p className="text-xs text-slate-500">Atualiza {clienteEditando.ids.length} cadastros agrupados deste cliente.</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setClienteEditando(null)}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-black text-slate-600 hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <EditField label="Nome" value={formCliente.nome} onChange={(valor) => atualizarFormCliente('nome', valor)} required />
+              <EditField label="CPF/CNPJ" value={formCliente.cpf_cnpj} onChange={(valor) => atualizarFormCliente('cpf_cnpj', valor)} />
+              <EditField label="WhatsApp" value={formCliente.whatsapp} onChange={(valor) => atualizarFormCliente('whatsapp', valor)} />
+              <EditField label="E-mail" value={formCliente.email} onChange={(valor) => atualizarFormCliente('email', valor)} type="email" />
+              <EditField label="CEP" value={formCliente.cep} onChange={(valor) => atualizarFormCliente('cep', valor)} />
+              <EditField label="Logradouro" value={formCliente.logradouro} onChange={(valor) => atualizarFormCliente('logradouro', valor)} />
+              <EditField label="Numero" value={formCliente.numero} onChange={(valor) => atualizarFormCliente('numero', valor)} />
+              <EditField label="Bairro" value={formCliente.bairro} onChange={(valor) => atualizarFormCliente('bairro', valor)} />
+              <EditField label="Cidade" value={formCliente.cidade} onChange={(valor) => atualizarFormCliente('cidade', valor)} />
+              <EditField label="UF" value={formCliente.estado} onChange={(valor) => atualizarFormCliente('estado', valor.toUpperCase().slice(0, 2))} maxLength={2} />
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setClienteEditando(null)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={salvandoCliente}
+                className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50"
+              >
+                {salvandoCliente ? 'Salvando...' : 'Salvar cliente'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   )
 }
@@ -343,14 +480,59 @@ function Field({ label, children, className = '' }: { label: string; children: R
   )
 }
 
+function EditField({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  required = false,
+  maxLength,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  type?: string
+  required?: boolean
+  maxLength?: number
+}) {
+  return (
+    <label className="block text-xs font-black text-slate-600">
+      {label}
+      <input
+        type={type}
+        value={value}
+        required={required}
+        maxLength={maxLength}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-orange-500"
+      />
+    </label>
+  )
+}
+
 function LinhaMensagem({ texto }: { texto: string }) {
   return (
     <tr>
-      <td colSpan={10} className="px-3 py-6 text-center text-sm font-bold text-slate-500">
+      <td colSpan={11} className="px-3 py-6 text-center text-sm font-bold text-slate-500">
         {texto}
       </td>
     </tr>
   )
+}
+
+function clienteFormInicial(): ClienteForm {
+  return {
+    nome: '',
+    cpf_cnpj: '',
+    whatsapp: '',
+    email: '',
+    cep: '',
+    logradouro: '',
+    numero: '',
+    bairro: '',
+    cidade: '',
+    estado: '',
+  }
 }
 
 function formatCurrency(value: number) {

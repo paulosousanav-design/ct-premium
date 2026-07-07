@@ -151,6 +151,56 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  try {
+    const auth = await requireAdminPermission(request, 'relatorios')
+    if (!auth.ok) return auth.response
+
+    const body = await request.json().catch(() => null)
+    const ids = Array.isArray(body?.ids)
+      ? body.ids.map(Number).filter((id: number) => Number.isInteger(id) && id > 0)
+      : [Number(body?.id)].filter((id) => Number.isInteger(id) && id > 0)
+
+    if (ids.length === 0) {
+      return NextResponse.json({ error: 'Informe o cliente para editar.' }, { status: 400 })
+    }
+
+    const nome = limparTexto(body?.nome)
+    if (!nome) {
+      return NextResponse.json({ error: 'Informe o nome do cliente.' }, { status: 400 })
+    }
+
+    const payload = {
+      nome,
+      cpf_cnpj: limparTexto(body?.cpf_cnpj) || null,
+      whatsapp: limparTexto(body?.whatsapp) || null,
+      email: limparTexto(body?.email) || null,
+      cep: limparTexto(body?.cep) || null,
+      logradouro: limparTexto(body?.logradouro) || null,
+      numero: limparTexto(body?.numero) || null,
+      bairro: limparTexto(body?.bairro) || null,
+      cidade: limparTexto(body?.cidade) || null,
+      estado: limparTexto(body?.estado)?.toUpperCase() || null,
+    }
+
+    const supabase = getSupabaseAdmin()
+    const { error } = await supabase
+      .from('clientes')
+      .update(payload)
+      .in('id', Array.from(new Set(ids)))
+
+    if (error) throw error
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('Erro ao editar cliente:', error)
+    return NextResponse.json(
+      { error: formatarErro(error, 'Erro ao editar cliente.') },
+      { status: 500 }
+    )
+  }
+}
+
 async function carregarOrdens(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   clienteIds: number[],
@@ -242,6 +292,9 @@ function resumirCliente(cliente: ClienteRow & { ids: number[]; ordens: OrdemRow[
     whatsapp: cliente.whatsapp ?? null,
     email: cliente.email ?? null,
     cep: cliente.cep ?? null,
+    logradouro: cliente.logradouro ?? null,
+    numero: cliente.numero ?? null,
+    bairro: cliente.bairro ?? null,
     endereco: formatarEndereco(cliente),
     cidade: cliente.cidade ?? null,
     estado: cliente.estado ?? null,
@@ -274,6 +327,10 @@ function formatarEndereco(cliente: ClienteRow) {
   const linha1 = [cliente.logradouro, cliente.numero].filter(Boolean).join(', ')
   const linha2 = [cliente.bairro, cliente.cidade, cliente.estado].filter(Boolean).join(' / ')
   return [linha1, linha2, cliente.cep].filter(Boolean).join(' - ') || null
+}
+
+function limparTexto(value: unknown) {
+  return String(value ?? '').trim()
 }
 
 function normalizarDigitos(value: string) {
