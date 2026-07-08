@@ -442,6 +442,41 @@ body {
           font-weight: 800;
         }
 
+        .service-area-note {
+          display: grid;
+          gap: 6px;
+          margin-bottom: 12px;
+          border: 1px solid rgba(251, 146, 60, 0.35);
+          border-radius: 12px;
+          background: rgba(251, 146, 60, 0.12);
+          color: #fed7aa;
+          padding: 10px 12px;
+          font-size: 12px;
+          font-weight: 750;
+          line-height: 1.35;
+        }
+
+        .service-area-note a,
+        .region-whatsapp {
+          color: #ffffff;
+          font-weight: 950;
+          text-decoration: underline;
+          text-decoration-color: rgba(255, 255, 255, 0.55);
+          text-underline-offset: 3px;
+        }
+
+        .region-whatsapp {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          margin: -2px 0 10px;
+          border-radius: 9px;
+          background: #16a34a;
+          padding: 10px 12px;
+          font-size: 12px;
+          text-decoration: none;
+        }
+
         .cep-row,
         .street-row,
         .city-row {

@@ -6,6 +6,8 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const aberturaChamadosAtiva =
   process.env.ABERTURA_CHAMADOS_ATIVA === 'true' ||
   process.env.NEXT_PUBLIC_ABERTURA_CHAMADOS_ATIVA === 'true'
+const estadoAtendido = 'MS'
+const whatsappAtendimento = '5567992058808'
 
 function getSupabaseAdmin() {
   if (!supabaseUrl || !serviceRoleKey) {
@@ -73,10 +75,23 @@ export async function POST(request: NextRequest) {
     const modelo = getCampo(dados, 'modelo')
     const defeito = getCampo(dados, 'defeito')
     const garantia = getCampo(dados, 'garantia') === 'SIM'
+    const cidade = getCampo(dados, 'cidade')
+    const estado = getCampo(dados, 'estado').toUpperCase()
 
     if (!nomeCliente || !cpfCnpj || !whatsapp || !categoriaId || !marcaId || !modelo || !defeito) {
       return NextResponse.json(
         { error: 'Preencha nome, CPF/CNPJ, WhatsApp, equipamento, marca, modelo e defeito.' },
+        { status: 400 }
+      )
+    }
+
+    const validacaoArea = validarAreaAtendimento(cidade, estado)
+    if (!validacaoArea.ok) {
+      return NextResponse.json(
+        {
+          error: validacaoArea.mensagem,
+          whatsappUrl: validacaoArea.whatsappUrl,
+        },
         { status: 400 }
       )
     }
@@ -98,8 +113,8 @@ export async function POST(request: NextRequest) {
       logradouro: getCampo(dados, 'rua') || null,
       numero: getCampo(dados, 'numero') || null,
       bairro: getCampo(dados, 'bairro') || null,
-      cidade: getCampo(dados, 'cidade') || null,
-      estado: getCampo(dados, 'estado') || null,
+      cidade: cidade || null,
+      estado: estado || null,
     }
 
     const { data: novoCliente, error: clienteError } = await supabase
@@ -234,6 +249,36 @@ function gerarNumeroOS() {
   const sequencia = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
 
   return `CT${ano}${mes}${dia}${sequencia}`
+}
+
+function validarAreaAtendimento(cidade: string, estado: string) {
+  const uf = estado.trim().toUpperCase()
+  const whatsappUrl = criarWhatsAppRegiaoUrl(cidade, uf)
+
+  if (!uf) {
+    return {
+      ok: false,
+      mensagem: 'Informe a UF do atendimento. No momento a abertura online esta liberada somente para Mato Grosso do Sul (MS).',
+      whatsappUrl,
+    }
+  }
+
+  if (uf !== estadoAtendido) {
+    return {
+      ok: false,
+      mensagem: 'No momento a abertura online esta liberada somente para Mato Grosso do Sul (MS). Para outras regioes, fale conosco pelo WhatsApp.',
+      whatsappUrl,
+    }
+  }
+
+  return { ok: true, mensagem: '', whatsappUrl: '' }
+}
+
+function criarWhatsAppRegiaoUrl(cidade: string, estado: string) {
+  const uf = estado.trim().toUpperCase()
+  const local = [cidade.trim(), uf].filter(Boolean).join('/')
+  const texto = `Ola! Estou em ${local || 'minha regiao'} e gostaria de saber quando o atendimento da Chame o Tecnico estara disponivel na minha regiao.`
+  return `https://wa.me/${whatsappAtendimento}?text=${encodeURIComponent(texto)}`
 }
 
 function formatarErro(error: unknown, fallback: string) {

@@ -33,6 +33,8 @@ type FormState = {
 }
 
 const aberturaChamadosAtiva = process.env.NEXT_PUBLIC_ABERTURA_CHAMADOS_ATIVA === 'true'
+const estadoAtendido = 'MS'
+const whatsappAtendimento = '5567992058808'
 
 const formInicial: FormState = {
   nomeCliente: '',
@@ -90,6 +92,7 @@ export default function AbrirChamadoPage() {
   const [salvando, setSalvando] = useState(false)
   const [buscandoCep, setBuscandoCep] = useState(false)
   const [erro, setErro] = useState('')
+  const [whatsRegiaoUrl, setWhatsRegiaoUrl] = useState('')
   const [sucesso, setSucesso] = useState<{ id: number; numeroOS: string } | null>(null)
 
   const carregarDados = useCallback(async () => {
@@ -194,6 +197,7 @@ export default function AbrirChamadoPage() {
   async function enviar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setErro('')
+    setWhatsRegiaoUrl('')
     setSucesso(null)
 
     if (!aberturaChamadosAtiva) {
@@ -205,6 +209,13 @@ export default function AbrirChamadoPage() {
 
     try {
       const formData = new FormData(event.currentTarget)
+      const validacaoArea = validarAreaAtendimento(String(formData.get('cidade') ?? ''), String(formData.get('estado') ?? ''))
+      if (!validacaoArea.ok) {
+        setErro(validacaoArea.mensagem)
+        setWhatsRegiaoUrl(validacaoArea.whatsappUrl)
+        return
+      }
+
       if (!formData.get('garantia')) formData.set('garantia', 'NAO')
       const temAnexos = anexos.some((arquivo) => arquivo.size > 0)
       const payload = Object.fromEntries(formData.entries())
@@ -219,7 +230,10 @@ export default function AbrirChamadoPage() {
             }),
       })
       const data = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(data?.error ?? 'Nao foi possivel abrir o chamado.')
+      if (!response.ok) {
+        if (data?.whatsappUrl) setWhatsRegiaoUrl(String(data.whatsappUrl))
+        throw new Error(data?.error ?? 'Nao foi possivel abrir o chamado.')
+      }
 
       setSucesso({ id: Number(data.id), numeroOS: String(data.numeroOS) })
       router.push(`/consulta?os=${encodeURIComponent(String(data.numeroOS))}&whatsapp=${encodeURIComponent(String(formData.get('whatsapp') ?? ''))}`)
@@ -251,7 +265,16 @@ export default function AbrirChamadoPage() {
           </div>
         </header>
 
-        {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{erro}</div>}
+        {erro && (
+          <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+            <p>{erro}</p>
+            {whatsRegiaoUrl && (
+              <a href={whatsRegiaoUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex rounded-lg bg-green-600 px-4 py-2 text-white transition hover:bg-green-700">
+                Falar no WhatsApp
+              </a>
+            )}
+          </div>
+        )}
         {!aberturaChamadosAtiva && (
           <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-800">
             A abertura de chamados pelo cliente sera liberada em breve. Enquanto isso, estamos cadastrando tecnicos parceiros para ampliar a rede de atendimento.
@@ -267,6 +290,17 @@ export default function AbrirChamadoPage() {
 
         <form onSubmit={enviar} action="/api/chamados" method="post" encType="multipart/form-data" data-public-os-form className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
           <section className="space-y-4 rounded-xl bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+              <p className="font-black">Atendimento inicial somente em Mato Grosso do Sul (MS).</p>
+              <p className="mt-1 font-semibold">
+                Para outros estados, fale conosco pelo WhatsApp:
+                {' '}
+                <a href={criarWhatsAppRegiaoUrl('', '')} target="_blank" rel="noreferrer" className="font-black underline decoration-orange-400 underline-offset-4">
+                  chamar agora
+                </a>
+              </p>
+            </div>
+
             <Bloco titulo="Dados do cliente">
               <Field label="Nome completo" name="nomeCliente" value={form.nomeCliente} onChange={handleChange} required />
               <Field label="CPF/CNPJ" name="cpfCnpj" value={form.cpfCnpj} onChange={handleChange} required inputMode="numeric" maxLength={18} />
@@ -285,7 +319,7 @@ export default function AbrirChamadoPage() {
               <Field label="Numero" name="numero" value={form.numero} onChange={handleChange} />
               <Field label="Bairro" name="bairro" value={form.bairro} onChange={handleChange} />
               <Field label="Cidade" name="cidade" value={form.cidade} onChange={handleChange} />
-              <Field label="UF" name="estado" value={form.estado} onChange={handleChange} maxLength={2} />
+              <Field label="UF" name="estado" value={form.estado} onChange={handleChange} maxLength={2} required />
             </Bloco>
 
             <Bloco titulo="Equipamento">
@@ -529,6 +563,36 @@ function formatarCep(value: string) {
   return apenasNumeros(value)
     .slice(0, 8)
     .replace(/^(\d{5})(\d)/, '$1-$2')
+}
+
+function validarAreaAtendimento(cidade: string, estado: string) {
+  const uf = estado.trim().toUpperCase()
+  const whatsappUrl = criarWhatsAppRegiaoUrl(cidade, uf)
+
+  if (!uf) {
+    return {
+      ok: false,
+      mensagem: 'Informe a UF do atendimento. No momento a abertura online esta liberada somente para Mato Grosso do Sul (MS).',
+      whatsappUrl,
+    }
+  }
+
+  if (uf !== estadoAtendido) {
+    return {
+      ok: false,
+      mensagem: 'No momento a abertura online esta liberada somente para Mato Grosso do Sul (MS). Para outras regioes, fale conosco pelo WhatsApp.',
+      whatsappUrl,
+    }
+  }
+
+  return { ok: true, mensagem: '', whatsappUrl: '' }
+}
+
+function criarWhatsAppRegiaoUrl(cidade: string, estado: string) {
+  const uf = estado.trim().toUpperCase()
+  const local = [cidade.trim(), uf].filter(Boolean).join('/')
+  const texto = `Ola! Estou em ${local || 'minha regiao'} e gostaria de saber quando o atendimento da Chame o Tecnico estara disponivel na minha regiao.`
+  return `https://wa.me/${whatsappAtendimento}?text=${encodeURIComponent(texto)}`
 }
 
 async function buscarEnderecoPorCep(cep: string) {
