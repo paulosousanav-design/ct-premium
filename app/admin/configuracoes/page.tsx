@@ -88,6 +88,7 @@ export default function ConfiguracoesPage() {
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [salvandoEquipamento, setSalvandoEquipamento] = useState(false)
+  const [baixandoBackup, setBaixandoBackup] = useState(false)
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [tabelaPendente, setTabelaPendente] = useState(false)
@@ -233,6 +234,39 @@ export default function ConfiguracoesPage() {
       setErro(error instanceof Error ? error.message : 'Erro ao cadastrar marca.')
     } finally {
       setSalvandoEquipamento(false)
+    }
+  }
+
+  async function baixarBackup() {
+    setBaixandoBackup(true)
+    setErro('')
+    setMensagem('')
+
+    try {
+      const response = await adminFetch('/api/admin/backup')
+      const blob = await response.blob()
+
+      if (!response.ok) {
+        const texto = await blob.text()
+        const data = tentarJson(texto)
+        throw new Error(data?.error ?? 'Erro ao gerar backup.')
+      }
+
+      const nomeArquivo = extrairNomeArquivo(response.headers.get('content-disposition')) ?? criarNomeBackup()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = nomeArquivo
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+
+      setMensagem('Backup gerado com sucesso. Salve o arquivo no PC, pendrive ou pasta sincronizada em nuvem.')
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Erro ao gerar backup.')
+    } finally {
+      setBaixandoBackup(false)
     }
   }
 
@@ -420,6 +454,25 @@ export default function ConfiguracoesPage() {
 
         <aside className="space-y-4">
           <div className="rounded-xl bg-white p-5 shadow-sm">
+            <p className="text-xs font-black uppercase text-orange-600">ADM Master</p>
+            <h2 className="mt-1 text-lg font-black text-slate-950">Backup do sistema</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Baixe um arquivo com clientes, OS, historico, financeiro, tecnicos, pecas, usuarios e configuracoes.
+            </p>
+            <button
+              type="button"
+              onClick={baixarBackup}
+              disabled={baixandoBackup}
+              className="mt-4 w-full rounded-lg bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {baixandoBackup ? 'Gerando backup...' : 'Baixar backup'}
+            </button>
+            <p className="mt-2 text-xs font-semibold text-slate-500">
+              Para salvar em pendrive ou nuvem, escolha o local ao baixar ou mova o arquivo depois.
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-white p-5 shadow-sm">
             <h2 className="text-lg font-black text-slate-950">Identidade visual</h2>
             <div className="mt-4 space-y-3">
               <Input label="Logo principal URL" name="logo_principal_url" value={form.logo_principal_url} onChange={handleChange} />
@@ -591,4 +644,29 @@ function mascaraCpfCnpj(value: string) {
     .replace(/(\d{3})(\d)/, '$1.$2')
     .replace(/(\d{3})(\d)/, '$1/$2')
     .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
+}
+
+function extrairNomeArquivo(contentDisposition: string | null) {
+  if (!contentDisposition) return null
+
+  const match = contentDisposition.match(/filename="?([^"]+)"?/i)
+  return match?.[1] ?? null
+}
+
+function criarNomeBackup() {
+  const agora = new Date()
+  const ano = agora.getFullYear()
+  const mes = String(agora.getMonth() + 1).padStart(2, '0')
+  const dia = String(agora.getDate()).padStart(2, '0')
+  const hora = String(agora.getHours()).padStart(2, '0')
+  const minuto = String(agora.getMinutes()).padStart(2, '0')
+  return `backup-chame-o-tecnico-${ano}-${mes}-${dia}-${hora}${minuto}.json`
+}
+
+function tentarJson(texto: string) {
+  try {
+    return JSON.parse(texto) as { error?: string }
+  } catch {
+    return null
+  }
 }
