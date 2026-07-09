@@ -41,6 +41,8 @@ type OrdemServico = {
   id: number
   numero_os: string | null
   origem_os?: string | null
+  garantia?: boolean | null
+  garantidor_id?: number | null
   created_at: string
   status: string | null
   prioridade: string | null
@@ -50,6 +52,7 @@ type OrdemServico = {
   parceiro_id: number | null
   clientes?: Cliente | null
   parceiros?: Parceiro | null
+  garantidores?: { nome: string | null } | null
   categorias?: { nome: string | null } | null
   marcas?: { nome: string | null } | null
 }
@@ -90,12 +93,18 @@ export async function GET(request: NextRequest) {
 
     const supabase = getSupabaseAdmin()
     const temOrigemOs = await colunaExiste(supabase, 'ordens_servico', 'origem_os')
+    const temGarantia = await colunaExiste(supabase, 'ordens_servico', 'garantia')
+    const temGarantidor = await colunaExiste(supabase, 'ordens_servico', 'garantidor_id')
     const origemOsSelect = temOrigemOs ? 'origem_os,' : ''
+    const garantiaSelect = temGarantia ? 'garantia,' : ''
+    const garantidorSelect = temGarantidor ? 'garantidor_id, garantidores:garantidor_id ( nome ),' : ''
 
     const ordensSelect = `
         id,
         numero_os,
         ${origemOsSelect}
+        ${garantiaSelect}
+        ${garantidorSelect}
         created_at,
         status,
         prioridade,

@@ -27,6 +27,9 @@ type OrdemServico = {
   id: number
   numero_os: string | null
   origem_os?: string | null
+  garantia?: boolean | null
+  garantidor_id?: number | null
+  garantidor_nome?: string | null
   created_at: string
   status: string | null
   prioridade: string | null
@@ -64,6 +67,8 @@ type OrdemServicoTriagemApi = {
   id: number
   numero_os: string | null
   origem_os?: string | null
+  garantia?: boolean | null
+  garantidor_id?: number | null
   created_at: string
   status: string | null
   prioridade: string | null
@@ -86,6 +91,7 @@ type OrdemServicoTriagemApi = {
     razao_social: string | null
     whatsapp: string | null
   } | null
+  garantidores?: { nome: string | null } | null
   tecnico_resposta?: TecnicoResposta | null
   categorias?: { nome: string | null } | null
   marcas?: { nome: string | null } | null
@@ -214,11 +220,11 @@ export default function OrdensServicoPage() {
   const ordensFiltradas = useMemo(() => {
     return ordens.filter((os) => {
       const texto =
-        `${os.numero_os ?? ''} ${formatarOrigemOs(os.origem_os)} ${os.cliente_nome ?? ''} ${os.cliente_endereco ?? ''} ${os.categoria_nome ?? ''} ${os.marca_nome ?? ''} ${os.modelo ?? ''} ${os.tecnico_nome ?? ''}`.toLowerCase()
+        `${os.numero_os ?? ''} ${formatarOrigemOs(os.origem_os)} ${os.garantidor_nome ?? ''} ${os.cliente_nome ?? ''} ${os.cliente_endereco ?? ''} ${os.categoria_nome ?? ''} ${os.marca_nome ?? ''} ${os.modelo ?? ''} ${os.tecnico_nome ?? ''}`.toLowerCase()
 
       const bateBusca = texto.includes(busca.toLowerCase().trim())
       const bateStatus = statusFiltro === 'TODAS' || os.status === statusFiltro
-      const bateOrigem = origemFiltro === 'TODAS' || normalizarOrigemOs(os.origem_os) === origemFiltro
+      const bateOrigem = origemFiltro === 'TODAS' || getOrigemOsVisual(os) === origemFiltro
 
       return bateBusca && bateStatus && bateOrigem
     })
@@ -303,7 +309,10 @@ export default function OrdensServicoPage() {
       (data?.data ?? []).map((item: OrdemServicoTriagemApi) => ({
         id: item.id,
         numero_os: item.numero_os,
-        origem_os: item.origem_os ?? null,
+        origem_os: getOrigemOsVisual(item),
+        garantia: item.garantia ?? null,
+        garantidor_id: item.garantidor_id ?? null,
+        garantidor_nome: item.garantidores?.nome ?? null,
         created_at: item.created_at,
         status: item.status,
         prioridade: item.prioridade,
@@ -1212,6 +1221,11 @@ function KanbanOSBoard({
             </div>
 
             <OrigemBadge origem={os.origem_os} compact />
+            {os.garantidor_nome && (
+              <p className="mt-1 truncate text-[10px] font-bold text-amber-700">
+                Garantidor: {os.garantidor_nome}
+              </p>
+            )}
 
             {os.status === 'NOVA' && (
               <div className="mt-2 mb-2 animate-pulse rounded-md border border-emerald-500 bg-emerald-100 px-2 py-1 text-center text-[11px] font-bold text-emerald-800 shadow-sm">
@@ -1357,6 +1371,11 @@ function KanbanOSBoard({
                       </div>
                       <div className="mt-2">
                         <OrigemBadge origem={os.origem_os} />
+                        {os.garantidor_nome && (
+                          <p className="mt-1 truncate text-xs font-bold text-amber-700">
+                            Garantidor: {os.garantidor_nome}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <StatusBadge status={os.status ?? 'NOVA'} />
@@ -1557,6 +1576,15 @@ function normalizarOrigemOs(origem?: string | null) {
   if (valor === 'GARANTIA_SEGURADORA') return valor
   if (valor === 'AVULSO_ADMIN') return valor
   return 'ABERTURA_INTERNA'
+}
+
+function getOrigemOsVisual(os: {
+  origem_os?: string | null
+  garantia?: boolean | null
+  garantidor_id?: number | null
+}) {
+  if (os.garantia || os.garantidor_id) return 'GARANTIA_SEGURADORA'
+  return normalizarOrigemOs(os.origem_os)
 }
 
 function formatarOrigemOs(origem?: string | null) {
