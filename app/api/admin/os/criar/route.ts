@@ -27,6 +27,77 @@ async function colunaExiste(
   return !error
 }
 
+export async function GET(request: NextRequest) {
+  try {
+    const auth = await requireAdminPermission(request, 'os')
+    if (!auth.ok) return auth.response
+
+    const termo = String(request.nextUrl.searchParams.get('q') ?? '').trim()
+    if (termo.length < 3) return NextResponse.json({ data: [] })
+
+    const supabase = getSupabaseAdmin()
+    const termoSeguro = termo.replace(/[%_,]/g, '')
+    const digits = apenasNumeros(termoSeguro)
+    const filtros = [
+      `nome.ilike.%${termoSeguro}%`,
+      `cpf_cnpj.ilike.%${termoSeguro}%`,
+      `whatsapp.ilike.%${termoSeguro}%`,
+    ]
+
+    if (digits.length >= 3) {
+      filtros.push(`cpf_cnpj.ilike.%${digits}%`, `whatsapp.ilike.%${digits}%`)
+    }
+
+    const { data: clientes, error } = await supabase
+      .from('clientes')
+      .select('id, nome, cpf_cnpj, whatsapp, email, cep, logradouro, numero, bairro, cidade, estado')
+      .or(filtros.join(','))
+      .order('nome', { ascending: true })
+      .limit(8)
+
+    if (error) throw error
+
+    const ids = (clientes ?? []).map((cliente) => cliente.id).filter(Boolean)
+    const resumoOs = new Map<number, { total: number; ultima_os: string | null; ultimo_atendimento: string | null }>()
+
+    if (ids.length > 0) {
+      const { data: ordens, error: ordensError } = await supabase
+        .from('ordens_servico')
+        .select('cliente_id, numero_os, created_at')
+        .in('cliente_id', ids)
+        .order('created_at', { ascending: false })
+
+      if (ordensError) throw ordensError
+
+      ;(ordens ?? []).forEach((ordem) => {
+        const clienteId = Number(ordem.cliente_id)
+        const atual = resumoOs.get(clienteId) ?? { total: 0, ultima_os: null, ultimo_atendimento: null }
+        atual.total += 1
+        if (!atual.ultima_os) {
+          atual.ultima_os = ordem.numero_os ?? null
+          atual.ultimo_atendimento = ordem.created_at ?? null
+        }
+        resumoOs.set(clienteId, atual)
+      })
+    }
+
+    return NextResponse.json({
+      data: (clientes ?? []).map((cliente) => ({
+        ...cliente,
+        total_os: resumoOs.get(cliente.id)?.total ?? 0,
+        ultima_os: resumoOs.get(cliente.id)?.ultima_os ?? null,
+        ultimo_atendimento: resumoOs.get(cliente.id)?.ultimo_atendimento ?? null,
+      })),
+    })
+  } catch (error) {
+    console.error('Erro ao buscar clientes para OS:', error)
+    return NextResponse.json(
+      { error: formatarErro(error, 'Erro ao buscar clientes.') },
+      { status: 500 }
+    )
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'os')
@@ -42,6 +113,7 @@ export async function POST(request: NextRequest) {
     const modelo = String(body?.modelo ?? '').trim()
     const defeito = String(body?.defeito ?? '').trim()
     const garantia = body?.garantia === 'SIM'
+    const clienteIdInformado = Number(body?.clienteId)
 
     if (!nomeCliente || !cpfCnpj || !whatsapp || !categoriaId || !marcaId || !modelo || !defeito) {
       return NextResponse.json(
@@ -65,14 +137,60 @@ export async function POST(request: NextRequest) {
       estado: String(body?.estado ?? '').trim() || null,
     }
 
-    const { data: novoCliente, error: novoClienteError } = await supabase
-      .from('clientes')
-      .insert(clientePayload)
-      .select('id')
-      .single()
+    let clienteId: number | null = Number.isFinite(clienteIdInformado) && clienteIdInformado > 0 ? clienteIdInformado : null
 
-    if (novoClienteError) throw novoClienteError
-    const clienteId = novoCliente.id
+    if (clienteId) {
+      const { data: clienteExistente, error: clienteExistenteError } = await supabase
+        .from('clientes')
+        .select('id')
+        .eq('id', clienteId)
+        .maybeSingle()
+
+      if (clienteExistenteError) throw clienteExistenteError
+      if (!clienteExistente?.id) {
+        return NextResponse.json({ error: 'Cliente selecionado nao foi encontrado.' }, { status: 404 })
+      }
+    }
+
+    if (!clienteId) {
+      const { data: clientePorDocumento, error: clientePorDocumentoError } = await supabase
+        .from('clientes')
+        .select('id')
+        .eq('cpf_cnpj', cpfCnpj)
+        .maybeSingle()
+
+      if (clientePorDocumentoError) throw clientePorDocumentoError
+      clienteId = clientePorDocumento?.id ?? null
+    }
+
+    if (!clienteId) {
+      const { data: clientePorWhatsapp, error: clientePorWhatsappError } = await supabase
+        .from('clientes')
+        .select('id')
+        .eq('whatsapp', whatsapp)
+        .maybeSingle()
+
+      if (clientePorWhatsappError) throw clientePorWhatsappError
+      clienteId = clientePorWhatsapp?.id ?? null
+    }
+
+    if (clienteId) {
+      const { error: atualizarClienteError } = await supabase
+        .from('clientes')
+        .update(clientePayload)
+        .eq('id', clienteId)
+
+      if (atualizarClienteError) throw atualizarClienteError
+    } else {
+      const { data: novoCliente, error: novoClienteError } = await supabase
+        .from('clientes')
+        .insert(clientePayload)
+        .select('id')
+        .single()
+
+      if (novoClienteError) throw novoClienteError
+      clienteId = novoCliente.id
+    }
 
     const numeroOS = gerarNumeroOS()
     const origemOs = garantia ? 'GARANTIA_SEGURADORA' : 'ABERTURA_INTERNA'
@@ -115,6 +233,10 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+function apenasNumeros(value: string) {
+  return value.replace(/\D/g, '')
 }
 
 function gerarNumeroOS() {

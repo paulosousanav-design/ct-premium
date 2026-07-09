@@ -63,6 +63,23 @@ type TecnicoSugerido = {
   criterio: string
 }
 
+type ClienteSugestao = {
+  id: number
+  nome: string | null
+  cpf_cnpj: string | null
+  whatsapp: string | null
+  email: string | null
+  cep: string | null
+  logradouro: string | null
+  numero: string | null
+  bairro: string | null
+  cidade: string | null
+  estado: string | null
+  total_os: number
+  ultima_os: string | null
+  ultimo_atendimento: string | null
+}
+
 type OrdemServicoTriagemApi = {
   id: number
   numero_os: string | null
@@ -192,6 +209,9 @@ export default function OrdensServicoPage() {
   const [mostrarFormulario, setMostrarFormulario] = useState(false)
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
+  const [clienteSelecionado, setClienteSelecionado] = useState<ClienteSugestao | null>(null)
+  const [clientesSugeridos, setClientesSugeridos] = useState<ClienteSugestao[]>([])
+  const [buscandoClientes, setBuscandoClientes] = useState(false)
   const [busca, setBusca] = useState('')
   const [statusFiltro, setStatusFiltro] = useState('TODAS')
   const [origemFiltro, setOrigemFiltro] = useState('TODAS')
@@ -211,6 +231,28 @@ export default function OrdensServicoPage() {
 
     return () => clearTimeout(timer)
   }, [form.cep])
+
+  const clienteTermoBusca = useMemo(
+    () => getTermoBuscaCliente(form.cpfCnpj, form.nomeCliente, form.whatsapp),
+    [form.cpfCnpj, form.nomeCliente, form.whatsapp]
+  )
+
+  useEffect(() => {
+    if (!mostrarFormulario || clienteSelecionado || clienteTermoBusca.length < 3) {
+      const timer = setTimeout(() => {
+        setClientesSugeridos([])
+        setBuscandoClientes(false)
+      }, 0)
+
+      return () => clearTimeout(timer)
+    }
+
+    const timer = setTimeout(() => {
+      void buscarClientesExistentes(clienteTermoBusca)
+    }, 450)
+
+    return () => clearTimeout(timer)
+  }, [clienteSelecionado, clienteTermoBusca, mostrarFormulario])
 
   const marcasFiltradas = useMemo(() => {
     if (!form.categoriaId) return []
@@ -337,6 +379,10 @@ export default function OrdensServicoPage() {
   ) => {
     const { name, value } = e.target
 
+    if (['nomeCliente', 'cpfCnpj', 'whatsapp', 'email', 'cep', 'rua', 'numero', 'bairro', 'cidade', 'estado'].includes(name)) {
+      setClienteSelecionado(null)
+    }
+
     if (name === 'categoriaId') {
       setForm((prev) => ({
         ...prev,
@@ -379,6 +425,45 @@ export default function OrdensServicoPage() {
     const files = e.target.files
     if (!files) return
     setFotos(Array.from(files))
+  }
+
+  async function buscarClientesExistentes(termo: string) {
+    setBuscandoClientes(true)
+    try {
+      const response = await adminFetch(`/api/admin/os/criar?q=${encodeURIComponent(termo)}`)
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error ?? 'Erro ao buscar clientes.')
+
+      setClientesSugeridos((data?.data ?? []) as ClienteSugestao[])
+    } catch (err) {
+      console.error('Erro ao buscar clientes:', err)
+      setClientesSugeridos([])
+    } finally {
+      setBuscandoClientes(false)
+    }
+  }
+
+  function usarCliente(cliente: ClienteSugestao) {
+    setClienteSelecionado(cliente)
+    setClientesSugeridos([])
+    setForm((prev) => ({
+      ...prev,
+      nomeCliente: cliente.nome ?? prev.nomeCliente,
+      cpfCnpj: cliente.cpf_cnpj ?? prev.cpfCnpj,
+      whatsapp: cliente.whatsapp ?? prev.whatsapp,
+      email: cliente.email ?? prev.email,
+      cep: cliente.cep ?? prev.cep,
+      rua: cliente.logradouro ?? prev.rua,
+      numero: cliente.numero ?? prev.numero,
+      bairro: cliente.bairro ?? prev.bairro,
+      cidade: cliente.cidade ?? prev.cidade,
+      estado: cliente.estado ?? prev.estado,
+    }))
+  }
+
+  function limparClienteSelecionado() {
+    setClienteSelecionado(null)
+    setClientesSugeridos([])
   }
 
   async function buscarCep(cepInformado?: string) {
@@ -430,7 +515,7 @@ export default function OrdensServicoPage() {
       const response = await adminFetch('/api/admin/os/criar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, clienteId: clienteSelecionado?.id ?? null }),
       })
 
       const data = await response.json().catch(() => null)
@@ -544,6 +629,8 @@ export default function OrdensServicoPage() {
       setMensagem(`OS criada com sucesso: ${numeroOS}`)
       setForm(formInicial)
       setFotos([])
+      setClienteSelecionado(null)
+      setClientesSugeridos([])
       await carregarDados()
     } catch (err) {
       console.error('Erro ao salvar OS:', err)
@@ -756,6 +843,60 @@ export default function OrdensServicoPage() {
                 <Input label="WhatsApp *" name="whatsapp" value={form.whatsapp} onChange={handleChange} />
                 <Input label="E-mail" name="email" value={form.email} onChange={handleChange} />
               </div>
+
+              {clienteSelecionado ? (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="font-black">Cliente selecionado: {clienteSelecionado.nome ?? '-'}</p>
+                      <p className="mt-1 font-semibold">
+                        {clienteSelecionado.total_os} OS anterior(es)
+                        {clienteSelecionado.ultima_os ? ` - ultima: ${clienteSelecionado.ultima_os}` : ''}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={limparClienteSelecionado}
+                      className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-black text-emerald-800 transition hover:bg-emerald-100"
+                    >
+                      Trocar cliente
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                (clientesSugeridos.length > 0 || buscandoClientes) && (
+                  <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black text-orange-900">Clientes encontrados</p>
+                        <p className="text-xs font-semibold text-orange-800">
+                          Use um cadastro existente para abrir OS de outro equipamento sem duplicar cliente.
+                        </p>
+                      </div>
+                      {buscandoClientes && <span className="text-xs font-bold text-orange-700">Buscando...</span>}
+                    </div>
+
+                    <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                      {clientesSugeridos.map((cliente) => (
+                        <button
+                          key={cliente.id}
+                          type="button"
+                          onClick={() => usarCliente(cliente)}
+                          className="rounded-lg border border-orange-200 bg-white p-3 text-left text-sm transition hover:border-orange-400 hover:shadow-sm"
+                        >
+                          <p className="truncate font-black text-slate-950">{cliente.nome ?? '-'}</p>
+                          <p className="mt-1 text-xs font-semibold text-slate-600">{cliente.whatsapp ?? '-'}</p>
+                          <p className="mt-1 truncate text-xs text-slate-500">{cliente.cpf_cnpj ?? 'Documento nao informado'}</p>
+                          <p className="mt-2 text-xs font-bold text-orange-700">
+                            {cliente.total_os} OS
+                            {cliente.ultima_os ? ` - ultima ${cliente.ultima_os}` : ''}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              )}
             </section>
 
             <section>
@@ -1667,6 +1808,16 @@ function formatarCpfCnpj(valor: string) {
     .replace(/\.(\d{3})(\d)/, '.$1.$2')
     .replace(/(\d{4})(\d)/, '$1/$2')
     .replace(/(\d{2})$/, '-$1')
+}
+
+function getTermoBuscaCliente(cpfCnpj: string, nomeCliente: string, whatsappCliente: string) {
+  const documento = cpfCnpj.replace(/\D/g, '')
+  if (documento.length >= 3) return cpfCnpj.trim()
+
+  const whatsapp = whatsappCliente.replace(/\D/g, '')
+  if (whatsapp.length >= 3) return whatsappCliente.trim()
+
+  return nomeCliente.trim()
 }
 
 function formatarEnderecoCliente(cliente: OrdemServicoTriagemApi['clientes']) {
