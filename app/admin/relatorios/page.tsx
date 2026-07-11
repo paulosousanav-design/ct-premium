@@ -32,11 +32,15 @@ type RelatoriosData = {
   ticketCategorias: Array<{
     categoria: string
     totalOs: number
+    finalizadas: number
     faturamento: number
     tecnico: number
     margem: number
     ticketBruto: number
     ticketMargem: number
+    mttrHoras: number
+    menorMttrHoras: number
+    maiorMttrHoras: number
   }>
   resumoMensal: Array<{
     chave: string
@@ -231,16 +235,18 @@ export default function RelatoriosPage() {
         formatCurrency(item.resultadoLiquido ?? 0),
       ]),
       [],
-      ['Ticket por categoria'],
-      ['Categoria', 'OS', 'Faturamento', 'Tecnico', 'Margem', 'Ticket bruto', 'Ticket margem'],
+      ['Indicadores por tipo de aparelho'],
+      ['Categoria', 'OS', 'Finalizadas', 'Faturamento', 'Ticket medio', 'Margem', 'MTTR medio', 'Menor MTTR', 'Maior MTTR'],
       ...data.ticketCategorias.map((item) => [
         item.categoria,
         String(item.totalOs),
+        String(item.finalizadas),
         formatCurrency(item.faturamento),
-        formatCurrency(item.tecnico),
-        formatCurrency(item.margem),
         formatCurrency(item.ticketBruto),
-        formatCurrency(item.ticketMargem),
+        formatCurrency(item.margem),
+        formatDurationHours(item.mttrHoras),
+        formatDurationHours(item.menorMttrHoras),
+        formatDurationHours(item.maiorMttrHoras),
       ]),
       [],
       ['Ultimas OS'],
@@ -546,31 +552,35 @@ export default function RelatoriosPage() {
         </Panel>
       </section>
 
-      <Panel title="Ticket medio por categoria">
+      <Panel title="Indicadores por tipo de aparelho">
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <tr>
                 <th className="p-3">Categoria</th>
                 <th className="p-3 text-right">OS</th>
+                <th className="p-3 text-right">Finalizadas</th>
                 <th className="p-3 text-right">Faturamento</th>
-                <th className="p-3 text-right">Tecnico</th>
+                <th className="p-3 text-right">Ticket medio</th>
                 <th className="p-3 text-right">Margem</th>
-                <th className="p-3 text-right">Ticket bruto</th>
-                <th className="p-3 text-right">Ticket margem</th>
+                <th className="p-3 text-right">MTTR medio</th>
+                <th className="p-3 text-right">Menor/Maior</th>
               </tr>
             </thead>
             <tbody>
-              {!loading && (data?.ticketCategorias ?? []).length === 0 && <TableMessage text="Nenhuma categoria com valor no periodo." colSpan={7} />}
+              {!loading && (data?.ticketCategorias ?? []).length === 0 && <TableMessage text="Nenhuma categoria no periodo." colSpan={8} />}
               {!loading && (data?.ticketCategorias ?? []).map((item) => (
                 <tr key={item.categoria} className="border-t border-slate-200">
                   <td className="p-3 font-black text-slate-950">{item.categoria}</td>
                   <td className="p-3 text-right">{item.totalOs}</td>
+                  <td className="p-3 text-right">{item.finalizadas}</td>
                   <td className="p-3 text-right">{formatCurrency(item.faturamento)}</td>
-                  <td className="p-3 text-right">{formatCurrency(item.tecnico)}</td>
+                  <td className="p-3 text-right font-black text-slate-950">{formatCurrency(item.ticketBruto)}</td>
                   <td className="p-3 text-right font-black text-emerald-700">{formatCurrency(item.margem)}</td>
-                  <td className="p-3 text-right">{formatCurrency(item.ticketBruto)}</td>
-                  <td className="p-3 text-right font-black text-slate-950">{formatCurrency(item.ticketMargem)}</td>
+                  <td className="p-3 text-right font-black text-blue-700">{formatDurationHours(item.mttrHoras)}</td>
+                  <td className="p-3 text-right text-xs font-bold text-slate-600">
+                    {formatDurationHours(item.menorMttrHoras)} / {formatDurationHours(item.maiorMttrHoras)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -967,6 +977,16 @@ function formatCurrency(value: number) {
     style: 'currency',
     currency: 'BRL',
   })
+}
+
+function formatDurationHours(value: number) {
+  const hours = Number(value || 0)
+  if (hours <= 0) return '-'
+  if (hours < 24) return `${Math.round(hours)}h`
+
+  const days = Math.floor(hours / 24)
+  const remainingHours = Math.round(hours % 24)
+  return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`
 }
 
 function formatCsvCell(value: string) {

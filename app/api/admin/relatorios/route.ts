@@ -603,35 +603,81 @@ function diasCiclo(ordem: OrdemRelatorio, dataReferencia: Date) {
 function montarTicketPorCategoria(ordens: OrdemRelatorio[]) {
   const mapa = new Map<
     string,
-    { categoria: string; totalOs: number; faturamento: number; tecnico: number; margem: number }
+    {
+      categoria: string
+      totalOs: number
+      finalizadas: number
+      faturamento: number
+      tecnico: number
+      margem: number
+      mttrTotalHoras: number
+      mttrAmostras: number
+      menorMttrHoras: number | null
+      maiorMttrHoras: number | null
+    }
   >()
 
-  for (const ordem of ordensComValor(ordens)) {
+  for (const ordem of ordens) {
     const categoria = getNomeRelacao(ordem.categorias) || 'Sem categoria'
     const atual = mapa.get(categoria) ?? {
       categoria,
       totalOs: 0,
+      finalizadas: 0,
       faturamento: 0,
       tecnico: 0,
       margem: 0,
+      mttrTotalHoras: 0,
+      mttrAmostras: 0,
+      menorMttrHoras: null,
+      maiorMttrHoras: null,
     }
     const faturamento = valorPreferencial(ordem.cliente_total, ordem.total)
     const tecnico = valorPreferencial(ordem.tecnico_total, 0)
+    const mttrHoras = horasAteFinalizacao(ordem)
 
     atual.totalOs += 1
     atual.faturamento += faturamento
     atual.tecnico += tecnico
     atual.margem += faturamento - tecnico
+    if (ordem.status === 'FINALIZADA') atual.finalizadas += 1
+    if (mttrHoras !== null) {
+      atual.mttrTotalHoras += mttrHoras
+      atual.mttrAmostras += 1
+      atual.menorMttrHoras = atual.menorMttrHoras === null ? mttrHoras : Math.min(atual.menorMttrHoras, mttrHoras)
+      atual.maiorMttrHoras = atual.maiorMttrHoras === null ? mttrHoras : Math.max(atual.maiorMttrHoras, mttrHoras)
+    }
     mapa.set(categoria, atual)
   }
 
   return Array.from(mapa.values())
     .map((item) => ({
-      ...item,
+      categoria: item.categoria,
+      totalOs: item.totalOs,
+      finalizadas: item.finalizadas,
+      faturamento: item.faturamento,
+      tecnico: item.tecnico,
+      margem: item.margem,
       ticketBruto: mediaValor(item.faturamento, item.totalOs),
       ticketMargem: mediaValor(item.margem, item.totalOs),
+      mttrHoras: arredondarHoras(mediaValor(item.mttrTotalHoras, item.mttrAmostras)),
+      menorMttrHoras: arredondarHoras(item.menorMttrHoras ?? 0),
+      maiorMttrHoras: arredondarHoras(item.maiorMttrHoras ?? 0),
     }))
     .sort((a, b) => b.margem - a.margem)
+}
+
+function horasAteFinalizacao(ordem: OrdemRelatorio) {
+  if (ordem.status !== 'FINALIZADA' || !ordem.created_at || !ordem.finalizada_em) return null
+  const inicio = new Date(ordem.created_at)
+  const fim = new Date(ordem.finalizada_em)
+  if (!Number.isFinite(inicio.getTime()) || !Number.isFinite(fim.getTime())) return null
+  const diffMs = fim.getTime() - inicio.getTime()
+  if (diffMs < 0) return null
+  return diffMs / 3600000
+}
+
+function arredondarHoras(value: number) {
+  return Number(value.toFixed(1))
 }
 
 function ordensComValor(ordens: OrdemRelatorio[]) {
