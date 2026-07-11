@@ -178,12 +178,15 @@ export default function RelatoriosPage() {
       ['Garantia', String(cards.garantia ?? 0)],
       ['Valor cliente', formatCurrency(cards.valorCliente ?? 0)],
       ['Recebido cliente', formatCurrency(cards.recebidoCliente ?? 0)],
+      ['Desconto cliente', formatCurrency(cards.descontoCliente ?? 0)],
       ['A receber cliente', formatCurrency(cards.aReceberCliente ?? 0)],
       ['Valor garantidor/seguradora', formatCurrency(cards.valorGarantidor ?? 0)],
       ['Recebido garantidor/seguradora', formatCurrency(cards.recebidoGarantidor ?? 0)],
+      ['Desconto garantidor/seguradora', formatCurrency(cards.descontoGarantidor ?? 0)],
       ['A receber garantidor/seguradora', formatCurrency(cards.aReceberGarantidor ?? 0)],
       ['Faturamento total', formatCurrency(cards.valorFaturamento ?? 0)],
       ['Recebido total', formatCurrency(cards.recebidoTotal ?? 0)],
+      ['Desconto total', formatCurrency(cards.descontoTotal ?? 0)],
       ['A pagar tecnico', formatCurrency(cards.aPagarTecnico ?? 0)],
       ['Pago tecnico', formatCurrency(cards.pagoTecnico ?? 0)],
       ['Contas a pagar', formatCurrency(cards.contasAPagar ?? 0)],
@@ -436,6 +439,7 @@ export default function RelatoriosPage() {
       <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
         <Metric label="Faturamento total" value={formatCurrency(cards.valorFaturamento ?? 0)} />
         <Metric label="Total recebido" value={formatCurrency(cards.recebidoTotal ?? 0)} tone="green" />
+        <Metric label="Descontos concedidos" value={formatCurrency(cards.descontoTotal ?? 0)} tone="amber" />
         <Metric label="Recebido cliente" value={formatCurrency(cards.recebidoCliente ?? 0)} tone="green" />
         <Metric label="A receber cliente" value={formatCurrency(cards.aReceberCliente ?? 0)} tone="amber" />
         <Metric label="Recebido garantidor/seguradora" value={formatCurrency(cards.recebidoGarantidor ?? 0)} tone="green" />

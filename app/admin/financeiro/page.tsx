@@ -19,6 +19,7 @@ type OrdemFinanceira = {
   forma_recebimento?: string | null
   total: number | string | null
   valor_recebido_cliente?: number | string | null
+  desconto_recebimento_cliente?: number | string | null
   tecnico_total?: number | string | null
   tecnico_status_pagamento?: string | null
   tecnico_pago_em?: string | null
@@ -116,6 +117,7 @@ export default function FinanceiroPage() {
   const [documentosPendentes, setDocumentosPendentes] = useState(false)
   const [contasPagarPendente, setContasPagarPendente] = useState(false)
   const [historicoPendente, setHistoricoPendente] = useState(false)
+  const [descontoRecebimentoPendente, setDescontoRecebimentoPendente] = useState(false)
   const [loading, setLoading] = useState(true)
   const [salvandoId, setSalvandoId] = useState<number | null>(null)
   const [erro, setErro] = useState('')
@@ -140,6 +142,7 @@ export default function FinanceiroPage() {
       setDocumentosPendentes(Boolean(data?.documentosPendentes))
       setContasPagarPendente(Boolean(data?.contasPagarPendente))
       setHistoricoPendente(Boolean(data?.historicoPendente))
+      setDescontoRecebimentoPendente(Boolean(data?.descontoRecebimentoPendente))
     } catch (error) {
       setErro(formatarErro(error, 'Erro ao carregar financeiro.'))
     } finally {
@@ -210,12 +213,21 @@ export default function FinanceiroPage() {
     const contasPagas = contasPagar
       .filter((conta) => String(conta.status ?? '').toUpperCase() === 'PAGO')
       .reduce((acc, conta) => acc + toNumber(conta.valor), 0)
+    const descontosCliente = ordensComRecebimento
+      .filter((os) => !ehGarantidorOuSeguradora(os))
+      .reduce((acc, os) => acc + descontoRecebimentoCliente(os), 0)
+    const descontosGarantidor = ordensComRecebimento
+      .filter((os) => ehGarantidorOuSeguradora(os))
+      .reduce((acc, os) => acc + descontoRecebimentoCliente(os), 0)
 
     return {
       receberCliente,
       recebidoCliente,
       receberGarantidor,
       recebidoGarantidor,
+      descontosCliente,
+      descontosGarantidor,
+      descontosTotal: descontosCliente + descontosGarantidor,
       totalRecebido: recebidoCliente + recebidoGarantidor,
       caixaGeral: recebidoCliente + recebidoGarantidor - pagoTecnico - contasPagas,
       pagarTecnico,
@@ -254,6 +266,7 @@ export default function FinanceiroPage() {
       .reduce((acc, os) => acc + valorRecebidoCliente(os), 0)
     const pagoTecnicoMes = tecnicosPagosMes.reduce((acc, os) => acc + valorTecnico(os), 0)
     const contasPagasValorMes = contasPagasMes.reduce((acc, conta) => acc + toNumber(conta.valor), 0)
+    const descontosMes = recebidasMes.reduce((acc, os) => acc + descontoRecebimentoCliente(os), 0)
     const despesasPorCategoria = montarDespesasPorCategoria(contasPagasMes)
 
     return {
@@ -261,6 +274,7 @@ export default function FinanceiroPage() {
       recebidoCliente: recebidoClienteMes,
       recebidoGarantidor: recebidoGarantidorMes,
       recebidoTotal: recebidoClienteMes + recebidoGarantidorMes,
+      descontos: descontosMes,
       pagoTecnico: pagoTecnicoMes,
       contasPagas: contasPagasValorMes,
       lucroLiquido: recebidoClienteMes + recebidoGarantidorMes - pagoTecnicoMes - contasPagasValorMes,
@@ -320,8 +334,8 @@ export default function FinanceiroPage() {
     const ordem = ordens.find((item) => item.id === id)
     const pagamento = status === 'PARCIAL' || status === 'RECEBIDO'
     const forma = pagamento ? pedirFormaPagamento('Forma de recebimento') : null
-    const valor = pagamento && ordem ? pedirValorRecebimento(ordem, status === 'RECEBIDO') : null
-    if (pagamento && (!forma || valor === null)) return
+    const recebimento = pagamento && ordem ? pedirRecebimentoComDesconto(ordem, status === 'RECEBIDO') : null
+    if (pagamento && (!forma || recebimento === null)) return
     setSalvandoId(id)
     setErro('')
 
@@ -329,7 +343,7 @@ export default function FinanceiroPage() {
       const response = await adminFetch('/api/admin/financeiro', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: 'OS', id, status, forma, valor }),
+        body: JSON.stringify({ tipo: 'OS', id, status, forma, valor: recebimento?.valor, desconto: recebimento?.desconto }),
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error ?? 'Erro ao atualizar financeiro.')
@@ -397,10 +411,16 @@ export default function FinanceiroPage() {
       </header>
 
       {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{erro}</div>}
+      {descontoRecebimentoPendente && (
+        <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          Rode o SQL de desconto no recebimento para liberar desconto ao baixar faturas.
+        </div>
+      )}
 
       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
         <Card titulo="A receber cliente" valor={formatCurrency(resumo.receberCliente)} cor="orange" />
         <Card titulo="Recebido cliente" valor={formatCurrency(resumo.recebidoCliente)} cor="green" />
+        <Card titulo="Descontos concedidos" valor={formatCurrency(resumo.descontosTotal)} cor="orange" />
         <Card titulo="Caixa geral" valor={formatCurrency(resumo.caixaGeral)} cor="blue" />
         <Card titulo="Pago tecnico" valor={formatCurrency(resumo.pagoTecnico)} cor="slate" />
         <Card titulo="A receber garantidor/seguradora" valor={formatCurrency(resumo.receberGarantidor)} cor="orange" />
@@ -582,6 +602,7 @@ function RecebimentosTable({
             <th className="p-3">Cliente</th>
             <th className="p-3">Valor cliente</th>
             <th className="p-3">Recebido</th>
+            <th className="p-3">Desconto</th>
             <th className="p-3">Saldo</th>
             <th className="p-3">Status</th>
             <th className="p-3">Forma</th>
@@ -590,8 +611,8 @@ function RecebimentosTable({
           </tr>
         </thead>
         <tbody>
-          {loading && <LinhaMensagem colSpan={9} texto="Carregando..." />}
-          {!loading && ordens.length === 0 && <LinhaMensagem colSpan={9} texto="Nenhum registro encontrado." />}
+          {loading && <LinhaMensagem colSpan={10} texto="Carregando..." />}
+          {!loading && ordens.length === 0 && <LinhaMensagem colSpan={10} texto="Nenhum registro encontrado." />}
           {!loading &&
             ordens.map((os) => {
               const saldo = saldoCliente(os)
@@ -601,6 +622,7 @@ function RecebimentosTable({
                   <td className="p-3">{nomeCliente(os)}</td>
                   <td className="p-3 font-semibold">{formatCurrency(valorCliente(os))}</td>
                   <td className="p-3 font-semibold text-emerald-700">{formatCurrency(valorRecebidoCliente(os))}</td>
+                  <td className="p-3 font-semibold text-orange-700">{formatCurrency(descontoRecebimentoCliente(os))}</td>
                   <td className="p-3 font-semibold text-orange-700">{formatCurrency(saldo)}</td>
                   <td className="p-3"><StatusFinanceiro status={os.status_financeiro} /></td>
                   <td className="p-3">{formatarFormaPagamento(os.forma_recebimento)}</td>
@@ -879,6 +901,7 @@ function MonthlyFinancePanel({
     recebidoCliente: number
     recebidoGarantidor: number
     recebidoTotal: number
+    descontos: number
     pagoTecnico: number
     contasPagas: number
     lucroLiquido: number
@@ -903,10 +926,11 @@ function MonthlyFinancePanel({
         )}
       </div>
 
-      <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-7">
         <MiniFinanceCard label="Recebido cliente" value={formatCurrency(data.recebidoCliente)} tone="green" />
         <MiniFinanceCard label="Recebido garantidor" value={formatCurrency(data.recebidoGarantidor)} tone="green" />
         <MiniFinanceCard label="Total recebido" value={formatCurrency(data.recebidoTotal)} tone="blue" />
+        <MiniFinanceCard label="Descontos" value={formatCurrency(data.descontos)} tone="orange" />
         <MiniFinanceCard label="Pago tecnico" value={formatCurrency(data.pagoTecnico)} tone="slate" />
         <MiniFinanceCard label="Contas pagas" value={formatCurrency(data.contasPagas)} tone="orange" />
         <MiniFinanceCard label="Lucro liquido" value={formatCurrency(data.lucroLiquido)} tone={data.lucroLiquido >= 0 ? 'green' : 'red'} />
@@ -1123,8 +1147,12 @@ function valorRecebidoCliente(os: OrdemFinanceira) {
   return os.status_financeiro === 'RECEBIDO' ? valorCliente(os) : 0
 }
 
+function descontoRecebimentoCliente(os: OrdemFinanceira) {
+  return Math.max(toNumber(os.desconto_recebimento_cliente), 0)
+}
+
 function saldoCliente(os: OrdemFinanceira) {
-  return Math.max(valorCliente(os) - valorRecebidoCliente(os), 0)
+  return Math.max(valorCliente(os) - valorRecebidoCliente(os) - descontoRecebimentoCliente(os), 0)
 }
 
 function valorTecnico(os: OrdemFinanceira) {
@@ -1212,27 +1240,44 @@ function pedirFormaPagamento(titulo: string) {
   return forma
 }
 
-function pedirValorRecebimento(os: OrdemFinanceira, usarSaldoComoPadrao: boolean) {
+function pedirRecebimentoComDesconto(os: OrdemFinanceira, usarSaldoComoPadrao: boolean) {
   const saldo = saldoCliente(os)
   if (saldo <= 0) {
     window.alert('Esta OS nao possui saldo em aberto.')
     return null
   }
 
-  const valorPadrao = usarSaldoComoPadrao ? saldo : 0
+  const respostaDesconto = window.prompt(
+    `Desconto concedido nesta baixa. Saldo atual: ${formatCurrency(saldo)}`,
+    '0,00'
+  )
+  if (respostaDesconto === null) return null
+
+  const desconto = parseMoneyInput(respostaDesconto)
+  if (!Number.isFinite(desconto) || desconto < 0 || desconto >= saldo) {
+    window.alert(`Desconto invalido. Informe um desconto menor que ${formatCurrency(saldo)}.`)
+    return null
+  }
+
+  const saldoAposDesconto = Math.max(saldo - desconto, 0)
+  const valorPadrao = usarSaldoComoPadrao ? saldoAposDesconto : 0
   const resposta = window.prompt(
-    `Valor recebido agora. Saldo atual: ${formatCurrency(saldo)}`,
+    `Valor recebido agora. Saldo apos desconto: ${formatCurrency(saldoAposDesconto)}`,
     valorPadrao > 0 ? String(valorPadrao.toFixed(2)).replace('.', ',') : ''
   )
   if (resposta === null) return null
 
-  const valor = Number(resposta.replace(/\./g, '').replace(',', '.'))
-  if (!Number.isFinite(valor) || valor <= 0 || valor > saldo) {
-    window.alert(`Valor invalido. Informe um valor maior que zero e ate ${formatCurrency(saldo)}.`)
+  const valor = parseMoneyInput(resposta)
+  if (!Number.isFinite(valor) || valor <= 0 || valor + desconto > saldo) {
+    window.alert(`Valor invalido. Valor recebido + desconto deve ficar ate ${formatCurrency(saldo)}.`)
     return null
   }
 
-  return valor
+  return { valor, desconto }
+}
+
+function parseMoneyInput(value: string) {
+  return Number(value.replace(/\./g, '').replace(',', '.'))
 }
 
 function formatarFormaPagamento(forma?: string | null) {

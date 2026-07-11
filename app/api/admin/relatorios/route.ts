@@ -18,6 +18,7 @@ type OrdemRelatorio = {
   total?: number | string | null
   cliente_total?: number | string | null
   valor_recebido_cliente?: number | string | null
+  desconto_recebimento_cliente?: number | string | null
   tecnico_total?: number | string | null
   tecnico_status_pagamento?: string | null
   tecnico_pago_em?: string | null
@@ -90,6 +91,7 @@ export async function GET(request: NextRequest) {
     const temPagamentoTecnico = await colunaExiste(supabase, 'ordens_servico', 'tecnico_status_pagamento')
     const temDataPagamento = await colunaExiste(supabase, 'ordens_servico', 'data_pagamento')
     const temValorRecebidoCliente = await colunaExiste(supabase, 'ordens_servico', 'valor_recebido_cliente')
+    const temDescontoRecebimentoCliente = await colunaExiste(supabase, 'ordens_servico', 'desconto_recebimento_cliente')
     const temDataUltimoRecebimento = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
     const temTecnicoPagoEm = await colunaExiste(supabase, 'ordens_servico', 'tecnico_pago_em')
     const temGarantidor = await colunaExiste(supabase, 'ordens_servico', 'garantidor_id')
@@ -107,6 +109,7 @@ export async function GET(request: NextRequest) {
       ${temFinanceiro ? 'status_financeiro,' : ''}
       ${temDataPagamento ? 'data_pagamento,' : ''}
       ${temValorRecebidoCliente ? 'valor_recebido_cliente,' : ''}
+      ${temDescontoRecebimentoCliente ? 'desconto_recebimento_cliente,' : ''}
       ${temDataUltimoRecebimento ? 'data_ultimo_recebimento,' : ''}
       ${temPagamentoTecnico ? 'tecnico_status_pagamento,' : ''}
       ${temTecnicoPagoEm ? 'tecnico_pago_em,' : ''}
@@ -169,7 +172,8 @@ export async function GET(request: NextRequest) {
         const valorCliente = valorPreferencial(ordem.cliente_total, ordem.total)
         const valorTecnico = valorPreferencial(ordem.tecnico_total, 0)
         const recebidoCliente = valorRecebidoCliente(ordem)
-        const aReceberCliente = ordem.status === 'FINALIZADA' ? Math.max(valorCliente - recebidoCliente, 0) : 0
+        const descontoRecebimento = descontoRecebimentoCliente(ordem)
+        const aReceberCliente = ordem.status === 'FINALIZADA' ? Math.max(valorCliente - recebidoCliente - descontoRecebimento, 0) : 0
         const tecnicoPago =
           String(ordem.tecnico_status_pagamento ?? '').toUpperCase() === 'RECEBIDO' ||
           documentosTecnicosPagos.has(ordem.id)
@@ -179,10 +183,12 @@ export async function GET(request: NextRequest) {
         if (origemGarantidor) {
           acc.valorGarantidor += valorCliente
           acc.recebidoGarantidor += recebidoCliente
+          acc.descontoGarantidor += descontoRecebimento
           acc.aReceberGarantidor += aReceberCliente
         } else {
           acc.valorCliente += valorCliente
           acc.recebidoCliente += recebidoCliente
+          acc.descontoCliente += descontoRecebimento
           acc.aReceberCliente += aReceberCliente
         }
 
@@ -196,9 +202,11 @@ export async function GET(request: NextRequest) {
       {
         valorCliente: 0,
         recebidoCliente: 0,
+        descontoCliente: 0,
         aReceberCliente: 0,
         valorGarantidor: 0,
         recebidoGarantidor: 0,
+        descontoGarantidor: 0,
         aReceberGarantidor: 0,
         aPagarTecnico: 0,
         pagoTecnico: 0,
@@ -243,12 +251,15 @@ export async function GET(request: NextRequest) {
         garantia: ordensPeriodo.filter((ordem) => ordem.garantia).length,
         valorCliente: financeiro.valorCliente,
         recebidoCliente: financeiro.recebidoCliente,
+        descontoCliente: financeiro.descontoCliente,
         aReceberCliente: financeiro.aReceberCliente,
         valorGarantidor: financeiro.valorGarantidor,
         recebidoGarantidor: financeiro.recebidoGarantidor,
+        descontoGarantidor: financeiro.descontoGarantidor,
         aReceberGarantidor: financeiro.aReceberGarantidor,
         valorFaturamento: financeiro.valorCliente + financeiro.valorGarantidor,
         recebidoTotal: financeiro.recebidoCliente + financeiro.recebidoGarantidor,
+        descontoTotal: financeiro.descontoCliente + financeiro.descontoGarantidor,
         aReceberTotal: financeiro.aReceberCliente + financeiro.aReceberGarantidor,
         aPagarTecnico: financeiro.aPagarTecnico,
         pagoTecnico: financeiro.pagoTecnico,
@@ -797,6 +808,10 @@ function valorRecebidoCliente(ordem: OrdemRelatorio) {
   const recebido = toNumber(ordem.valor_recebido_cliente)
   if (recebido > 0) return Math.min(recebido, total)
   return String(ordem.status_financeiro ?? '').toUpperCase() === 'RECEBIDO' ? total : 0
+}
+
+function descontoRecebimentoCliente(ordem: OrdemRelatorio) {
+  return Math.max(toNumber(ordem.desconto_recebimento_cliente), 0)
 }
 
 function estaNoPeriodo(value: string | null | undefined, inicioTime: number, fimTime: number) {

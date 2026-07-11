@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
     const temFormaPagamentoTecnico = await colunaExiste(supabase, 'ordens_servico', 'forma_pagamento_tecnico')
     const temValorRecebidoCliente = await colunaExiste(supabase, 'ordens_servico', 'valor_recebido_cliente')
     const temDataUltimoRecebimento = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
+    const temDescontoRecebimentoCliente = await colunaExiste(supabase, 'ordens_servico', 'desconto_recebimento_cliente')
     const selectPagamentoTecnico = temPagamentoTecnico
       ? `
         tecnico_status_pagamento,
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest) {
     const selectFormaPagamentoTecnico = temFormaPagamentoTecnico ? 'forma_pagamento_tecnico,' : ''
     const selectValorRecebidoCliente = temValorRecebidoCliente ? 'valor_recebido_cliente,' : ''
     const selectDataUltimoRecebimento = temDataUltimoRecebimento ? 'data_ultimo_recebimento,' : ''
+    const selectDescontoRecebimentoCliente = temDescontoRecebimentoCliente ? 'desconto_recebimento_cliente,' : ''
 
     const selectOrdens = `
         id,
@@ -76,6 +78,7 @@ export async function GET(request: NextRequest) {
         total,
         cliente_total,
         ${selectValorRecebidoCliente}
+        ${selectDescontoRecebimentoCliente}
         tecnico_total,
         ${selectPagamentoTecnico}
         ${selectFormaPagamentoTecnico}
@@ -126,6 +129,7 @@ export async function GET(request: NextRequest) {
       contasPagarPendente: contasPagar.tabelaPendente,
       historico: historico.data,
       historicoPendente: historico.tabelaPendente,
+      descontoRecebimentoPendente: !temDescontoRecebimentoCliente,
     })
   } catch (error) {
     console.error('Erro ao carregar financeiro admin:', error)
@@ -247,7 +251,9 @@ export async function PATCH(request: NextRequest) {
 
       const temValorRecebidoCliente = await colunaExiste(supabase, 'ordens_servico', 'valor_recebido_cliente')
       const temDataUltimoRecebimento = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
+      const temDescontoRecebimentoCliente = await colunaExiste(supabase, 'ordens_servico', 'desconto_recebimento_cliente')
       const selectValorRecebido = temValorRecebidoCliente ? ', valor_recebido_cliente' : ''
+      const selectDescontoRecebimento = temDescontoRecebimentoCliente ? ', desconto_recebimento_cliente' : ''
       const ordemAtualQuery = supabase.from('ordens_servico') as unknown as {
         select: (columns: string) => {
           eq: (column: string, value: number) => {
@@ -259,12 +265,13 @@ export async function PATCH(request: NextRequest) {
               total?: number | string | null
               cliente_total?: number | string | null
               valor_recebido_cliente?: number | string | null
+              desconto_recebimento_cliente?: number | string | null
             }) | null; error: unknown }>
           }
         }
       }
       const { data: ordemAtual, error: ordemAtualError } = await ordemAtualQuery
-        .select(`id, numero_os, status, status_financeiro, total, cliente_total${selectValorRecebido}`)
+        .select(`id, numero_os, status, status_financeiro, total, cliente_total${selectValorRecebido}${selectDescontoRecebimento}`)
         .eq('id', id)
         .maybeSingle()
 
@@ -280,15 +287,19 @@ export async function PATCH(request: NextRequest) {
 
       const totalCliente = valorPreferencial(ordemAtual?.cliente_total, ordemAtual?.total)
       const recebidoAtual = valorRecebidoCliente(ordemAtual)
+      const descontoAtual = descontoRecebimentoCliente(ordemAtual)
       const valorLancado = toNumber(body?.valor)
+      const descontoLancado = toNumber(body?.desconto)
       const agora = new Date().toISOString()
+      const saldoAtual = Math.max(totalCliente - recebidoAtual - descontoAtual, 0)
+      const proximoDesconto = pagamento ? Math.min(totalCliente, descontoAtual + descontoLancado) : status === 'PENDENTE' ? 0 : descontoAtual
       const proximoRecebido = pagamento
-        ? Math.min(totalCliente, recebidoAtual + (valorLancado > 0 ? valorLancado : totalCliente - recebidoAtual))
+        ? Math.min(totalCliente, recebidoAtual + valorLancado)
         : status === 'PENDENTE'
           ? 0
           : recebidoAtual
       const statusFinal = pagamento
-        ? proximoRecebido >= totalCliente
+        ? proximoRecebido + proximoDesconto >= totalCliente
           ? 'RECEBIDO'
           : 'PARCIAL'
         : status
@@ -304,8 +315,15 @@ export async function PATCH(request: NextRequest) {
         )
       }
 
-      if (pagamento && (valorLancado <= 0 || valorLancado > Math.max(totalCliente - recebidoAtual, 0))) {
-        return NextResponse.json({ error: 'Informe um valor de recebimento valido para o saldo da OS.' }, { status: 400 })
+      if (pagamento && descontoLancado > 0 && !temDescontoRecebimentoCliente) {
+        return NextResponse.json(
+          { error: 'Rode o SQL de desconto no recebimento antes de conceder desconto.' },
+          { status: 400 }
+        )
+      }
+
+      if (pagamento && (valorLancado <= 0 || descontoLancado < 0 || valorLancado + descontoLancado > saldoAtual)) {
+        return NextResponse.json({ error: 'Informe valor recebido e desconto validos para o saldo da OS.' }, { status: 400 })
       }
 
       const updatePayload: Record<string, unknown> = {
@@ -316,7 +334,10 @@ export async function PATCH(request: NextRequest) {
         updatePayload.data_ultimo_recebimento = agora
       }
       if (temValorRecebidoCliente) {
-        updatePayload.valor_recebido_cliente = statusFinal === 'RECEBIDO' ? totalCliente : proximoRecebido
+        updatePayload.valor_recebido_cliente = proximoRecebido
+      }
+      if (temDescontoRecebimentoCliente) {
+        updatePayload.desconto_recebimento_cliente = proximoDesconto
       }
       if (await colunaExiste(supabase, 'ordens_servico', 'forma_recebimento')) {
         updatePayload.forma_recebimento = pagamento ? forma : null
@@ -335,7 +356,7 @@ export async function PATCH(request: NextRequest) {
         statusNovo: statusFinal,
         valor: pagamento ? valorLancado : totalCliente,
         descricao: pagamento
-          ? `${ordemAtual?.numero_os ?? `OS #${id}`} recebeu ${formatCurrency(valorLancado)} via ${forma}. Saldo: ${formatCurrency(Math.max(totalCliente - proximoRecebido, 0))}.`
+          ? `${ordemAtual?.numero_os ?? `OS #${id}`} recebeu ${formatCurrency(valorLancado)} via ${forma}${descontoLancado > 0 ? ` com desconto de ${formatCurrency(descontoLancado)}` : ''}. Saldo: ${formatCurrency(Math.max(totalCliente - proximoRecebido - proximoDesconto, 0))}.`
           : `${ordemAtual?.numero_os ?? `OS #${id}`} marcada como ${statusFinal}.`,
       })
       return NextResponse.json({ ok: true })
@@ -511,6 +532,11 @@ function valorRecebidoCliente(ordem: Record<string, unknown> | null | undefined)
   return String(ordem.status_financeiro ?? '').toUpperCase() === 'RECEBIDO'
     ? valorPreferencial(ordem.cliente_total, ordem.total)
     : 0
+}
+
+function descontoRecebimentoCliente(ordem: Record<string, unknown> | null | undefined) {
+  if (!ordem) return 0
+  return Math.max(toNumber(ordem.desconto_recebimento_cliente as never), 0)
 }
 
 function formatCurrency(value: number) {
