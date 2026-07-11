@@ -417,15 +417,15 @@ export default function FinanceiroPage() {
         </div>
       )}
 
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+        <Card titulo="Caixa geral" valor={formatCurrency(resumo.caixaGeral)} cor="blue" destaque />
+        <Card titulo="Recebido cliente" valor={formatCurrency(resumo.recebidoCliente)} cor="green" destaque />
         <Card titulo="A receber cliente" valor={formatCurrency(resumo.receberCliente)} cor="orange" />
-        <Card titulo="Recebido cliente" valor={formatCurrency(resumo.recebidoCliente)} cor="green" />
-        <Card titulo="Descontos concedidos" valor={formatCurrency(resumo.descontosTotal)} cor="orange" />
-        <Card titulo="Caixa geral" valor={formatCurrency(resumo.caixaGeral)} cor="blue" />
-        <Card titulo="Pago tecnico" valor={formatCurrency(resumo.pagoTecnico)} cor="slate" />
         <Card titulo="A receber garantidor/seguradora" valor={formatCurrency(resumo.receberGarantidor)} cor="orange" />
         <Card titulo="Recebido garantidor/seguradora" valor={formatCurrency(resumo.recebidoGarantidor)} cor="green" />
+        <Card titulo="Descontos concedidos" valor={formatCurrency(resumo.descontosTotal)} cor="orange" />
         <Card titulo="A pagar tecnico" valor={formatCurrency(resumo.pagarTecnico)} cor="blue" />
+        <Card titulo="Pago tecnico" valor={formatCurrency(resumo.pagoTecnico)} cor="slate" />
         <Card titulo="Contas a pagar" valor={formatCurrency(resumo.contasPendentes)} cor="orange" />
         <Card titulo="Contas pagas" valor={formatCurrency(resumo.contasPagas)} cor="slate" />
       </div>
@@ -926,7 +926,7 @@ function MonthlyFinancePanel({
         )}
       </div>
 
-      <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-7">
         <MiniFinanceCard label="Recebido cliente" value={formatCurrency(data.recebidoCliente)} tone="green" />
         <MiniFinanceCard label="Recebido garantidor" value={formatCurrency(data.recebidoGarantidor)} tone="green" />
         <MiniFinanceCard label="Total recebido" value={formatCurrency(data.recebidoTotal)} tone="blue" />
@@ -1002,8 +1002,8 @@ function MiniFinanceCard({
 
   return (
     <div className={`min-w-0 rounded-lg border px-3 py-2 ${tones[tone]}`}>
-      <p className="truncate text-[10px] font-black uppercase opacity-75">{label}</p>
-      <p className="mt-1 truncate text-lg font-black" title={value}>{value}</p>
+      <p className="text-[10px] font-black uppercase leading-tight opacity-75">{label}</p>
+      <p className="mt-1 break-words text-base font-black leading-tight sm:text-lg" title={value}>{value}</p>
     </div>
   )
 }
@@ -1104,10 +1104,12 @@ function Card({
   titulo,
   valor,
   cor = 'slate',
+  destaque = false,
 }: {
   titulo: string
   valor: string
   cor?: 'green' | 'orange' | 'blue' | 'slate'
+  destaque?: boolean
 }) {
   const cores = {
     green: 'border-green-200 bg-green-50 text-green-700',
@@ -1117,9 +1119,11 @@ function Card({
   }
 
   return (
-    <div className={`rounded-lg border px-3 py-2.5 ${cores[cor]}`}>
-      <p className="text-[10px] font-bold uppercase leading-tight text-slate-500">{titulo}</p>
-      <p className="mt-1 text-xl font-black leading-tight tracking-normal">{valor}</p>
+    <div className={`min-w-0 rounded-lg border px-3 py-2.5 ${destaque ? 'sm:py-3' : ''} ${cores[cor]}`}>
+      <p className="text-[10px] font-bold uppercase leading-tight text-slate-500 sm:text-xs">{titulo}</p>
+      <p className={`${destaque ? 'text-lg sm:text-2xl' : 'text-base sm:text-xl'} mt-1 break-words font-black leading-tight tracking-normal`}>
+        {valor}
+      </p>
     </div>
   )
 }

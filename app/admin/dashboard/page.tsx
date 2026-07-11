@@ -472,7 +472,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <section className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
           <AlertCard
             title="Triagem agora"
             value={loading ? '...' : String(stats.osNovas)}
@@ -510,7 +510,7 @@ export default function DashboardPage() {
           />
         </section>
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
           <FinanceMiniCard
             title="SLA particular"
             value={loading ? '...' : `${stats.slaParticularPercentual}% dentro`}
@@ -533,15 +533,15 @@ export default function DashboardPage() {
           />
         </section>
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <FinanceMiniCard title="A receber cliente" value={formatCurrency(stats.aReceberCliente)} tone="orange" />
+        <section className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
+          <FinanceMiniCard title="Total recebido" value={formatCurrency(stats.recebidoTotal)} tone="slate" destaque />
           <FinanceMiniCard title="Recebido cliente" value={formatCurrency(stats.recebidoCliente)} tone="green" />
+          <FinanceMiniCard title="A receber cliente" value={formatCurrency(stats.aReceberCliente)} tone="orange" />
           <FinanceMiniCard title="A receber garantidor" value={formatCurrency(stats.aReceberGarantidor)} tone="amber" />
           <FinanceMiniCard title="Recebido garantidor" value={formatCurrency(stats.recebidoGarantidor)} tone="green" />
-          <FinanceMiniCard title="Total recebido" value={formatCurrency(stats.recebidoTotal)} tone="slate" />
           <FinanceMiniCard title="A pagar tecnico" value={formatCurrency(stats.aPagarTecnico)} tone="blue" />
           <FinanceMiniCard title="Ticket medio margem" value={formatCurrency(stats.ticketMedioMargem)} tone="green" />
-          <div className="grid grid-cols-2 gap-2 rounded-xl bg-white p-3 shadow-sm">
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-white p-2 shadow-sm sm:p-3">
             <QuickButton label="Nova OS" onClick={() => router.push('/admin/os')} />
             <QuickButton label="Triagem" onClick={() => router.push('/admin/os')} />
             <QuickButton label="Aprovacao" onClick={() => router.push('/admin/aprovacao')} />
@@ -549,7 +549,7 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <section className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
           <MetricCard title="OS Novas" value={loading ? '...' : String(stats.osNovas)} icon={<FileTextIcon />} iconTone="blue" />
           <MetricCard title="Em Triagem" value={loading ? '...' : String(stats.emTriagem)} icon={<ListIcon />} iconTone="amber" />
           <MetricCard title="Em Atendimento" value={loading ? '...' : String(stats.emAtendimento)} icon={<WrenchIcon />} iconTone="green" />
@@ -783,18 +783,18 @@ function MetricCard({
 
   return (
     <div
-      className={`rounded-2xl bg-white p-5 shadow-sm ${
+      className={`min-w-0 rounded-xl bg-white p-3 shadow-sm sm:rounded-2xl sm:p-5 ${
         critical ? 'border border-red-200 bg-red-50/60' : ''
       }`}
     >
-      <div className="flex items-start gap-4">
-        <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${iconWrap}`}>
+      <div className="flex items-start gap-3 sm:gap-4">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:h-12 sm:w-12 ${iconWrap}`}>
           {icon}
         </div>
 
         <div className="min-w-0">
-          <p className={`text-sm ${critical ? 'text-red-700' : 'text-slate-500'}`}>{title}</p>
-          <p className={`mt-1 text-2xl font-bold ${critical ? 'text-red-600' : 'text-slate-900'}`}>
+          <p className={`text-xs leading-tight sm:text-sm ${critical ? 'text-red-700' : 'text-slate-500'}`}>{title}</p>
+          <p className={`mt-1 break-words text-xl font-bold leading-tight sm:text-2xl ${critical ? 'text-red-600' : 'text-slate-900'}`}>
             {value}
           </p>
         </div>
@@ -827,16 +827,16 @@ function AlertCard({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 ${colors[tone]}`}
+      className={`min-w-0 rounded-xl border px-3 py-2.5 text-left shadow-sm transition hover:-translate-y-0.5 sm:px-4 sm:py-3 ${colors[tone]}`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-black uppercase opacity-70">{title}</p>
-          <p className="mt-1 text-2xl font-black">{value}</p>
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase leading-tight opacity-70 sm:text-xs">{title}</p>
+          <p className="mt-1 break-words text-xl font-black leading-tight sm:text-2xl">{value}</p>
         </div>
-        <span className="rounded-full bg-white/70 px-2 py-1 text-[10px] font-black">Abrir</span>
+        <span className="hidden shrink-0 rounded-full bg-white/70 px-2 py-1 text-[10px] font-black sm:inline">Abrir</span>
       </div>
-      <p className="mt-1 text-xs font-semibold opacity-80">{detail}</p>
+      <p className="mt-1 text-[11px] font-semibold leading-tight opacity-80 sm:text-xs">{detail}</p>
     </button>
   )
 }
@@ -845,10 +845,12 @@ function FinanceMiniCard({
   title,
   value,
   tone,
+  destaque = false,
 }: {
   title: string
   value: string
   tone: 'orange' | 'amber' | 'blue' | 'green' | 'slate'
+  destaque?: boolean
 }) {
   const colors = {
     orange: 'border-orange-200 bg-orange-50 text-orange-700',
@@ -859,9 +861,11 @@ function FinanceMiniCard({
   }
 
   return (
-    <div className={`rounded-xl border px-4 py-3 shadow-sm ${colors[tone]}`}>
-      <p className="text-xs font-black uppercase opacity-70">{title}</p>
-      <p className="mt-1 text-xl font-black">{value}</p>
+    <div className={`min-w-0 rounded-xl border px-3 py-2.5 shadow-sm sm:px-4 sm:py-3 ${colors[tone]}`}>
+      <p className="text-[10px] font-black uppercase leading-tight opacity-70 sm:text-xs">{title}</p>
+      <p className={`${destaque ? 'text-lg sm:text-2xl' : 'text-base sm:text-xl'} mt-1 break-words font-black leading-tight`}>
+        {value}
+      </p>
     </div>
   )
 }

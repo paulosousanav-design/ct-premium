@@ -412,7 +412,7 @@ export default function RelatoriosPage() {
 
       {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{erro}</div>}
 
-      <section className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+      <section className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
         <Metric label="OS no periodo" value={loading ? '...' : String(cards.totalOs ?? 0)} />
         <Metric label="Novas" value={loading ? '...' : String(cards.novas ?? 0)} tone="green" />
         <Metric label="Em tratamento" value={loading ? '...' : String(cards.emAndamento ?? 0)} tone="blue" />
@@ -421,7 +421,7 @@ export default function RelatoriosPage() {
         <Metric label="Estoque baixo" value={loading ? '...' : String(cards.estoqueBaixo ?? 0)} tone={(cards.estoqueBaixo ?? 0) > 0 ? 'red' : 'green'} />
       </section>
 
-      <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
         <SlaMetric title="SLA particular" item={data?.slaResumo?.particular} loading={loading} />
         <SlaMetric title="SLA garantia/seguradora" item={data?.slaResumo?.garantia} loading={loading} />
         <Metric
@@ -436,9 +436,10 @@ export default function RelatoriosPage() {
         />
       </section>
 
-      <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Faturamento total" value={formatCurrency(cards.valorFaturamento ?? 0)} />
-        <Metric label="Total recebido" value={formatCurrency(cards.recebidoTotal ?? 0)} tone="green" />
+      <section className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+        <Metric label="Faturamento total" value={formatCurrency(cards.valorFaturamento ?? 0)} destaque />
+        <Metric label="Total recebido" value={formatCurrency(cards.recebidoTotal ?? 0)} tone="green" destaque />
+        <Metric label="Resultado liquido" value={formatCurrency(cards.resultadoLiquido ?? 0)} tone={(cards.resultadoLiquido ?? 0) >= 0 ? 'green' : 'red'} destaque />
         <Metric label="Descontos concedidos" value={formatCurrency(cards.descontoTotal ?? 0)} tone="amber" />
         <Metric label="Recebido cliente" value={formatCurrency(cards.recebidoCliente ?? 0)} tone="green" />
         <Metric label="A receber cliente" value={formatCurrency(cards.aReceberCliente ?? 0)} tone="amber" />
@@ -448,7 +449,6 @@ export default function RelatoriosPage() {
         <Metric label="Pago tecnico" value={formatCurrency(cards.pagoTecnico ?? 0)} tone="blue" />
         <Metric label="Contas a pagar" value={formatCurrency(cards.contasAPagar ?? 0)} tone="red" />
         <Metric label="Contas pagas" value={formatCurrency(cards.contasPagas ?? 0)} tone="blue" />
-        <Metric label="Resultado liquido" value={formatCurrency(cards.resultadoLiquido ?? 0)} tone={(cards.resultadoLiquido ?? 0) >= 0 ? 'green' : 'red'} />
         <Metric label="Ticket bruto medio" value={formatCurrency(cards.ticketMedioBruto ?? 0)} />
         <Metric label="Ticket margem medio" value={formatCurrency(cards.ticketMedioMargem ?? 0)} tone="green" />
         <Metric label="Margem total" value={formatCurrency(cards.margemTotal ?? 0)} tone="blue" />
@@ -630,7 +630,17 @@ export default function RelatoriosPage() {
   )
 }
 
-function Metric({ label, value, tone = 'slate' }: { label: string; value: string; tone?: 'slate' | 'green' | 'blue' | 'amber' | 'red' }) {
+function Metric({
+  label,
+  value,
+  tone = 'slate',
+  destaque = false,
+}: {
+  label: string
+  value: string
+  tone?: 'slate' | 'green' | 'blue' | 'amber' | 'red'
+  destaque?: boolean
+}) {
   const tones = {
     slate: 'border-slate-200 text-slate-950',
     green: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -640,9 +650,11 @@ function Metric({ label, value, tone = 'slate' }: { label: string; value: string
   }
 
   return (
-    <div className={`rounded-lg border bg-white px-3 py-2.5 shadow-sm ${tones[tone]}`}>
-      <p className="text-xs font-black uppercase opacity-70">{label}</p>
-      <p className="mt-0.5 text-xl font-black leading-tight">{value}</p>
+    <div className={`min-w-0 rounded-lg border bg-white px-3 py-2.5 shadow-sm ${destaque ? 'sm:py-3' : ''} ${tones[tone]}`}>
+      <p className="text-[10px] font-black uppercase leading-tight opacity-70 sm:text-xs">{label}</p>
+      <p className={`${destaque ? 'text-lg sm:text-2xl' : 'text-base sm:text-xl'} mt-1 break-words font-black leading-tight`}>
+        {value}
+      </p>
     </div>
   )
 }
@@ -652,19 +664,19 @@ function SlaMetric({ title, item, loading }: { title: string; item?: SlaResumo; 
   const tone = foraPrazo > 0 ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
 
   return (
-    <div className={`rounded-lg border px-3 py-2.5 shadow-sm ${tone}`}>
+    <div className={`min-w-0 rounded-lg border px-3 py-2.5 shadow-sm ${tone}`}>
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-black uppercase opacity-70">{title}</p>
-          <p className="mt-0.5 text-xl font-black leading-tight">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase leading-tight opacity-70 sm:text-xs">{title}</p>
+          <p className="mt-1 text-base font-black leading-tight sm:text-xl">
             {loading ? '...' : `${item?.percentualDentro ?? 0}%`}
           </p>
         </div>
-        <span className="rounded-full bg-white/70 px-2 py-1 text-[10px] font-black">
+        <span className="shrink-0 rounded-full bg-white/70 px-2 py-1 text-[10px] font-black">
           {item?.limiteDias ?? 0} dias
         </span>
       </div>
-      <p className="mt-1 text-xs font-bold opacity-80">
+      <p className="mt-1 text-[11px] font-bold leading-tight opacity-80 sm:text-xs">
         {loading
           ? 'Calculando...'
           : `${item?.dentroPrazo ?? 0} dentro • ${foraPrazo} fora • media ${item?.mediaDias ?? 0}d`}
