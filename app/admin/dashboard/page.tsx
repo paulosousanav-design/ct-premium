@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { adminFetch } from '@/lib/admin-fetch'
@@ -153,11 +153,7 @@ export default function DashboardPage() {
   const [filtroGarantidor, setFiltroGarantidor] = useState('TODOS')
   const [garantidoresFiltro, setGarantidoresFiltro] = useState<GarantidorFiltro[]>([])
 
-  useEffect(() => {
-    void carregarDashboard()
-  }, [filtroOrigem, filtroGarantidor])
-
-  async function carregarDashboard() {
+  const carregarDashboard = useCallback(async () => {
     setLoading(true)
     setErro('')
 
@@ -345,7 +341,25 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filtroGarantidor, filtroOrigem])
+
+  useEffect(() => {
+    // Carrega os dados iniciais e os recarrega quando os filtros mudam.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void carregarDashboard()
+
+    function atualizarSlaEntreAbas(event: StorageEvent) {
+      if (
+        event.key === 'relatorios_sla_particular_dias' ||
+        event.key === 'relatorios_sla_garantia_dias'
+      ) {
+        void carregarDashboard()
+      }
+    }
+
+    window.addEventListener('storage', atualizarSlaEntreAbas)
+    return () => window.removeEventListener('storage', atualizarSlaEntreAbas)
+  }, [carregarDashboard])
 
   async function atualizarStatusRapido(osId: number, novoStatus: string) {
     setSalvandoStatusId(osId)
@@ -928,6 +942,8 @@ async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard, gar
     const params = new URLSearchParams({
       inicio: formatDateInput(inicio),
       fim: formatDateInput(hoje),
+      slaParticularDias: window.localStorage.getItem('relatorios_sla_particular_dias') ?? '3',
+      slaGarantiaDias: window.localStorage.getItem('relatorios_sla_garantia_dias') ?? '7',
     })
 
     if (filtroOrigem === 'CLIENTE') params.set('origemFinanceira', 'CLIENTE')
