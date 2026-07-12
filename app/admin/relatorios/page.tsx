@@ -103,8 +103,12 @@ export default function RelatoriosPage() {
   const [statusOs, setStatusOs] = useState('TODOS')
   const [tecnico, setTecnico] = useState('TODOS')
   const [garantidor, setGarantidor] = useState('TODOS')
-  const [slaParticularDias, setSlaParticularDias] = useState('3')
-  const [slaGarantiaDias, setSlaGarantiaDias] = useState('7')
+  const [slaParticularDias, setSlaParticularDiasState] = useState(() =>
+    typeof window === 'undefined' ? '3' : window.localStorage.getItem('relatorios_sla_particular_dias') ?? '3'
+  )
+  const [slaGarantiaDias, setSlaGarantiaDiasState] = useState(() =>
+    typeof window === 'undefined' ? '7' : window.localStorage.getItem('relatorios_sla_garantia_dias') ?? '7'
+  )
   const [data, setData] = useState<RelatoriosData | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
@@ -150,6 +154,16 @@ export default function RelatoriosPage() {
   const cards = data?.cards ?? {}
   const opcoes = data?.filtros?.opcoes
   const metaValor = Number(metaMensal || 0)
+
+  function setSlaParticularDias(value: string) {
+    setSlaParticularDiasState(value)
+    if (typeof window !== 'undefined') window.localStorage.setItem('relatorios_sla_particular_dias', value)
+  }
+
+  function setSlaGarantiaDias(value: string) {
+    setSlaGarantiaDiasState(value)
+    if (typeof window !== 'undefined') window.localStorage.setItem('relatorios_sla_garantia_dias', value)
+  }
 
   function salvarMetaMensal(value: string) {
     setMetaMensal(value)

@@ -1059,7 +1059,8 @@ export default function OrdemServicoAtendimentoPage() {
             th { background: #f9fafb; }
             .parts-title { margin: 10px 0 4px; font-size: 12px; font-weight: 700; }
             .print-footer { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; padding-top: 8px; border-top: 1px solid #d1d5db; }
-            .terms { margin-bottom: 24px; font-size: 8px; line-height: 1.25; color: #475569; text-align: justify; }
+            .contact-line { margin-bottom: 5px; text-align: center; font-size: 9px; font-weight: 700; color: #0f172a; }
+            .terms { margin-bottom: 20px; font-size: 8px; line-height: 1.25; color: #475569; text-align: justify; }
             .signatures { display: grid; grid-template-columns: 0.8fr 1.25fr 1fr; gap: 18px; align-items: end; break-inside: avoid; }
             .signature-line { border-top: 1px solid #111827; padding-top: 5px; text-align: center; font-size: 10px; color: #334155; }
             .signature-tech { width: 78%; justify-self: start; }
@@ -1199,6 +1200,7 @@ export default function OrdemServicoAtendimentoPage() {
           }
 
           <div class="print-footer">
+            <div class="contact-line">www.chameotecnico.com.br | atendimento@chameotecnico.com.br</div>
             <div class="terms">
               Garantia de 90 dias sobre o serviço executado, limitada ao defeito informado e ao reparo descrito nesta OS, não cobrindo mau uso, queda, umidade, oscilação elétrica, violação por terceiros ou defeitos distintos. Declaro ter recebido o equipamento/atendimento acima descrito e estou ciente das condições de garantia, valores e peças informadas.
             </div>

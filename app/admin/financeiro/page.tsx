@@ -397,6 +397,36 @@ export default function FinanceiroPage() {
     }
   }
 
+  function exportarExcelFinanceiro() {
+    const secoes = montarSecoesFinanceiro({
+      resumo,
+      ordensRecebimento: ordensRecebimentoFiltradas,
+      ordensTecnicos,
+      contas: contasFiltradas,
+      historico,
+      documentos,
+    })
+    const html = montarHtmlRelatorioFinanceiro(secoes, { formato: 'excel' })
+    baixarArquivo(html, `relatorio-financeiro-${formatDateFile(new Date())}.xls`, 'application/vnd.ms-excel;charset=utf-8')
+  }
+
+  function imprimirPdfFinanceiro() {
+    const secoes = montarSecoesFinanceiro({
+      resumo,
+      ordensRecebimento: ordensRecebimentoFiltradas,
+      ordensTecnicos,
+      contas: contasFiltradas,
+      historico,
+      documentos,
+    })
+    const janela = window.open('', '_blank', 'width=1100,height=800')
+    if (!janela) return
+
+    janela.document.open()
+    janela.document.write(montarHtmlRelatorioFinanceiro(secoes, { formato: 'pdf' }))
+    janela.document.close()
+  }
+
   return (
     <div className="space-y-5">
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -405,9 +435,17 @@ export default function FinanceiroPage() {
           <p className="text-sm text-slate-500">Recebimentos de OS e pagamentos de tecnicos.</p>
         </div>
 
-        <button onClick={carregarDados} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white">
-          Atualizar
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={exportarExcelFinanceiro} className="rounded-lg border border-emerald-300 px-4 py-2 text-sm font-bold text-emerald-700">
+            Exportar Excel
+          </button>
+          <button onClick={imprimirPdfFinanceiro} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">
+            Gerar PDF
+          </button>
+          <button onClick={carregarDados} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white">
+            Atualizar
+          </button>
+        </div>
       </header>
 
       {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{erro}</div>}
@@ -1314,6 +1352,197 @@ function formatDate(data?: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+type SecaoRelatorioFinanceiro = {
+  titulo: string
+  headers: string[]
+  rows: Array<Array<string>>
+}
+
+function montarSecoesFinanceiro({
+  resumo,
+  ordensRecebimento,
+  ordensTecnicos,
+  contas,
+  historico,
+  documentos,
+}: {
+  resumo: {
+    receberCliente: number
+    recebidoCliente: number
+    receberGarantidor: number
+    recebidoGarantidor: number
+    descontosTotal: number
+    totalRecebido: number
+    caixaGeral: number
+    pagarTecnico: number
+    pagoTecnico: number
+    contasPendentes: number
+    contasPagas: number
+  }
+  ordensRecebimento: OrdemFinanceira[]
+  ordensTecnicos: OrdemFinanceira[]
+  contas: ContaPagar[]
+  historico: HistoricoFinanceiro[]
+  documentos: DocumentoTecnico[]
+}): SecaoRelatorioFinanceiro[] {
+  return [
+    {
+      titulo: 'Resumo financeiro',
+      headers: ['Indicador', 'Valor'],
+      rows: [
+        ['Caixa geral', formatCurrency(resumo.caixaGeral)],
+        ['Total recebido', formatCurrency(resumo.totalRecebido)],
+        ['Recebido cliente', formatCurrency(resumo.recebidoCliente)],
+        ['A receber cliente', formatCurrency(resumo.receberCliente)],
+        ['Recebido garantidor/seguradora', formatCurrency(resumo.recebidoGarantidor)],
+        ['A receber garantidor/seguradora', formatCurrency(resumo.receberGarantidor)],
+        ['Descontos concedidos', formatCurrency(resumo.descontosTotal)],
+        ['A pagar tecnico', formatCurrency(resumo.pagarTecnico)],
+        ['Pago tecnico', formatCurrency(resumo.pagoTecnico)],
+        ['Contas a pagar', formatCurrency(resumo.contasPendentes)],
+        ['Contas pagas', formatCurrency(resumo.contasPagas)],
+      ],
+    },
+    {
+      titulo: 'Recebimentos',
+      headers: ['OS', 'Cliente', 'Valor cliente', 'Recebido', 'Desconto', 'Saldo', 'Status', 'Forma', 'NF'],
+      rows: ordensRecebimento.map((os) => [
+        os.numero_os ?? `#${os.id}`,
+        nomeCliente(os),
+        formatCurrency(valorCliente(os)),
+        formatCurrency(valorRecebidoCliente(os)),
+        formatCurrency(descontoRecebimentoCliente(os)),
+        formatCurrency(saldoCliente(os)),
+        os.status_financeiro ?? 'PENDENTE',
+        formatarFormaPagamento(os.forma_recebimento),
+        os.numero_nota_fiscal || '-',
+      ]),
+    },
+    {
+      titulo: 'Pagamentos tecnicos',
+      headers: ['OS', 'Cliente', 'Tecnico', 'Valor tecnico', 'Status tecnico', 'Forma', 'Documento'],
+      rows: ordensTecnicos.map((os) => {
+        const doc = documentoMaisRecente(documentos, os)
+        return [
+          os.numero_os ?? `#${os.id}`,
+          nomeCliente(os),
+          nomeTecnico(os),
+          formatCurrency(valorTecnico(os)),
+          tecnicoPago(os) ? 'PAGO' : 'PENDENTE',
+          formatarFormaPagamento(os.forma_pagamento_tecnico),
+          doc ? `${doc.tipo ?? 'DOCUMENTO'} - ${doc.status ?? '-'}` : 'Sem documento',
+        ]
+      }),
+    },
+    {
+      titulo: 'Contas a pagar',
+      headers: ['Descricao', 'Fornecedor', 'Categoria', 'Valor', 'Vencimento', 'Status', 'Forma', 'Pago em'],
+      rows: contas.map((conta) => [
+        conta.descricao ?? '-',
+        conta.fornecedor ?? '-',
+        formatarCategoriaConta(conta.categoria),
+        formatCurrency(toNumber(conta.valor)),
+        formatDate(conta.vencimento),
+        conta.status ?? 'PENDENTE',
+        formatarFormaPagamento(conta.forma_pagamento),
+        formatDate(conta.pago_em),
+      ]),
+    },
+    {
+      titulo: 'Historico financeiro',
+      headers: ['Data', 'Tipo', 'Status anterior', 'Status novo', 'Valor', 'Descricao', 'Responsavel'],
+      rows: historico.map((item) => [
+        formatDate(item.criado_em),
+        formatarTipoHistorico(item.tipo),
+        item.status_anterior ?? '-',
+        item.status_novo ?? '-',
+        formatCurrency(toNumber(item.valor)),
+        item.descricao ?? '-',
+        item.responsavel ?? '-',
+      ]),
+    },
+  ]
+}
+
+function montarHtmlRelatorioFinanceiro(
+  secoes: SecaoRelatorioFinanceiro[],
+  { formato }: { formato: 'excel' | 'pdf' }
+) {
+  const geradoEm = new Date().toLocaleString('pt-BR')
+  const autoPrint = formato === 'pdf' ? '<script>window.onload = () => window.print();</script>' : ''
+  return `<!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Relatorio financeiro</title>
+        <style>
+          body { font-family: Arial, sans-serif; color: #0f172a; margin: 24px; }
+          h1 { margin: 0; font-size: 24px; }
+          h2 { margin: 22px 0 8px; font-size: 16px; }
+          p { margin: 4px 0 0; color: #475569; font-size: 12px; }
+          table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
+          th, td { border: 1px solid #dbe3ea; padding: 7px 8px; font-size: 11px; text-align: left; vertical-align: top; }
+          th { background: #f1f5f9; font-weight: 700; }
+          .empty { color: #64748b; font-size: 12px; padding: 10px; border: 1px solid #dbe3ea; }
+          .brand { border-bottom: 2px solid #ff6600; padding-bottom: 10px; margin-bottom: 14px; }
+          @media print { body { margin: 12mm; } h2 { break-after: avoid; } table { break-inside: auto; } tr { break-inside: avoid; } }
+        </style>
+      </head>
+      <body>
+        <div class="brand">
+          <h1>Relatorio financeiro</h1>
+          <p>Chame o Tecnico | Gerado em ${escapeHtml(geradoEm)}</p>
+        </div>
+        ${secoes.map(renderSecaoRelatorio).join('')}
+        ${autoPrint}
+      </body>
+    </html>`
+}
+
+function renderSecaoRelatorio(secao: SecaoRelatorioFinanceiro) {
+  return `
+    <section>
+      <h2>${escapeHtml(secao.titulo)}</h2>
+      ${
+        secao.rows.length
+          ? `<table>
+              <thead><tr>${secao.headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead>
+              <tbody>
+                ${secao.rows
+                  .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`)
+                  .join('')}
+              </tbody>
+            </table>`
+          : '<div class="empty">Nenhum registro.</div>'
+      }
+    </section>`
+}
+
+function baixarArquivo(conteudo: string, nomeArquivo: string, mimeType: string) {
+  const blob = new Blob([conteudo], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = nomeArquivo
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function escapeHtml(value: string) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+function formatDateFile(date: Date) {
+  return date.toISOString().slice(0, 10)
 }
 
 function formatarErro(error: unknown, fallback: string) {
