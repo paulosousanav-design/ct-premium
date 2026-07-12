@@ -238,18 +238,18 @@ export default function PainelTecnicoPage() {
         {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{erro}</div>}
 
         <div className="grid gap-3 xl:grid-cols-3 xl:gap-4">
-          <section className="rounded-xl bg-white p-4 shadow-sm xl:col-span-2">
-            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <section className="rounded-xl bg-white p-3 shadow-sm sm:p-4 xl:col-span-2">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-slate-950">Minhas OS</h2>
                 <p className="text-xs text-slate-500">Separe o que esta em tratamento dos servicos ja concluidos.</p>
               </div>
 
-              <div className="inline-flex rounded-lg bg-slate-100 p-1">
+              <div className="inline-flex w-full rounded-lg bg-slate-100 p-1 sm:w-auto">
                 <button
                   type="button"
                   onClick={() => setAbaAtiva('tratamento')}
-                  className={`rounded-md px-3 py-1.5 text-xs font-black transition ${
+                  className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-black transition sm:flex-none sm:px-3 sm:text-xs ${
                     abaAtiva === 'tratamento' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -258,7 +258,7 @@ export default function PainelTecnicoPage() {
                 <button
                   type="button"
                   onClick={() => setAbaAtiva('finalizadas')}
-                  className={`rounded-md px-3 py-1.5 text-xs font-black transition ${
+                  className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-black transition sm:flex-none sm:px-3 sm:text-xs ${
                     abaAtiva === 'finalizadas' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -270,7 +270,7 @@ export default function PainelTecnicoPage() {
             {loading ? (
               <p className="text-sm text-slate-500">Carregando...</p>
             ) : abaAtiva === 'tratamento' && ordensAbertas.length ? (
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-2 sm:gap-3 md:grid-cols-2">
                 {ordensAbertas.map((os) => {
                   const alerta = getStatusAlerta(os.status)
                   const agendaDataHora = getAgendaDateTime(os, agendaDatas)
@@ -280,51 +280,51 @@ export default function PainelTecnicoPage() {
                   return (
                     <article
                       key={os.id}
-                      className={`relative overflow-hidden rounded-xl border bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${agendado ? 'border-slate-200' : 'border-amber-200'}`}
+                      className={`relative overflow-hidden rounded-xl border bg-white p-2.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-3 ${agendado ? 'border-slate-200' : 'border-amber-200'}`}
                     >
-                      <div className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: alerta.accentColor }} />
-                      <div className="mb-2 flex items-start justify-between gap-2">
+                      <div className="absolute inset-y-0 left-0 w-1 sm:w-1.5" style={{ backgroundColor: alerta.accentColor }} />
+                      <div className="mb-1.5 flex items-start justify-between gap-2 sm:mb-2">
                         <div className="min-w-0 pl-2">
-                          <p className="text-xs font-black text-orange-600">{os.numero_os ?? `OS #${os.id}`}</p>
-                          <h3 className="truncate text-base font-black text-slate-950">{os.clientes?.nome ?? 'Cliente'}</h3>
-                          <p className="text-[11px] text-slate-500">{new Date(os.created_at).toLocaleString('pt-BR')}</p>
+                          <p className="text-[10px] font-black leading-tight text-orange-600 sm:text-xs">{os.numero_os ?? `OS #${os.id}`}</p>
+                          <h3 className="truncate text-sm font-black leading-tight text-slate-950 sm:text-base">{os.clientes?.nome ?? 'Cliente'}</h3>
+                          <p className="text-[10px] leading-tight text-slate-500 sm:text-[11px]">{new Date(os.created_at).toLocaleString('pt-BR')}</p>
                         </div>
                         <StatusBadge status={os.status ?? 'NOVA'} compact />
                       </div>
 
-                      <div className={`mb-2 rounded-lg border px-2 py-1.5 text-xs font-bold ${agendado ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>
+                      <div className={`mb-1.5 rounded-md border px-2 py-1 text-[11px] font-bold leading-tight sm:mb-2 sm:rounded-lg sm:py-1.5 sm:text-xs ${agendado ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>
                         {agendado ? `Agendado para ${formatAgendaLabel(agendaDataHora)}` : 'Agendamento pendente: marque data e hora para liberar o atendimento.'}
                       </div>
 
-                      <div className="mb-2 rounded-lg bg-slate-50 px-2 py-1.5 text-xs font-semibold text-slate-600">
+                      <div className="mb-1.5 line-clamp-2 rounded-md bg-slate-50 px-2 py-1 text-[11px] font-semibold leading-tight text-slate-600 sm:mb-2 sm:rounded-lg sm:py-1.5 sm:text-xs">
                         {alerta.label}
                       </div>
 
                       {os.prioridade === 'URGENTE' && (
-                        <div className="mb-2 animate-pulse rounded-md bg-red-600 px-2 py-1.5 text-xs font-bold text-white">
+                        <div className="mb-1.5 animate-pulse rounded-md bg-red-600 px-2 py-1 text-[11px] font-bold text-white sm:mb-2 sm:py-1.5 sm:text-xs">
                           Prioridade urgente
                         </div>
                       )}
 
-                      <div className="space-y-1.5 text-xs">
+                      <div className="space-y-1 text-xs sm:space-y-1.5">
                         <Info label="Equipamento" value={formatarEquipamento(os)} compact />
                         <Info label="Endereco" value={formatarEndereco(os)} compact />
                       </div>
 
-                      <div className="mt-3 grid gap-2">
+                      <div className="mt-2 grid gap-1.5 sm:mt-3 sm:gap-2">
                         {!agendado && (
                           <input
                             type="datetime-local"
                             value={valorAgenda}
                             onChange={(event) => void atualizarAgenda(os.id, event.target.value)}
-                            className="h-10 w-full rounded-lg border border-amber-200 bg-amber-50 px-2 text-xs font-bold text-slate-800 outline-none focus:border-orange-500"
+                            className="h-9 w-full rounded-lg border border-amber-200 bg-amber-50 px-2 text-xs font-bold text-slate-800 outline-none focus:border-orange-500 sm:h-10"
                           />
                         )}
 
                         {agendado ? (
                           <Link
                             href={tecnicoId ? `/tecnico/os/${os.id}?tecnico=${encodeURIComponent(tecnicoId)}` : `/tecnico/os/${os.id}`}
-                            className="block rounded-lg bg-slate-900 px-3 py-2 text-center text-xs font-bold text-white transition hover:bg-slate-800"
+                            className="block rounded-lg bg-slate-900 px-3 py-1.5 text-center text-xs font-bold text-white transition hover:bg-slate-800 sm:py-2"
                           >
                             Tratar OS
                           </Link>
@@ -332,7 +332,7 @@ export default function PainelTecnicoPage() {
                           <button
                             type="button"
                             onClick={() => void atualizarAgenda(os.id, valorAgenda)}
-                            className="rounded-lg bg-orange-500 px-3 py-2 text-center text-xs font-bold text-white transition hover:bg-orange-600"
+                            className="rounded-lg bg-orange-500 px-3 py-1.5 text-center text-xs font-bold text-white transition hover:bg-orange-600 sm:py-2"
                           >
                             Salvar agendamento
                           </button>
@@ -423,7 +423,7 @@ function AgendaTecnicoPanel({
 }) {
   return (
     <section className="rounded-xl bg-white p-3 shadow-sm">
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-2 flex items-center justify-between gap-2 sm:mb-3">
         <div>
           <h2 className="text-base font-bold text-slate-950">Agenda</h2>
           <p className="text-xs text-slate-500">Atendimentos em aberto e sincronizacao com Google.</p>
@@ -439,12 +439,12 @@ function AgendaTecnicoPanel({
             const alerta = getStatusAlerta(os.status)
 
             return (
-            <article key={os.id} className={`relative overflow-hidden rounded-xl border bg-white p-2.5 shadow-sm ${agendado ? 'border-slate-200' : 'border-amber-200'}`}>
+            <article key={os.id} className={`relative overflow-hidden rounded-xl border bg-white p-2 shadow-sm sm:p-2.5 ${agendado ? 'border-slate-200' : 'border-amber-200'}`}>
               <div className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: alerta.accentColor }} />
-              <div className="mb-2 flex items-start justify-between gap-2">
+              <div className="mb-1.5 flex items-start justify-between gap-2 sm:mb-2">
                 <div className="min-w-0 pl-2">
                   <p className="text-[11px] font-black text-orange-600">{os.numero_os ?? `OS #${os.id}`}</p>
-                  <h3 className="truncate text-sm font-bold text-slate-950">{os.clientes?.nome ?? 'Cliente'}</h3>
+                  <h3 className="truncate text-xs font-bold text-slate-950 sm:text-sm">{os.clientes?.nome ?? 'Cliente'}</h3>
                   <p className={`mt-0.5 text-[10px] font-black uppercase ${agendado ? 'text-emerald-700' : 'text-amber-700'}`}>
                     {agendado ? 'Agendado' : 'Pendente de agenda'}
                   </p>
@@ -456,17 +456,17 @@ function AgendaTecnicoPanel({
                 type="datetime-local"
                 value={dataHora}
                 onChange={(event) => void onDataHoraChange(os.id, event.target.value)}
-                className="mb-2 h-9 w-full rounded-lg border border-slate-300 px-2 text-xs font-semibold text-slate-700 outline-none focus:border-orange-500"
+                className="mb-1.5 h-8 w-full rounded-lg border border-slate-300 px-2 text-xs font-semibold text-slate-700 outline-none focus:border-orange-500 sm:mb-2 sm:h-9"
               />
 
-              <p className="mb-2 line-clamp-2 text-xs text-slate-600">{formatarEndereco(os)}</p>
+              <p className="mb-1.5 line-clamp-1 text-[11px] text-slate-600 sm:mb-2 sm:line-clamp-2 sm:text-xs">{formatarEndereco(os)}</p>
 
               <a
                 href={criarGoogleCalendarUrl(os, dataHora)}
                 target="_blank"
                 rel="noreferrer"
                 onClick={() => void onDataHoraChange(os.id, dataHora)}
-                className={`block rounded-lg px-3 py-2 text-center text-xs font-bold text-white transition ${agendado ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-900 hover:bg-slate-800'}`}
+                className={`block rounded-lg px-3 py-1.5 text-center text-xs font-bold text-white transition sm:py-2 ${agendado ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-900 hover:bg-slate-800'}`}
               >
                 {agendado ? 'Sincronizar Google' : 'Salvar e sincronizar'}
               </a>
@@ -482,9 +482,9 @@ function AgendaTecnicoPanel({
 
 function Info({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
   return (
-    <div className={`rounded-md bg-white ${compact ? 'px-2 py-1.5' : 'px-3 py-2'}`}>
-      <p className="text-[10px] font-semibold uppercase text-slate-500">{label}</p>
-      <p className={`font-semibold text-slate-900 ${compact ? 'line-clamp-1 text-xs' : ''}`}>{value}</p>
+    <div className={`rounded-md bg-white ${compact ? 'px-2 py-1 sm:py-1.5' : 'px-3 py-2'}`}>
+      <p className="text-[9px] font-semibold uppercase leading-tight text-slate-500 sm:text-[10px]">{label}</p>
+      <p className={`font-semibold leading-tight text-slate-900 ${compact ? 'line-clamp-1 text-[11px] sm:text-xs' : ''}`}>{value}</p>
     </div>
   )
 }
@@ -492,7 +492,7 @@ function Info({ label, value, compact = false }: { label: string; value: string;
 function StatusBadge({ status, compact = false }: { status: string; compact?: boolean }) {
   const alerta = getStatusAlerta(status)
 
-  return <span className={`rounded-md font-bold ${compact ? 'px-2 py-1 text-[10px]' : 'px-3 py-1 text-xs'}`} style={alerta.badgeStyle}>{status}</span>
+  return <span className={`shrink-0 rounded-md font-bold ${compact ? 'max-w-[120px] truncate px-1.5 py-1 text-[9px] sm:max-w-none sm:px-2 sm:text-[10px]' : 'px-3 py-1 text-xs'}`} style={alerta.badgeStyle}>{status}</span>
 }
 
 function ResumoTecnicoPanel({ resumo }: { resumo: ResumoTecnico }) {
