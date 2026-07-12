@@ -346,43 +346,44 @@ export default function PainelTecnicoPage() {
               <p className="text-sm text-slate-500">Nenhuma OS aberta atribuida para este tecnico.</p>
             ) : ordensFinalizadas.length ? (
               <>
-                <div className="mb-3 flex justify-end">
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                <div className="mb-2 flex justify-end sm:mb-3">
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700 sm:text-xs">
                     {ordensAReceber.length} a receber
                   </span>
                 </div>
                 <div className="grid gap-2 md:grid-cols-2">
                   {ordensFinalizadas.map((os) => (
-                    <article key={os.id} className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
-                      <div className="mb-2 flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-emerald-700">{os.numero_os ?? `OS #${os.id}`}</p>
-                          <h3 className="truncate text-base font-bold text-slate-950">{os.clientes?.nome ?? 'Cliente'}</h3>
-                          <p className="text-[11px] text-slate-500">{formatarEquipamento(os)}</p>
+                    <article key={os.id} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-3">
+                      <div className="absolute inset-y-0 left-0 w-1 bg-emerald-600 sm:w-1.5" />
+                      <div className="mb-1.5 flex items-start justify-between gap-2 sm:mb-2">
+                        <div className="min-w-0 pl-2">
+                          <p className="text-[10px] font-black leading-tight text-emerald-700 sm:text-xs">{os.numero_os ?? `OS #${os.id}`}</p>
+                          <h3 className="truncate text-sm font-black leading-tight text-slate-950 sm:text-base">{os.clientes?.nome ?? 'Cliente'}</h3>
+                          <p className="line-clamp-1 text-[10px] leading-tight text-slate-500 sm:text-[11px]">{formatarEquipamento(os)}</p>
                         </div>
-                        <span className="rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white">
+                        <span className="shrink-0 rounded-md bg-emerald-600 px-1.5 py-1 text-[9px] font-bold text-white sm:px-2 sm:text-[10px]">
                           {tecnicoPago(os) ? 'PAGO' : 'A RECEBER'}
                         </span>
                       </div>
 
-                      <div className="mb-3 rounded-md bg-white px-3 py-2">
-                        <p className="text-[10px] font-bold uppercase text-slate-500">Valor do tecnico</p>
-                        <p className="text-lg font-black text-slate-950">{formatCurrency(valorTotalTecnico(os))}</p>
+                      <div className="mb-2 rounded-md bg-emerald-50 px-2 py-1.5 sm:mb-3 sm:px-3 sm:py-2">
+                        <p className="text-[9px] font-bold uppercase leading-tight text-emerald-700 sm:text-[10px]">Valor do tecnico</p>
+                        <p className="text-base font-black leading-tight text-slate-950 sm:text-lg">{formatCurrency(valorTotalTecnico(os))}</p>
                       </div>
 
                       <Link
                         href={tecnicoId ? `/tecnico/os/${os.id}?tecnico=${encodeURIComponent(tecnicoId)}` : `/tecnico/os/${os.id}`}
-                        className="block rounded-lg bg-slate-900 px-3 py-2 text-center text-xs font-bold text-white transition hover:bg-slate-800"
+                        className="block rounded-lg bg-slate-900 px-3 py-1.5 text-center text-xs font-bold text-white transition hover:bg-slate-800 sm:py-2"
                       >
-                            Ver OS finalizada
-                          </Link>
-                          <button
-                            type="button"
-                            onClick={() => setOsDocumentoId(String(os.id))}
-                            className="mt-2 block w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-center text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
-                          >
-                            Enviar NF/recibo desta OS
-                          </button>
+                        Ver OS finalizada
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => setOsDocumentoId(String(os.id))}
+                        className="mt-1.5 block w-full rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-center text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 sm:mt-2 sm:py-2"
+                      >
+                        Enviar NF/recibo
+                      </button>
                     </article>
                   ))}
                 </div>
