@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin()
     const colunasOrcamentoTecnicoExistem = await colunaExiste(supabase, 'ordens_servico', 'tecnico_total')
     const colunaPagamentoTecnicoExiste = await colunaExiste(supabase, 'ordens_servico', 'tecnico_status_pagamento')
+    const colunaAgendamentoTecnicoExiste = await colunaExiste(supabase, 'ordens_servico', 'tecnico_agendado_para')
     const selectOrcamentoTecnico = colunasOrcamentoTecnicoExistem
       ? `
         tecnico_valor_pecas,
@@ -51,6 +52,7 @@ export async function GET(request: NextRequest) {
         tecnico_status_pagamento,
         tecnico_pago_em,`
       : ''
+    const selectAgendamentoTecnico = colunaAgendamentoTecnicoExiste ? 'tecnico_agendado_para,' : ''
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const supabaseLoose = supabase as any
@@ -74,6 +76,7 @@ export async function GET(request: NextRequest) {
         valor_mao_obra,
         desconto,
         total,
+        ${selectAgendamentoTecnico}
         ${selectOrcamentoTecnico}
         ${selectPagamentoTecnico}
         status_financeiro,
@@ -165,6 +168,7 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json().catch(() => null)
     const tecnicoId = Number(body?.tecnicoId) || getTecnicoId(request)
     const osId = Number(body?.osId)
+    const tipo = String(body?.tipo ?? 'ATENDIMENTO').trim().toUpperCase()
     const status = String(body?.status ?? 'EM_ATENDIMENTO').trim().toUpperCase()
 
     if (!tecnicoId || !osId) {
@@ -176,6 +180,62 @@ export async function PATCH(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin()
+    if (tipo === 'AGENDAMENTO') {
+      const colunaAgendamentoTecnicoExiste = await colunaExiste(supabase, 'ordens_servico', 'tecnico_agendado_para')
+      if (!colunaAgendamentoTecnicoExiste) {
+        return NextResponse.json({ error: 'Rode o SQL de agendamento tecnico antes de salvar no sistema.' }, { status: 400 })
+      }
+
+      const dataAgenda = new Date(String(body?.dataHora ?? ''))
+      if (!Number.isFinite(dataAgenda.getTime())) {
+        return NextResponse.json({ error: 'Informe uma data e hora validas para o agendamento.' }, { status: 400 })
+      }
+
+      const { data: osAtual, error: osAtualError } = await supabase
+        .from('ordens_servico')
+        .select('id, numero_os, status, prioridade, parceiro_id')
+        .eq('id', osId)
+        .eq('parceiro_id', tecnicoId)
+        .maybeSingle()
+
+      if (osAtualError) throw osAtualError
+      if (!osAtual) {
+        return NextResponse.json({ error: 'OS nao localizada para este tecnico.' }, { status: 404 })
+      }
+
+      const { error: updateError } = await supabase
+        .from('ordens_servico')
+        .update({ tecnico_agendado_para: dataAgenda.toISOString() })
+        .eq('id', osId)
+        .eq('parceiro_id', tecnicoId)
+
+      if (updateError) throw updateError
+
+      const { data: tecnico } = await supabase
+        .from('parceiros')
+        .select('responsavel, nome_fantasia, razao_social')
+        .eq('id', tecnicoId)
+        .maybeSingle()
+
+      const nomeTecnico =
+        tecnico?.responsavel ?? tecnico?.nome_fantasia ?? tecnico?.razao_social ?? `Tecnico #${tecnicoId}`
+
+      const { error: historicoError } = await supabase.from('os_historico').insert({
+        os_id: osId,
+        acao: 'AGENDAMENTO_TECNICO',
+        status_anterior: osAtual.status,
+        status_novo: osAtual.status,
+        prioridade_anterior: osAtual.prioridade,
+        prioridade_nova: osAtual.prioridade,
+        descricao: `${osAtual.numero_os ?? `OS #${osId}`} agendada para ${dataAgenda.toLocaleString('pt-BR')}.`,
+        responsavel: nomeTecnico,
+      })
+
+      if (historicoError) throw historicoError
+
+      return NextResponse.json({ ok: true, tecnico_agendado_para: dataAgenda.toISOString() })
+    }
+
     const { data: osAtual, error: osAtualError } = await supabase
       .from('ordens_servico')
       .select('id, status, prioridade, parceiro_id')

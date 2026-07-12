@@ -16,6 +16,7 @@ type OSItem = {
   tecnico_total?: number | string | null
   tecnico_status_pagamento?: string | null
   tecnico_pago_em?: string | null
+  tecnico_agendado_para?: string | null
   status_financeiro?: string | null
   clientes?: {
     nome: string | null
@@ -127,7 +128,15 @@ export default function PainelTecnicoPage() {
       }
 
       if (!response.ok) throw new Error(data?.error ?? 'Nao foi possivel carregar suas OS.')
-      setOrdens((data?.data ?? []) as OSItem[])
+      const ordensData = (data?.data ?? []) as OSItem[]
+      setOrdens(ordensData)
+      setAgendaDatas((atual) => {
+        const proximos = { ...atual }
+        for (const os of ordensData) {
+          if (os.tecnico_agendado_para) proximos[String(os.id)] = toDateTimeLocalValue(new Date(os.tecnico_agendado_para))
+        }
+        return proximos
+      })
       setResumo((data?.resumo ?? resumoInicial()) as ResumoTecnico)
       await carregarDocumentos()
     } catch (error) {
@@ -154,7 +163,8 @@ export default function PainelTecnicoPage() {
     () => ordensAbertas
       .map((os) => ({
         os,
-        dataHora: agendaDatas[String(os.id)] || defaultAgendaDateTime(os.created_at),
+        dataHora: getAgendaDateTime(os, agendaDatas) || defaultAgendaDateTime(os.created_at),
+        agendado: Boolean(getAgendaDateTime(os, agendaDatas)),
       }))
       .sort((a, b) => new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime()),
     [agendaDatas, ordensAbertas]
@@ -165,8 +175,31 @@ export default function PainelTecnicoPage() {
     window.location.href = '/tecnico/login'
   }
 
-  function atualizarAgenda(osId: number, dataHora: string) {
+  async function atualizarAgenda(osId: number, dataHora: string) {
     setAgendaDatas((atual) => ({ ...atual, [String(osId)]: dataHora }))
+    await salvarAgendaSistema(osId, dataHora).catch((error) => {
+      setErro(error instanceof Error ? error.message : 'Nao foi possivel salvar o agendamento no sistema.')
+    })
+  }
+
+  async function salvarAgendaSistema(osId: number, dataHora: string) {
+    const response = await fetch('/api/tecnico/os', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tipo: 'AGENDAMENTO',
+        osId,
+        tecnicoId: tecnicoId ? Number(tecnicoId) : undefined,
+        dataHora,
+      }),
+    })
+
+    if (response.ok) return
+
+    const data = await response.json().catch(() => null)
+    const mensagem = String(data?.error ?? '')
+    if (mensagem.includes('SQL de agendamento')) return
+    throw new Error(mensagem || 'Nao foi possivel salvar o agendamento no sistema.')
   }
 
   return (
@@ -237,22 +270,33 @@ export default function PainelTecnicoPage() {
             {loading ? (
               <p className="text-sm text-slate-500">Carregando...</p>
             ) : abaAtiva === 'tratamento' && ordensAbertas.length ? (
-              <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-2">
                 {ordensAbertas.map((os) => {
                   const alerta = getStatusAlerta(os.status)
+                  const agendaDataHora = getAgendaDateTime(os, agendaDatas)
+                  const agendado = Boolean(agendaDataHora)
+                  const valorAgenda = agendaDataHora || defaultAgendaDateTime(os.created_at)
 
                   return (
-                    <article key={os.id} className="rounded-lg border p-3 shadow-sm" style={alerta.cardStyle}>
+                    <article
+                      key={os.id}
+                      className={`relative overflow-hidden rounded-xl border bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${agendado ? 'border-slate-200' : 'border-amber-200'}`}
+                    >
+                      <div className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: alerta.accentColor }} />
                       <div className="mb-2 flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-orange-600">{os.numero_os ?? `OS #${os.id}`}</p>
-                          <h3 className="truncate text-base font-bold text-slate-950">{os.clientes?.nome ?? 'Cliente'}</h3>
+                        <div className="min-w-0 pl-2">
+                          <p className="text-xs font-black text-orange-600">{os.numero_os ?? `OS #${os.id}`}</p>
+                          <h3 className="truncate text-base font-black text-slate-950">{os.clientes?.nome ?? 'Cliente'}</h3>
                           <p className="text-[11px] text-slate-500">{new Date(os.created_at).toLocaleString('pt-BR')}</p>
                         </div>
                         <StatusBadge status={os.status ?? 'NOVA'} compact />
                       </div>
 
-                      <div className="mb-2 rounded-md px-2 py-1.5 text-xs font-bold" style={alerta.bannerStyle}>
+                      <div className={`mb-2 rounded-lg border px-2 py-1.5 text-xs font-bold ${agendado ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>
+                        {agendado ? `Agendado para ${formatAgendaLabel(agendaDataHora)}` : 'Agendamento pendente: marque data e hora para liberar o atendimento.'}
+                      </div>
+
+                      <div className="mb-2 rounded-lg bg-slate-50 px-2 py-1.5 text-xs font-semibold text-slate-600">
                         {alerta.label}
                       </div>
 
@@ -267,12 +311,33 @@ export default function PainelTecnicoPage() {
                         <Info label="Endereco" value={formatarEndereco(os)} compact />
                       </div>
 
-                      <Link
-                        href={tecnicoId ? `/tecnico/os/${os.id}?tecnico=${encodeURIComponent(tecnicoId)}` : `/tecnico/os/${os.id}`}
-                        className="mt-3 block rounded-lg bg-orange-500 px-3 py-2 text-center text-xs font-bold text-white transition hover:bg-orange-600"
-                      >
-                        Tratar OS
-                      </Link>
+                      <div className="mt-3 grid gap-2">
+                        {!agendado && (
+                          <input
+                            type="datetime-local"
+                            value={valorAgenda}
+                            onChange={(event) => void atualizarAgenda(os.id, event.target.value)}
+                            className="h-10 w-full rounded-lg border border-amber-200 bg-amber-50 px-2 text-xs font-bold text-slate-800 outline-none focus:border-orange-500"
+                          />
+                        )}
+
+                        {agendado ? (
+                          <Link
+                            href={tecnicoId ? `/tecnico/os/${os.id}?tecnico=${encodeURIComponent(tecnicoId)}` : `/tecnico/os/${os.id}`}
+                            className="block rounded-lg bg-slate-900 px-3 py-2 text-center text-xs font-bold text-white transition hover:bg-slate-800"
+                          >
+                            Tratar OS
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void atualizarAgenda(os.id, valorAgenda)}
+                            className="rounded-lg bg-orange-500 px-3 py-2 text-center text-xs font-bold text-white transition hover:bg-orange-600"
+                          >
+                            Salvar agendamento
+                          </button>
+                        )}
+                      </div>
                     </article>
                   )
                 })}
@@ -353,8 +418,8 @@ function AgendaTecnicoPanel({
   itens,
   onDataHoraChange,
 }: {
-  itens: Array<{ os: OSItem; dataHora: string }>
-  onDataHoraChange: (osId: number, dataHora: string) => void
+  itens: Array<{ os: OSItem; dataHora: string; agendado: boolean }>
+  onDataHoraChange: (osId: number, dataHora: string) => void | Promise<void>
 }) {
   return (
     <section className="rounded-xl bg-white p-3 shadow-sm">
@@ -370,12 +435,19 @@ function AgendaTecnicoPanel({
 
       {itens.length ? (
         <div className="space-y-2">
-          {itens.slice(0, 5).map(({ os, dataHora }) => (
-            <article key={os.id} className="rounded-lg border border-slate-200 p-2">
+          {itens.slice(0, 5).map(({ os, dataHora, agendado }) => {
+            const alerta = getStatusAlerta(os.status)
+
+            return (
+            <article key={os.id} className={`relative overflow-hidden rounded-xl border bg-white p-2.5 shadow-sm ${agendado ? 'border-slate-200' : 'border-amber-200'}`}>
+              <div className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: alerta.accentColor }} />
               <div className="mb-2 flex items-start justify-between gap-2">
-                <div className="min-w-0">
+                <div className="min-w-0 pl-2">
                   <p className="text-[11px] font-black text-orange-600">{os.numero_os ?? `OS #${os.id}`}</p>
                   <h3 className="truncate text-sm font-bold text-slate-950">{os.clientes?.nome ?? 'Cliente'}</h3>
+                  <p className={`mt-0.5 text-[10px] font-black uppercase ${agendado ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {agendado ? 'Agendado' : 'Pendente de agenda'}
+                  </p>
                 </div>
                 <StatusBadge status={os.status ?? 'NOVA'} compact />
               </div>
@@ -383,7 +455,7 @@ function AgendaTecnicoPanel({
               <input
                 type="datetime-local"
                 value={dataHora}
-                onChange={(event) => onDataHoraChange(os.id, event.target.value)}
+                onChange={(event) => void onDataHoraChange(os.id, event.target.value)}
                 className="mb-2 h-9 w-full rounded-lg border border-slate-300 px-2 text-xs font-semibold text-slate-700 outline-none focus:border-orange-500"
               />
 
@@ -393,12 +465,13 @@ function AgendaTecnicoPanel({
                 href={criarGoogleCalendarUrl(os, dataHora)}
                 target="_blank"
                 rel="noreferrer"
-                className="block rounded-lg bg-emerald-600 px-3 py-2 text-center text-xs font-bold text-white transition hover:bg-emerald-700"
+                onClick={() => void onDataHoraChange(os.id, dataHora)}
+                className={`block rounded-lg px-3 py-2 text-center text-xs font-bold text-white transition ${agendado ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-900 hover:bg-slate-800'}`}
               >
-                Sincronizar Google
+                {agendado ? 'Sincronizar Google' : 'Salvar e sincronizar'}
               </a>
             </article>
-          ))}
+          )})}
         </div>
       ) : (
         <p className="text-xs text-slate-500">Nenhuma OS aberta para agendar.</p>
@@ -762,6 +835,7 @@ function getStatusAlerta(status?: string | null) {
     case 'EM_ATENDIMENTO':
       return {
         label: 'Em atendimento: executar diagnóstico e atualizar a OS.',
+        accentColor: '#059669',
         cardStyle: statusStyle('#a7f3d0', '#ecfdf5'),
         bannerStyle: alertStyle('#059669', '#ffffff'),
         badgeStyle: alertStyle('#059669', '#ffffff'),
@@ -769,6 +843,7 @@ function getStatusAlerta(status?: string | null) {
     case 'AGUARDANDO_APROVACAO':
       return {
         label: 'Aguardando aprovação: orçamento enviado ao cliente.',
+        accentColor: '#0891b2',
         cardStyle: statusStyle('#67e8f9', '#ecfeff'),
         bannerStyle: alertStyle('#0891b2', '#ffffff'),
         badgeStyle: alertStyle('#0891b2', '#ffffff'),
@@ -776,6 +851,7 @@ function getStatusAlerta(status?: string | null) {
     case 'AGUARDANDO_REVISAO':
       return {
         label: 'Aguardando revisao administrativa: equipe vai conferir antes de enviar ao cliente.',
+        accentColor: '#4f46e5',
         cardStyle: statusStyle('#818cf8', '#eef2ff'),
         bannerStyle: alertStyle('#4f46e5', '#ffffff'),
         badgeStyle: alertStyle('#4f46e5', '#ffffff'),
@@ -783,6 +859,7 @@ function getStatusAlerta(status?: string | null) {
     case 'AGUARDANDO_PECA':
       return {
         label: 'Aguardando peça: acompanhar compra ou chegada.',
+        accentColor: '#7c3aed',
         cardStyle: statusStyle('#c4b5fd', '#f5f3ff'),
         bannerStyle: alertStyle('#7c3aed', '#ffffff'),
         badgeStyle: alertStyle('#7c3aed', '#ffffff'),
@@ -790,6 +867,7 @@ function getStatusAlerta(status?: string | null) {
     case 'PRONTO_AGUARDANDO_ENTREGA':
       return {
         label: 'Pronto: aguardando entrega ou retirada pelo cliente.',
+        accentColor: '#059669',
         cardStyle: statusStyle('#34d399', '#ecfdf5'),
         bannerStyle: alertStyle('#059669', '#ffffff'),
         badgeStyle: alertStyle('#059669', '#ffffff'),
@@ -797,6 +875,7 @@ function getStatusAlerta(status?: string | null) {
     case 'CRITICA':
       return {
         label: 'Crítica: atendimento precisa de prioridade.',
+        accentColor: '#dc2626',
         cardStyle: statusStyle('#f87171', '#fef2f2'),
         bannerStyle: alertStyle('#dc2626', '#ffffff'),
         badgeStyle: alertStyle('#dc2626', '#ffffff'),
@@ -804,6 +883,7 @@ function getStatusAlerta(status?: string | null) {
     default:
       return {
         label: 'Status em triagem: confira as informações da OS.',
+        accentColor: '#f59e0b',
         cardStyle: statusStyle('#fcd34d', '#fffbeb'),
         bannerStyle: alertStyle('#f59e0b', '#0f172a'),
         badgeStyle: alertStyle('#f59e0b', '#0f172a'),
@@ -881,6 +961,24 @@ function carregarAgendaLocal(tecnicoId: string) {
   } catch {
     return {}
   }
+}
+
+function getAgendaDateTime(os: OSItem, agendaDatas: Record<string, string>) {
+  const local = agendaDatas[String(os.id)]
+  if (local) return local
+  if (!os.tecnico_agendado_para) return ''
+  return toDateTimeLocalValue(new Date(os.tecnico_agendado_para))
+}
+
+function formatAgendaLabel(value: string) {
+  const data = new Date(value)
+  if (!Number.isFinite(data.getTime())) return 'data invalida'
+  return data.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function defaultAgendaDateTime(createdAt: string) {
