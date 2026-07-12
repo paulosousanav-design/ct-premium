@@ -247,19 +247,19 @@ export default function AbrirChamadoPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#c7d3cf] px-4 py-5">
-      <div className="mx-auto max-w-6xl space-y-4">
-        <header className="rounded-xl bg-white p-5 shadow-sm">
+    <main className="min-h-screen bg-[#c7d3cf] px-3 py-3 sm:px-4 sm:py-5">
+      <div className="mx-auto max-w-6xl space-y-3 sm:space-y-4">
+        <header className="rounded-xl bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-4">
-              <Image src="/logo-ct.png" alt="Chame o Tecnico" width={150} height={65} className="h-auto w-[120px]" />
+            <div className="flex items-center gap-3 sm:gap-4">
+              <Image src="/logo-ct.png" alt="Chame o Tecnico" width={150} height={65} className="h-auto w-[96px] sm:w-[120px]" />
               <div>
                 <p className="text-xs font-bold uppercase text-orange-600">Portal do cliente</p>
-                <h1 className="text-2xl font-black text-slate-950">Abertura de chamado</h1>
-                <p className="text-sm text-slate-600">Preencha os dados para nossa equipe iniciar a triagem.</p>
+                <h1 className="text-xl font-black text-slate-950 sm:text-2xl">Abertura de chamado</h1>
+                <p className="text-xs text-slate-600 sm:text-sm">Preencha os dados para nossa equipe iniciar a triagem.</p>
               </div>
             </div>
-            <Link href="/consulta" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">
+            <Link href="/consulta" className="rounded-lg border border-slate-300 px-4 py-2 text-center text-sm font-bold text-slate-700">
               Consultar OS
             </Link>
           </div>
@@ -288,18 +288,9 @@ export default function AbrirChamadoPage() {
         )}
         <div data-public-form-status className="hidden rounded-xl px-4 py-3 text-sm font-bold" />
 
-        <form onSubmit={enviar} action="/api/chamados" method="post" encType="multipart/form-data" data-public-os-form className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <section className="space-y-4 rounded-xl bg-white p-5 shadow-sm">
-            <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
-              <p className="font-black">Atendimento inicial somente em Mato Grosso do Sul (MS).</p>
-              <p className="mt-1 font-semibold">
-                Para outros estados, fale conosco pelo WhatsApp:
-                {' '}
-                <a href={criarWhatsAppRegiaoUrl('', '')} target="_blank" rel="noreferrer" className="font-black underline decoration-orange-400 underline-offset-4">
-                  chamar agora
-                </a>
-              </p>
-            </div>
+        <form onSubmit={enviar} action="/api/chamados" method="post" encType="multipart/form-data" data-public-os-form className="grid gap-3 sm:gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <section className="space-y-3 rounded-xl bg-white p-4 shadow-sm sm:space-y-4 sm:p-5">
+            <AvisoExpansao />
 
             <Bloco titulo="Dados do cliente">
               <Field label="Nome completo" name="nomeCliente" value={form.nomeCliente} onChange={handleChange} required />
@@ -348,16 +339,16 @@ export default function AbrirChamadoPage() {
                 value={form.defeito}
                 onChange={handleChange}
                 required
-                rows={4}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500"
+                rows={3}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[13px] outline-none focus:border-orange-500 sm:text-sm"
                 placeholder="Descreva o problema apresentado..."
               />
             </div>
           </section>
 
-          <aside className="space-y-4">
-            <section className="rounded-xl bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-black text-slate-950">Garantia</h2>
+          <aside className="space-y-3 sm:space-y-4">
+            <section className="rounded-xl bg-white p-4 shadow-sm sm:p-5">
+              <h2 className="text-base font-black text-slate-950 sm:text-lg">Garantia</h2>
               <div className="garantia-toggle mt-3 grid grid-cols-2 gap-2">
                 {(['NAO', 'SIM'] as const).map((valor) => (
                   <label
@@ -392,8 +383,8 @@ export default function AbrirChamadoPage() {
               </div>
             </section>
 
-            <section className="rounded-xl bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-black text-slate-950">Anexos</h2>
+            <section className="rounded-xl bg-white p-4 shadow-sm sm:p-5">
+              <h2 className="text-base font-black text-slate-950 sm:text-lg">Anexos</h2>
               <p className="mt-1 text-xs text-slate-500">Envie fotos do produto, defeito ou nota fiscal. Maximo 6 arquivos.</p>
               <input
                 name="anexos"
@@ -401,7 +392,7 @@ export default function AbrirChamadoPage() {
                 accept="image/*,.pdf"
                 multiple
                 onChange={handleAnexos}
-                className="mt-3 block w-full rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-600"
+                className="mt-3 block w-full rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-[13px] text-slate-600 sm:py-3 sm:text-sm"
               />
               {anexos.length > 0 && (
                 <div className="mt-3 space-y-1">
@@ -414,18 +405,18 @@ export default function AbrirChamadoPage() {
               )}
             </section>
 
-            <section className="rounded-xl bg-white p-5 shadow-sm">
+            <section className="rounded-xl bg-white p-4 shadow-sm sm:p-5">
               <label className="mb-1 block text-sm font-bold text-slate-700">Observacao adicional</label>
               <textarea
                 name="observacao"
                 value={form.observacao}
                 onChange={handleChange}
-                rows={4}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500"
+                rows={3}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[13px] outline-none focus:border-orange-500 sm:text-sm"
                 placeholder="Ex.: melhor horario, ponto de referencia..."
               />
 
-              <label className="mt-4 flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold leading-snug text-slate-600">
+              <label className="mt-3 flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold leading-snug text-slate-600 sm:mt-4">
                 <input type="checkbox" name="lgpdConsentimento" value="SIM" required className="mt-0.5 h-4 w-4 accent-orange-500" />
                 <span>Autorizo o uso dos meus dados para abertura, atendimento e acompanhamento deste chamado, conforme a LGPD.</span>
               </label>
@@ -433,7 +424,7 @@ export default function AbrirChamadoPage() {
               <button
                 type="submit"
                 disabled={salvando || !aberturaChamadosAtiva}
-                className="mt-4 w-full rounded-xl bg-orange-500 px-5 py-3 text-base font-black text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-3 w-full rounded-xl bg-orange-500 px-5 py-2.5 text-sm font-black text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60 sm:mt-4 sm:py-3 sm:text-base"
               >
                 {!aberturaChamadosAtiva ? 'Abertura em breve' : salvando ? 'Enviando...' : 'Abrir chamado'}
               </button>
@@ -445,11 +436,28 @@ export default function AbrirChamadoPage() {
   )
 }
 
+function AvisoExpansao() {
+  return (
+    <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2.5 text-xs leading-relaxed text-orange-900 sm:px-4 sm:py-3 sm:text-sm">
+      <p className="font-black">Atendimento em expansao</p>
+      <p className="mt-1 font-semibold">
+        O Chame o Tecnico esta ampliando gradativamente sua rede de atendimento em Mato Grosso do Sul.
+      </p>
+      <p className="mt-1 text-orange-800">
+        Apos o envio, nossa equipe fara uma triagem para verificar a disponibilidade na sua regiao e direcionar o servico ao tecnico parceiro mais qualificado.
+      </p>
+      <a href={criarWhatsAppRegiaoUrl('', '')} target="_blank" rel="noreferrer" className="mt-2 inline-flex font-black text-orange-800 underline decoration-orange-400 underline-offset-4">
+        Falar no WhatsApp
+      </a>
+    </div>
+  )
+}
+
 function Bloco({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
     <section>
-      <h2 className="mb-3 text-lg font-black text-slate-950">{titulo}</h2>
-      <div className="grid gap-3 md:grid-cols-2">{children}</div>
+      <h2 className="mb-2 text-base font-black text-slate-950 sm:mb-3 sm:text-lg">{titulo}</h2>
+      <div className="grid gap-2.5 sm:gap-3 md:grid-cols-2">{children}</div>
     </section>
   )
 }
@@ -474,7 +482,7 @@ function Field({
   inputMode?: 'none' | 'text' | 'tel' | 'url' | 'email' | 'numeric' | 'decimal' | 'search'
 }) {
   return (
-    <label className="block text-sm font-bold text-slate-700">
+    <label className="block text-[13px] font-bold text-slate-700 sm:text-sm">
       {label}{required ? ' *' : ''}
       <input
         name={name}
@@ -484,7 +492,7 @@ function Field({
         required={required}
         maxLength={maxLength}
         inputMode={inputMode}
-        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500"
+        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-[13px] outline-none focus:border-orange-500 sm:text-sm"
       />
     </label>
   )
@@ -508,7 +516,7 @@ function Select({
   children: ReactNode
 }) {
   return (
-    <label className="block text-sm font-bold text-slate-700">
+    <label className="block text-[13px] font-bold text-slate-700 sm:text-sm">
       {label}{required ? ' *' : ''}
       <select
         name={name}
@@ -516,7 +524,7 @@ function Select({
         onChange={onChange}
         required={required}
         disabled={disabled}
-        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500 disabled:cursor-not-allowed disabled:bg-slate-100"
+        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-[13px] outline-none focus:border-orange-500 disabled:cursor-not-allowed disabled:bg-slate-100 sm:text-sm"
       >
         {children}
       </select>

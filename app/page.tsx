@@ -348,9 +348,10 @@ export default function Home() {
           )}
           <div data-public-form-status className="hidden" />
           <div className="service-area-note">
-            <strong>Atendimento inicial somente em MS.</strong>
-            <span> Para outros estados, fale conosco pelo WhatsApp.</span>
-            <a href={criarWhatsAppRegiaoUrl('', '')} target="_blank" rel="noreferrer">Chamar agora</a>
+            <strong>Atendimento em expansao</strong>
+            <span>O Chame o Tecnico esta ampliando gradativamente sua rede em Mato Grosso do Sul.</span>
+            <span>Apos o envio, nossa equipe fara uma triagem para verificar disponibilidade na sua regiao.</span>
+            <a href={criarWhatsAppRegiaoUrl('', '')} target="_blank" rel="noreferrer">Falar no WhatsApp</a>
           </div>
 
           <div className="form-grid">
