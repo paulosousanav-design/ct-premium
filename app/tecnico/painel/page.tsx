@@ -204,7 +204,7 @@ export default function PainelTecnicoPage() {
 
         {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{erro}</div>}
 
-        <div className="grid gap-4 xl:grid-cols-3">
+        <div className="grid gap-3 xl:grid-cols-3 xl:gap-4">
           <section className="rounded-xl bg-white p-4 shadow-sm xl:col-span-2">
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -327,7 +327,7 @@ export default function PainelTecnicoPage() {
             )}
           </section>
 
-          <aside className="space-y-3">
+          <aside className="space-y-3 xl:space-y-4">
             <AgendaTecnicoPanel
               itens={agendaItens}
               onDataHoraChange={atualizarAgenda}
@@ -432,26 +432,32 @@ function ResumoTecnicoPanel({ resumo }: { resumo: ResumoTecnico }) {
 
   return (
     <>
-      <section className="rounded-xl bg-white p-3 shadow-sm">
-        <h2 className="text-base font-bold text-slate-950">Resumo do tecnico</h2>
-        <p className="text-xs text-slate-500">Servicos, recebidos e valores em aberto</p>
+      <section className="rounded-xl bg-white p-3 shadow-sm sm:p-4">
+        <div className="mb-3">
+          <h2 className="text-base font-bold text-slate-950">Resumo do tecnico</h2>
+          <p className="text-xs text-slate-500">Servicos, recebidos e valores em aberto</p>
+        </div>
 
-        <div className="mt-3 grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <MiniMetric label="Executados" value={String(resumo.executados)} tone="emerald" />
           <MiniMetric label="Abertas" value={String(resumo.abertas)} tone="amber" />
           <MiniMetric label="Revisao" value={String(resumo.emRevisao)} tone="indigo" />
         </div>
       </section>
 
-      <section className="rounded-xl bg-white p-3 shadow-sm">
-        <div className="mb-2 flex items-center justify-between">
+      <section className="rounded-xl bg-white p-3 shadow-sm sm:p-4">
+        <div className="mb-3">
           <h3 className="text-sm font-bold text-slate-950">Valores</h3>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">
-            {formatCurrency(resumo.total)}
-          </span>
+          <p className="text-xs text-slate-500">Total, recebido e saldo a receber</p>
         </div>
 
-        <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <FinanceMetric label="Total" value={formatCurrency(resumo.total)} tone="slate" destaque />
+          <FinanceMetric label="Recebido" value={formatCurrency(resumo.recebido)} tone="emerald" destaque />
+          <FinanceMetric label="A receber" value={formatCurrency(resumo.aReceber)} tone="amber" />
+        </div>
+
+        <div className="mt-3 space-y-2">
           <BarraResumo
             label="Recebido"
             value={formatCurrency(resumo.recebido)}
@@ -467,7 +473,7 @@ function ResumoTecnicoPanel({ resumo }: { resumo: ResumoTecnico }) {
         </div>
       </section>
 
-      <section className="rounded-xl bg-white p-3 shadow-sm">
+      <section className="rounded-xl bg-white p-3 shadow-sm sm:p-4">
         <h3 className="mb-2 text-sm font-bold text-slate-950">Servicos</h3>
         <div className="space-y-2">
           <BarraResumo
@@ -689,9 +695,37 @@ function MiniMetric({
         : 'bg-indigo-50 text-indigo-700'
 
   return (
-    <div className={`rounded-lg px-3 py-2 text-center ${cls}`}>
-      <p className="text-lg font-black leading-none">{value}</p>
-      <p className="text-[10px] font-bold uppercase">{label}</p>
+    <div className={`min-w-0 rounded-lg px-3 py-2.5 text-center ${cls}`}>
+      <p className="break-words text-xl font-black leading-none sm:text-2xl">{value}</p>
+      <p className="mt-1 text-[10px] font-bold uppercase leading-tight sm:text-xs">{label}</p>
+    </div>
+  )
+}
+
+function FinanceMetric({
+  label,
+  value,
+  tone,
+  destaque = false,
+}: {
+  label: string
+  value: string
+  tone: 'emerald' | 'amber' | 'slate'
+  destaque?: boolean
+}) {
+  const cls =
+    tone === 'emerald'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+      : tone === 'amber'
+        ? 'border-amber-200 bg-amber-50 text-amber-800'
+        : 'border-slate-200 bg-slate-50 text-slate-900'
+
+  return (
+    <div className={`min-w-0 rounded-lg border px-3 py-2.5 ${destaque ? 'sm:py-3' : ''} ${cls}`}>
+      <p className="text-[10px] font-black uppercase leading-tight opacity-75 sm:text-xs">{label}</p>
+      <p className={`${destaque ? 'text-lg sm:text-2xl' : 'text-base sm:text-xl'} mt-1 break-words font-black leading-tight`}>
+        {value}
+      </p>
     </div>
   )
 }
@@ -710,10 +744,10 @@ function BarraResumo({
   const largura = Math.max(0, Math.min(percent, 100))
 
   return (
-    <div>
+    <div className="min-w-0">
       <div className="mb-1 flex items-center justify-between gap-2">
         <span className="text-xs font-bold text-slate-700">{label}</span>
-        <span className="text-sm font-black text-slate-700">{value}</span>
+        <span className="break-words text-right text-xs font-black text-slate-700 sm:text-sm">{value}</span>
       </div>
       <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
         <div className="h-full rounded-full" style={{ width: `${largura}%`, backgroundColor: color }} />
