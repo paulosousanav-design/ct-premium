@@ -21,7 +21,7 @@ create table if not exists vendas (
 create table if not exists venda_itens (
   id bigserial primary key,
   venda_id bigint not null references vendas(id) on delete cascade,
-  peca_id bigint not null references pecas(id),
+  peca_id bigint references pecas(id),
   descricao text not null,
   codigo text,
   quantidade numeric(12,3) not null,
@@ -33,6 +33,9 @@ create table if not exists venda_itens (
 
 alter table pecas_movimentacoes
 add column if not exists venda_id bigint references vendas(id);
+
+alter table venda_itens
+alter column peca_id drop not null;
 
 create index if not exists vendas_criado_em_idx on vendas(criado_em desc);
 create index if not exists venda_itens_venda_idx on venda_itens(venda_id);

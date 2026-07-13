@@ -13,6 +13,7 @@ const permissoesValidas = new Set([
   'garantidores',
   'aprovacao',
   'financeiro',
+  'vendas',
   'pecas',
   'clientes',
   'usuarios',
