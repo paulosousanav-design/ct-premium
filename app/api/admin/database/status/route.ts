@@ -14,6 +14,10 @@ const colunasParceiros = [
   'comissao_pecas_percentual',
   'comissao_mao_obra_percentual',
   'periodicidade_comissao',
+  'foto_cracha_url',
+  'cracha_codigo',
+  'cracha_status',
+  'cracha_validade',
 ] as const
 
 function getSupabaseAdmin() {
@@ -73,6 +77,14 @@ export async function GET(request: NextRequest) {
         'add column if not exists comissao_pecas_percentual numeric(5,2) not null default 0,',
         'add column if not exists comissao_mao_obra_percentual numeric(5,2) not null default 0,',
         "add column if not exists periodicidade_comissao text not null default 'MENSAL';",
+        '',
+        'alter table parceiros',
+        'add column if not exists foto_cracha_url text,',
+        'add column if not exists cracha_codigo text unique,',
+        "add column if not exists cracha_status text not null default 'SEM_FOTO',",
+        'add column if not exists cracha_validade date,',
+        'add column if not exists cracha_aprovado_por text,',
+        'add column if not exists cracha_aprovado_em timestamptz;',
         '',
         'create table if not exists tecnico_documentos (',
         '  id bigserial primary key,',

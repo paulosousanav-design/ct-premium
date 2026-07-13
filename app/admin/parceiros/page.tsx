@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @next/next/no-img-element */
 
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
 import { adminFetch } from '@/lib/admin-fetch'
@@ -26,6 +27,10 @@ type Tecnico = {
   comissao_pecas_percentual?: number | string | null
   comissao_mao_obra_percentual?: number | string | null
   periodicidade_comissao?: string | null
+  foto_cracha_url?: string | null
+  cracha_codigo?: string | null
+  cracha_status?: string | null
+  cracha_validade?: string | null
   created_at?: string | null
 }
 
@@ -467,6 +472,21 @@ export default function ParceirosPage() {
     } catch (err) {
       setErro(formatarErro(err, 'Erro ao gerar PIN do tecnico.'))
     }
+  }
+
+  async function alterarCracha(tecnico: Tecnico, acao: 'APROVAR' | 'REPROVAR') {
+    if (!tecnico.id) return
+    const validadePadrao = new Date(); validadePadrao.setFullYear(validadePadrao.getFullYear() + 1)
+    const validade = acao === 'APROVAR' ? window.prompt('Validade do crachá:', validadePadrao.toISOString().slice(0, 10)) : null
+    if (acao === 'APROVAR' && !validade) return
+    setErro(''); setMensagem('')
+    try {
+      const response = await adminFetch('/api/admin/parceiros', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: tecnico.id, crachaAcao: acao, crachaValidade: validade }) })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error ?? 'Erro ao atualizar crachá.')
+      setMensagem(acao === 'APROVAR' ? 'Crachá aprovado e liberado.' : 'Foto do crachá reprovada.')
+      setTecnicoSelecionado(null); await carregarTecnicos()
+    } catch (error) { setErro(formatarErro(error, 'Erro ao atualizar crachá.')) }
   }
 
   return (
@@ -979,6 +999,15 @@ export default function ParceirosPage() {
                 <DetailItem label="Especialidades" value={formatarEspecialidades(tecnicoSelecionado.especialidades)} wide />
                 <DetailItem label="Observacoes" value={tecnicoSelecionado.observacoes} wide />
               </div>
+
+              {tecnicoSelecionado.foto_cracha_url && (
+                <div className="mt-4 rounded-xl border border-slate-200 p-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <img src={tecnicoSelecionado.foto_cracha_url} alt="Foto do crachá" className="h-40 w-32 rounded-xl object-cover" />
+                    <div><p className="font-black text-slate-950">Crachá digital</p><p className="text-sm text-slate-500">Situação: {tecnicoSelecionado.cracha_status ?? 'PENDENTE'}</p><p className="text-sm text-slate-500">Validade: {tecnicoSelecionado.cracha_validade ?? 'Não definida'}</p><div className="mt-3 flex gap-2"><button type="button" onClick={() => alterarCracha(tecnicoSelecionado, 'APROVAR')} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white">Aprovar crachá</button><button type="button" onClick={() => alterarCracha(tecnicoSelecionado, 'REPROVAR')} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-black text-white">Reprovar foto</button></div></div>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-5 flex flex-wrap justify-end gap-2">
                 <button

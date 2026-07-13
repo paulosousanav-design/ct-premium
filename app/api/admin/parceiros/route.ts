@@ -154,6 +154,7 @@ export async function PATCH(request: NextRequest) {
     const id = Number(body?.id)
     const status = String(body?.status ?? '').trim().toUpperCase()
     const portalPin = String(body?.portalPin ?? '').trim()
+    const crachaAcao = String(body?.crachaAcao ?? '').toUpperCase()
     const nomeInformado = body?.nome !== undefined
     const whatsappInformado = body?.whatsapp !== undefined
     const temDadosCadastro =
@@ -177,7 +178,7 @@ export async function PATCH(request: NextRequest) {
       body?.periodicidadeComissao !== undefined ||
       body?.ativo !== undefined
 
-    if (!id || (!['ATIVO', 'INATIVO', 'PENDENTE', 'REPROVADO'].includes(status) && !portalPin && !temDadosCadastro)) {
+    if (!id || (!['ATIVO', 'INATIVO', 'PENDENTE', 'REPROVADO'].includes(status) && !portalPin && !temDadosCadastro && !['APROVAR', 'REPROVAR'].includes(crachaAcao))) {
       return NextResponse.json(
         { error: 'Dados invalidos para alterar status.' },
         { status: 400 }
@@ -186,6 +187,19 @@ export async function PATCH(request: NextRequest) {
 
     const supabase = getSupabaseAdmin()
     const updatePayload: Record<string, unknown> = {}
+
+    if (crachaAcao === 'APROVAR') {
+      const validade = String(body?.crachaValidade ?? '')
+      if (!validade) return NextResponse.json({ error: 'Informe a validade do crachá.' }, { status: 400 })
+      updatePayload.cracha_status = 'APROVADO'
+      updatePayload.cracha_validade = validade
+      updatePayload.cracha_aprovado_por = `${auth.nome} (${auth.email})`
+      updatePayload.cracha_aprovado_em = new Date().toISOString()
+    } else if (crachaAcao === 'REPROVAR') {
+      updatePayload.cracha_status = 'REPROVADO'
+      updatePayload.cracha_aprovado_por = `${auth.nome} (${auth.email})`
+      updatePayload.cracha_aprovado_em = new Date().toISOString()
+    }
 
     if (['ATIVO', 'INATIVO', 'PENDENTE', 'REPROVADO'].includes(status)) updatePayload.status = status
 

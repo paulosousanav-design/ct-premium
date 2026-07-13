@@ -1,7 +1,9 @@
 'use client'
+/* eslint-disable @next/next/no-img-element */
 
 import Image from 'next/image'
 import Link from 'next/link'
+import QRCode from 'qrcode'
 import { type ChangeEvent, type CSSProperties, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 
 type OSItem = {
@@ -237,6 +239,8 @@ export default function PainelTecnicoPage() {
 
         {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{erro}</div>}
 
+        {!tecnicoId && <CrachaDigital />}
+
         <div className="grid gap-3 xl:grid-cols-3 xl:gap-4">
           <section className="rounded-xl bg-white p-3 shadow-sm sm:p-4 xl:col-span-2">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -413,6 +417,49 @@ export default function PainelTecnicoPage() {
       </div>
     </main>
   )
+}
+
+type Cracha = { id: number; responsavel?: string | null; nome_fantasia?: string | null; tipo_vinculo?: string | null; especialidades?: string[] | null; cidade?: string | null; estado?: string | null; foto_cracha_url?: string | null; cracha_codigo?: string | null; cracha_status?: string | null; cracha_validade?: string | null }
+
+function CrachaDigital() {
+  const [cracha, setCracha] = useState<Cracha | null>(null)
+  const [qr, setQr] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [mensagem, setMensagem] = useState('')
+
+  const carregar = useCallback(async () => {
+    const response = await fetch('/api/tecnico/cracha')
+    const payload = await response.json().catch(() => null)
+    if (response.ok) setCracha(payload?.data ?? null)
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void carregar()
+  }, [carregar])
+  useEffect(() => {
+    if (!cracha?.cracha_codigo) return
+    void QRCode.toDataURL(`${window.location.origin}/cracha/${cracha.cracha_codigo}`, { width: 180, margin: 1, color: { dark: '#0f172a', light: '#ffffff' } }).then(setQr)
+  }, [cracha?.cracha_codigo])
+
+  async function enviarFoto(event: ChangeEvent<HTMLInputElement>) {
+    const foto = event.target.files?.[0]
+    if (!foto) return
+    setEnviando(true); setMensagem('')
+    try {
+      const form = new FormData(); form.append('foto', foto)
+      const response = await fetch('/api/tecnico/cracha', { method: 'POST', body: form })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Não foi possível enviar a foto.')
+      setMensagem('Foto enviada para aprovação administrativa.'); await carregar()
+    } catch (error) { setMensagem(error instanceof Error ? error.message : 'Erro ao enviar foto.') }
+    finally { setEnviando(false); event.target.value = '' }
+  }
+
+  if (!cracha) return null
+  const aprovado = cracha.cracha_status === 'APROVADO'
+  const nome = cracha.responsavel || cracha.nome_fantasia || 'Técnico'
+  return <section className="rounded-xl bg-white p-5 shadow-sm"><div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-lg font-black text-slate-950">Meu crachá digital</h2><p className="text-xs font-semibold text-slate-500">Envie uma foto profissional. A liberação é feita pelo administrativo.</p></div><label className="cursor-pointer rounded-lg bg-slate-900 px-4 py-2 text-center text-sm font-bold text-white">{enviando ? 'Enviando...' : cracha.foto_cracha_url ? 'Trocar foto' : 'Enviar foto'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={enviando} onChange={enviarFoto} className="hidden" /></label></div>{mensagem && <p className="mb-3 rounded-lg bg-slate-50 p-3 text-sm font-semibold text-slate-700">{mensagem}</p>}<div className="mx-auto grid max-w-[720px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg sm:grid-cols-[220px_1fr]"><div className="flex min-h-[260px] items-center justify-center bg-slate-950 p-5">{cracha.foto_cracha_url ? <img src={cracha.foto_cracha_url} alt={`Foto de ${nome}`} className="h-48 w-40 rounded-xl border-4 border-white object-cover" /> : <div className="flex h-48 w-40 items-center justify-center rounded-xl border-2 border-dashed border-slate-500 text-center text-xs font-bold text-slate-300">Foto pendente</div>}</div><div className="relative p-6"><Image src="/logo-ct.png" alt="Chame o Técnico" width={120} height={52} className="h-auto w-[110px]" /><span className={`absolute right-5 top-5 rounded-full px-3 py-1 text-[10px] font-black ${aprovado ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{aprovado ? 'ATIVO' : cracha.cracha_status === 'REPROVADO' ? 'REPROVADO' : 'AGUARDANDO APROVAÇÃO'}</span><p className="mt-6 text-2xl font-black text-slate-950">{nome}</p><p className="text-sm font-bold uppercase tracking-wide text-orange-600">{cracha.tipo_vinculo === 'PROPRIO' ? 'Técnico próprio' : 'Técnico credenciado'}</p><p className="mt-3 text-sm text-slate-600">{(cracha.especialidades ?? []).join(' • ') || 'Assistência técnica'}</p><p className="mt-1 text-xs font-semibold text-slate-500">{[cracha.cidade, cracha.estado].filter(Boolean).join(' / ')}</p><div className="mt-5 flex items-end justify-between gap-3"><div className="text-[10px] font-bold text-slate-500"><p>ID #{String(cracha.id).padStart(5, '0')}</p><p>Validade: {cracha.cracha_validade ? new Date(`${cracha.cracha_validade}T12:00:00`).toLocaleDateString('pt-BR') : 'A definir'}</p></div>{qr && aprovado && <img src={qr} alt="QR Code de validação" className="h-24 w-24" />}</div></div></div></section>
 }
 
 function AgendaTecnicoPanel({
