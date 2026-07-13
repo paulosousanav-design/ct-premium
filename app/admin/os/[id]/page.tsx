@@ -1048,9 +1048,9 @@ export default function OrdemServicoAtendimentoPage() {
             .box h2 { margin-bottom: 8px; font-size: 17px; line-height: 1.1; }
             .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
             .budget-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 14px; }
-            .budget-total { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 12px; padding: 11px 14px; border: 3px solid #111827; border-radius: 9px; background: #fff7ed; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .budget-total-label { font-size: 13px; font-weight: 900; letter-spacing: 0.08em; color: #111827; }
-            .budget-total-value { font-size: 23px; line-height: 1; font-weight: 900; color: #c2410c; white-space: nowrap; }
+            .budget-total { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 10px; padding: 8px 11px; border: 1px solid #cbd5e1; border-left: 4px solid #64748b; border-radius: 6px; background: #f8fafc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .budget-total-label { font-size: 11px; font-weight: 700; color: #334155; }
+            .budget-total-value { font-size: 17px; line-height: 1; font-weight: 800; color: #0f172a; white-space: nowrap; }
             .wide { grid-column: 1 / -1; }
             .label { font-size: 9px; color: #475569; text-transform: uppercase; margin-bottom: 2px; }
             .value { font-size: 11px; font-weight: 700; white-space: pre-wrap; }
