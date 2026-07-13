@@ -360,16 +360,6 @@ export default function DashboardPage() {
       if (document.visibilityState === 'visible') agendarAtualizacao()
     }
 
-    function atualizarSlaEntreAbas(event: StorageEvent) {
-      if (
-        event.key === 'relatorios_sla_particular_dias' ||
-        event.key === 'relatorios_sla_garantia_dias'
-      ) {
-        void carregarDashboard()
-      }
-    }
-
-    window.addEventListener('storage', atualizarSlaEntreAbas)
     window.addEventListener('focus', agendarAtualizacao)
     document.addEventListener('visibilitychange', atualizarAoVoltar)
     const atualizacaoAutomatica = window.setInterval(() => {
@@ -377,7 +367,6 @@ export default function DashboardPage() {
     }, 60_000)
 
     return () => {
-      window.removeEventListener('storage', atualizarSlaEntreAbas)
       window.removeEventListener('focus', agendarAtualizacao)
       document.removeEventListener('visibilitychange', atualizarAoVoltar)
       window.clearInterval(atualizacaoAutomatica)
@@ -967,8 +956,6 @@ async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard, gar
     const params = new URLSearchParams({
       inicio: formatDateInput(inicio),
       fim: formatDateInput(hoje),
-      slaParticularDias: window.localStorage.getItem('relatorios_sla_particular_dias') ?? '3',
-      slaGarantiaDias: window.localStorage.getItem('relatorios_sla_garantia_dias') ?? '7',
     })
 
     if (filtroOrigem === 'CLIENTE') params.set('origemFinanceira', 'CLIENTE')

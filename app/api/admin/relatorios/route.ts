@@ -71,6 +71,7 @@ export async function GET(request: NextRequest) {
     if (!auth.ok) return auth.response
 
     const supabase = getSupabaseAdmin()
+    const slaEmpresa = await carregarSlaEmpresa(supabase)
     const hoje = new Date()
     const primeiroDia = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
     const inicio = request.nextUrl.searchParams.get('inicio') || formatDateInput(primeiroDia)
@@ -80,8 +81,8 @@ export async function GET(request: NextRequest) {
     const statusOsFiltro = normalizarFiltro(request.nextUrl.searchParams.get('statusOs'))
     const tecnicoFiltro = normalizarFiltro(request.nextUrl.searchParams.get('tecnico'))
     const garantidorFiltro = normalizarFiltro(request.nextUrl.searchParams.get('garantidor'))
-    const slaParticularDias = normalizarSlaDias(request.nextUrl.searchParams.get('slaParticularDias'), 3)
-    const slaGarantiaDias = normalizarSlaDias(request.nextUrl.searchParams.get('slaGarantiaDias'), 7)
+    const slaParticularDias = normalizarSlaDias(request.nextUrl.searchParams.get('slaParticularDias'), slaEmpresa.particular)
+    const slaGarantiaDias = normalizarSlaDias(request.nextUrl.searchParams.get('slaGarantiaDias'), slaEmpresa.garantia)
     const inicioIso = `${inicio}T00:00:00.000Z`
     const fimIso = `${fim}T23:59:59.999Z`
 
@@ -300,6 +301,22 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Erro ao carregar relatorios:', error)
     return NextResponse.json({ error: formatarErro(error, 'Erro ao carregar relatorios.') }, { status: 500 })
+  }
+}
+
+async function carregarSlaEmpresa(supabase: ReturnType<typeof getSupabaseAdmin>) {
+  const { data, error } = await supabase
+    .from('empresas')
+    .select('sla_particular_dias, sla_garantia_dias')
+    .eq('ativa', true)
+    .order('id', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) return { particular: 3, garantia: 7 }
+  return {
+    particular: normalizarSlaDias(String(data?.sla_particular_dias ?? ''), 3),
+    garantia: normalizarSlaDias(String(data?.sla_garantia_dias ?? ''), 7),
   }
 }
 

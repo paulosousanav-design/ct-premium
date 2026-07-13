@@ -103,12 +103,8 @@ export default function RelatoriosPage() {
   const [statusOs, setStatusOs] = useState('TODOS')
   const [tecnico, setTecnico] = useState('TODOS')
   const [garantidor, setGarantidor] = useState('TODOS')
-  const [slaParticularDias, setSlaParticularDiasState] = useState(() =>
-    typeof window === 'undefined' ? '3' : window.localStorage.getItem('relatorios_sla_particular_dias') ?? '3'
-  )
-  const [slaGarantiaDias, setSlaGarantiaDiasState] = useState(() =>
-    typeof window === 'undefined' ? '7' : window.localStorage.getItem('relatorios_sla_garantia_dias') ?? '7'
-  )
+  const [slaParticularDias, setSlaParticularDiasState] = useState('3')
+  const [slaGarantiaDias, setSlaGarantiaDiasState] = useState('7')
   const [data, setData] = useState<RelatoriosData | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
@@ -122,6 +118,16 @@ export default function RelatoriosPage() {
     setErro('')
 
     try {
+      if (event) {
+        const configuracaoResponse = await adminFetch('/api/admin/relatorios/configuracoes', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slaParticularDias, slaGarantiaDias }),
+        })
+        const configuracaoPayload = await configuracaoResponse.json().catch(() => null)
+        if (!configuracaoResponse.ok) throw new Error(configuracaoPayload?.error ?? 'Erro ao salvar configuração de SLA.')
+      }
+
       const params = new URLSearchParams({
         inicio,
         fim,
@@ -146,6 +152,25 @@ export default function RelatoriosPage() {
   }, [fim, garantidor, inicio, origemFinanceira, slaGarantiaDias, slaParticularDias, statusFinanceiro, statusOs, tecnico])
 
   useEffect(() => {
+    let ativo = true
+
+    async function carregarConfiguracaoSla() {
+      try {
+        const response = await adminFetch('/api/admin/relatorios/configuracoes')
+        const payload = await response.json().catch(() => null)
+        if (!response.ok || !ativo) return
+        setSlaParticularDiasState(String(payload?.data?.slaParticularDias ?? 3))
+        setSlaGarantiaDiasState(String(payload?.data?.slaGarantiaDias ?? 7))
+      } catch {
+        // Mantém os valores padrão quando a configuração ainda não foi criada.
+      }
+    }
+
+    void carregarConfiguracaoSla()
+    return () => { ativo = false }
+  }, [])
+
+  useEffect(() => {
     // Carregamento inicial do relatorio ao abrir a tela.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void carregar()
@@ -157,12 +182,10 @@ export default function RelatoriosPage() {
 
   function setSlaParticularDias(value: string) {
     setSlaParticularDiasState(value)
-    if (typeof window !== 'undefined') window.localStorage.setItem('relatorios_sla_particular_dias', value)
   }
 
   function setSlaGarantiaDias(value: string) {
     setSlaGarantiaDiasState(value)
-    if (typeof window !== 'undefined') window.localStorage.setItem('relatorios_sla_garantia_dias', value)
   }
 
   function salvarMetaMensal(value: string) {
