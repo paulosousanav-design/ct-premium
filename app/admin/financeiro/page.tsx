@@ -515,6 +515,9 @@ export default function FinanceiroPage() {
           <Link href="/admin/financeiro/comissoes" className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700">
             Fechamento de comissões
           </Link>
+          <Link href="/admin/financeiro/parcelamentos" className="rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-xs font-black text-orange-700">
+            Boletos parcelados
+          </Link>
 
           <div className="flex flex-col gap-2 sm:flex-row">
             <input

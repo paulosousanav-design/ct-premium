@@ -22,6 +22,7 @@ const tabelasBackup = [
   'financeiro_historico',
   'tecnico_documentos',
   'admin_usuarios',
+  'recebimento_parcelas',
 ]
 
 function getSupabaseAdmin() {
