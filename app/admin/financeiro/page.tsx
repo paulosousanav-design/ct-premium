@@ -125,6 +125,7 @@ export default function FinanceiroPage() {
   const [filtro, setFiltro] = useState<FiltroFinanceiro>('TODOS')
   const [busca, setBusca] = useState('')
   const [contaForm, setContaForm] = useState<ContaForm>(contaInicial)
+  const [vendasResumo, setVendasResumo] = useState({ total: 0, totalMes: 0, quantidade: 0 })
 
   const carregarDados = useCallback(async () => {
     setLoading(true)
@@ -144,6 +145,7 @@ export default function FinanceiroPage() {
       setContasPagarPendente(Boolean(data?.contasPagarPendente))
       setHistoricoPendente(Boolean(data?.historicoPendente))
       setDescontoRecebimentoPendente(Boolean(data?.descontoRecebimentoPendente))
+      setVendasResumo(data?.vendasResumo ?? { total: 0, totalMes: 0, quantidade: 0 })
     } catch (error) {
       setErro(formatarErro(error, 'Erro ao carregar financeiro.'))
     } finally {
@@ -229,15 +231,15 @@ export default function FinanceiroPage() {
       descontosCliente,
       descontosGarantidor,
       descontosTotal: descontosCliente + descontosGarantidor,
-      totalRecebido: recebidoCliente + recebidoGarantidor,
-      caixaGeral: recebidoCliente + recebidoGarantidor - pagoTecnico - contasPagas,
+      totalRecebido: recebidoCliente + recebidoGarantidor + vendasResumo.total,
+      caixaGeral: recebidoCliente + recebidoGarantidor + vendasResumo.total - pagoTecnico - contasPagas,
       pagarTecnico,
       pagoTecnico,
       contasPendentes,
       contasPagas,
       finalizadasTecnico: ordensFinalizadas.filter((os) => Boolean(os.parceiro_id) && !tecnicoProprio(os) && valorTecnico(os) > 0).length,
     }
-  }, [contasPagar, ordens])
+  }, [contasPagar, ordens, vendasResumo.total])
 
   const visaoMensal = useMemo(() => {
     const hoje = new Date()
@@ -459,6 +461,7 @@ export default function FinanceiroPage() {
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
         <Card titulo="Caixa geral" valor={formatCurrency(resumo.caixaGeral)} cor="blue" destaque />
         <Card titulo="Recebido cliente" valor={formatCurrency(resumo.recebidoCliente)} cor="green" destaque />
+        <Card titulo="Vendas de balcão" valor={formatCurrency(vendasResumo.total)} cor="green" />
         <Card titulo="A receber cliente" valor={formatCurrency(resumo.receberCliente)} cor="orange" />
         <Card titulo="A receber garantidor/seguradora" valor={formatCurrency(resumo.receberGarantidor)} cor="orange" />
         <Card titulo="Recebido garantidor/seguradora" valor={formatCurrency(resumo.recebidoGarantidor)} cor="green" />

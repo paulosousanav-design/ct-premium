@@ -106,6 +106,7 @@ export async function GET(request: NextRequest) {
     const documentos = await carregarDocumentosTecnicos(supabase)
     const historico = await carregarHistoricoFinanceiro(supabase)
     const contasPagar = await carregarContasPagar(supabase)
+    const vendasResumo = await carregarResumoVendas(supabase)
     const ordensData = (ordens ?? []) as unknown as OrdemFinanceiro[]
     const ordensComPagamentoTecnico = ordensData.map((ordem) => {
       const documentoPago = documentos.data.some(
@@ -130,6 +131,7 @@ export async function GET(request: NextRequest) {
       historico: historico.data,
       historicoPendente: historico.tabelaPendente,
       descontoRecebimentoPendente: !temDescontoRecebimentoCliente,
+      vendasResumo,
     })
   } catch (error) {
     console.error('Erro ao carregar financeiro admin:', error)
@@ -490,6 +492,20 @@ async function carregarHistoricoFinanceiro(supabase: ReturnType<typeof getSupaba
   }
 
   return { data: data ?? [], tabelaPendente: false }
+}
+
+async function carregarResumoVendas(supabase: ReturnType<typeof getSupabaseAdmin>) {
+  const { data, error } = await supabase.from('vendas').select('total, criado_em').eq('status', 'PAGO')
+  if (error) {
+    if (String(error.code) === '42P01' || String(error.code) === 'PGRST205') return { total: 0, totalMes: 0, quantidade: 0 }
+    throw error
+  }
+  const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0)
+  return {
+    total: (data ?? []).reduce((acc, venda) => acc + toNumber(venda.total), 0),
+    totalMes: (data ?? []).filter((venda) => venda.criado_em && new Date(venda.criado_em) >= inicioMes).reduce((acc, venda) => acc + toNumber(venda.total), 0),
+    quantidade: data?.length ?? 0,
+  }
 }
 
 async function registrarHistoricoFinanceiro(

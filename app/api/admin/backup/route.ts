@@ -23,6 +23,8 @@ const tabelasBackup = [
   'tecnico_documentos',
   'admin_usuarios',
   'recebimento_parcelas',
+  'vendas',
+  'venda_itens',
 ]
 
 function getSupabaseAdmin() {

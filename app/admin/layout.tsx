@@ -20,6 +20,7 @@ const menu: MenuItem[] = [
   { label: 'Garantidores', href: '/admin/garantidores', permissao: 'garantidores' },
   { label: 'Aprovacao', href: '/admin/aprovacao', permissao: 'aprovacao' },
   { label: 'Financeiro', href: '/admin/financeiro', permissao: 'financeiro' },
+  { label: 'Vendas', href: '/admin/vendas', permissao: 'financeiro' },
   { label: 'Pecas', href: '/admin/pecas', permissao: 'pecas' },
   { label: 'Clientes', href: '/admin/clientes', permissao: 'clientes' },
   { label: 'Usuarios', href: '/admin/usuarios', permissao: 'usuarios' },
