@@ -1,12 +1,13 @@
 'use client'
 
+import Link from 'next/link'
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { adminFetch } from '@/lib/admin-fetch'
 
 type AbaFinanceiro = 'receber' | 'tecnicos' | 'contas'
 type FiltroFinanceiro = 'TODOS' | 'PENDENTE' | 'FATURADO' | 'PARCIAL' | 'RECEBIDO'
 
-type RelacaoNome = { nome?: string | null; responsavel?: string | null; nome_fantasia?: string | null; razao_social?: string | null }
+type RelacaoNome = { nome?: string | null; responsavel?: string | null; nome_fantasia?: string | null; razao_social?: string | null; tipo_vinculo?: string | null }
 
 type OrdemFinanceira = {
   id: number
@@ -171,7 +172,7 @@ export default function FinanceiroPage() {
       const statusPagamentoTecnico = tecnicoPago(os) ? 'RECEBIDO' : 'PENDENTE'
       const atendeFiltro = filtro === 'TODOS' || filtro === statusPagamentoTecnico
 
-      return os.status === 'FINALIZADA' && Boolean(os.parceiro_id) && valorTecnico(os) > 0 && atendeFiltro && atendeBusca
+      return os.status === 'FINALIZADA' && Boolean(os.parceiro_id) && !tecnicoProprio(os) && valorTecnico(os) > 0 && atendeFiltro && atendeBusca
     })
   }, [busca, filtro, ordens])
 
@@ -202,10 +203,10 @@ export default function FinanceiroPage() {
       .filter((os) => ehGarantidorOuSeguradora(os) && valorRecebidoCliente(os) > 0)
       .reduce((acc, os) => acc + valorRecebidoCliente(os), 0)
     const pagarTecnico = ordensFinalizadas
-      .filter((os) => !tecnicoPago(os) && valorTecnico(os) > 0)
+      .filter((os) => !tecnicoProprio(os) && !tecnicoPago(os) && valorTecnico(os) > 0)
       .reduce((acc, os) => acc + valorTecnico(os), 0)
     const pagoTecnico = ordensFinalizadas
-      .filter((os) => tecnicoPago(os) && valorTecnico(os) > 0)
+      .filter((os) => !tecnicoProprio(os) && tecnicoPago(os) && valorTecnico(os) > 0)
       .reduce((acc, os) => acc + valorTecnico(os), 0)
     const contasPendentes = contasPagar
       .filter((conta) => String(conta.status ?? 'PENDENTE').toUpperCase() === 'PENDENTE')
@@ -234,7 +235,7 @@ export default function FinanceiroPage() {
       pagoTecnico,
       contasPendentes,
       contasPagas,
-      finalizadasTecnico: ordensFinalizadas.filter((os) => Boolean(os.parceiro_id) && valorTecnico(os) > 0).length,
+      finalizadasTecnico: ordensFinalizadas.filter((os) => Boolean(os.parceiro_id) && !tecnicoProprio(os) && valorTecnico(os) > 0).length,
     }
   }, [contasPagar, ordens])
 
@@ -247,7 +248,7 @@ export default function FinanceiroPage() {
       valorRecebidoCliente(os) > 0 && estaNoPeriodo(os.data_ultimo_recebimento ?? os.data_pagamento ?? os.created_at, inicioMes, fimMes)
     )
     const tecnicosPagosMes = ordensFinalizadas.filter((os) =>
-      tecnicoPago(os) && estaNoPeriodo(os.tecnico_pago_em ?? os.created_at, inicioMes, fimMes)
+      !tecnicoProprio(os) && tecnicoPago(os) && estaNoPeriodo(os.tecnico_pago_em ?? os.created_at, inicioMes, fimMes)
     )
     const contasPagasMes = contasPagar.filter((conta) =>
       String(conta.status ?? '').toUpperCase() === 'PAGO' && estaNoPeriodo(conta.pago_em ?? conta.criado_em, inicioMes, fimMes)
@@ -510,6 +511,10 @@ export default function FinanceiroPage() {
               Contas a pagar
             </button>
           </div>
+
+          <Link href="/admin/financeiro/comissoes" className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700">
+            Fechamento de comissões
+          </Link>
 
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
@@ -1177,6 +1182,10 @@ function nomeCliente(os: OrdemFinanceira) {
 function nomeTecnico(os: OrdemFinanceira) {
   const tecnico = primeiraRelacao(os.parceiros)
   return tecnico?.responsavel ?? tecnico?.nome_fantasia ?? tecnico?.razao_social ?? '-'
+}
+
+function tecnicoProprio(os: OrdemFinanceira) {
+  return primeiraRelacao(os.parceiros)?.tipo_vinculo === 'PROPRIO'
 }
 
 function valorCliente(os: OrdemFinanceira) {

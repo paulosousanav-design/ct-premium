@@ -5,7 +5,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 type AdminAuthResult =
-  | { ok: true; email: string; permissoes: string[] }
+  | { ok: true; email: string; nome: string; permissoes: string[] }
   | { ok: false; response: NextResponse }
 
 function getSupabaseAdminAuth() {
@@ -61,7 +61,7 @@ export async function requireAdminUser(request: NextRequest): Promise<AdminAuthR
 
     const { data, error } = await supabase
       .from('admin_usuarios')
-      .select('ativo, permissoes')
+      .select('nome, ativo, permissoes')
       .eq('email', email)
       .maybeSingle()
 
@@ -73,7 +73,7 @@ export async function requireAdminUser(request: NextRequest): Promise<AdminAuthR
     }
 
     const permissoes = Array.isArray(data.permissoes) ? data.permissoes.map(String) : []
-    return { ok: true, email, permissoes }
+    return { ok: true, email, nome: String(data.nome ?? email), permissoes }
   } catch (error) {
     return {
       ok: false,

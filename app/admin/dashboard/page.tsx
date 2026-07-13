@@ -4,6 +4,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { adminFetch } from '@/lib/admin-fetch'
+import { getAdminActorLabel } from '@/lib/admin-actor'
 
 type DashboardStats = {
   osNovas: number
@@ -386,6 +387,7 @@ export default function DashboardPage() {
       if (updateError) throw updateError
 
       if (statusAnterior !== novoStatus) {
+        const responsavel = await getAdminActorLabel()
         const { error: historicoError } = await supabase.from('os_historico').insert({
           os_id: osId,
           acao: 'ALTERACAO_STATUS',
@@ -394,7 +396,7 @@ export default function DashboardPage() {
           prioridade_anterior: prioridadeAnterior,
           prioridade_nova: prioridadeAnterior,
           descricao: `Status alterado de ${statusAnterior} para ${novoStatus}`,
-          responsavel: 'Sistema',
+          responsavel,
         })
 
         if (historicoError) throw historicoError

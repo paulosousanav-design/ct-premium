@@ -23,6 +23,9 @@ type Tecnico = {
   observacoes?: string | null
   portal_pin_hash?: string | null
   tipo_vinculo?: string | null
+  comissao_pecas_percentual?: number | string | null
+  comissao_mao_obra_percentual?: number | string | null
+  periodicidade_comissao?: string | null
   created_at?: string | null
 }
 
@@ -44,6 +47,9 @@ type FormState = {
   especialidades: string[]
   observacoes: string
   tipoVinculo: 'PROPRIO' | 'TERCEIRIZADO'
+  comissaoPecasPercentual: string
+  comissaoMaoObraPercentual: string
+  periodicidadeComissao: 'SEMANAL' | 'QUINZENAL' | 'MENSAL'
   ativo: boolean
 }
 
@@ -83,6 +89,9 @@ const formInicial: FormState = {
   especialidades: [],
   observacoes: '',
   tipoVinculo: 'TERCEIRIZADO',
+  comissaoPecasPercentual: '0',
+  comissaoMaoObraPercentual: '0',
+  periodicidadeComissao: 'MENSAL',
   ativo: true,
 }
 
@@ -323,6 +332,9 @@ export default function ParceirosPage() {
           especialidades: form.especialidades,
           observacoes: form.observacoes,
           tipoVinculo: form.tipoVinculo,
+          comissaoPecasPercentual: form.comissaoPecasPercentual,
+          comissaoMaoObraPercentual: form.comissaoMaoObraPercentual,
+          periodicidadeComissao: form.periodicidadeComissao,
           ...(editandoId ? {} : { ativo: form.ativo }),
         }),
       })
@@ -369,6 +381,12 @@ export default function ParceirosPage() {
       especialidades: normalizarEspecialidades(tecnico.especialidades),
       observacoes: tecnico.observacoes ?? '',
       tipoVinculo: getTipoVinculo(tecnico) === 'PROPRIO' ? 'PROPRIO' : 'TERCEIRIZADO',
+      comissaoPecasPercentual: String(tecnico.comissao_pecas_percentual ?? 0),
+      comissaoMaoObraPercentual: String(tecnico.comissao_mao_obra_percentual ?? 0),
+      periodicidadeComissao:
+        tecnico.periodicidade_comissao === 'SEMANAL' || tecnico.periodicidade_comissao === 'QUINZENAL'
+          ? tecnico.periodicidade_comissao
+          : 'MENSAL',
       ativo: !tecnicoInativo(tecnico),
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -666,6 +684,41 @@ export default function ParceirosPage() {
                 />
               </div>
             </section>
+
+            {form.tipoVinculo === 'PROPRIO' && (
+              <section>
+                <SectionTitle title="Comissão do técnico próprio" />
+                <div className="grid gap-3 md:grid-cols-3">
+                  <Input
+                    label="Comissão sobre peças vendidas (%)"
+                    name="comissaoPecasPercentual"
+                    value={form.comissaoPecasPercentual}
+                    onChange={handleChange}
+                  />
+                  <Input
+                    label="Comissão sobre mão de obra (%)"
+                    name="comissaoMaoObraPercentual"
+                    value={form.comissaoMaoObraPercentual}
+                    onChange={handleChange}
+                  />
+                  <Select
+                    label="Periodicidade do acerto"
+                    name="periodicidadeComissao"
+                    value={form.periodicidadeComissao}
+                    onChange={handleChange}
+                    options={[
+                      { value: 'SEMANAL', label: 'Semanal' },
+                      { value: 'QUINZENAL', label: 'Quinzenal' },
+                      { value: 'MENSAL', label: 'Mensal' },
+                    ]}
+                    placeholder="Selecione"
+                  />
+                </div>
+                <p className="mt-2 text-xs font-semibold text-slate-500">
+                  A comissão será calculada sobre os valores de venda e liberada após a quitação total da OS.
+                </p>
+              </section>
+            )}
 
             <section>
               <SectionTitle title="Endereço base" />

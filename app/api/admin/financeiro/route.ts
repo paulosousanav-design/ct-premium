@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
         tipo_atendimento,
         numero_nota_fiscal,
         clientes:cliente_id ( nome ),
-        parceiros:parceiro_id ( responsavel, nome_fantasia, razao_social )
+        parceiros:parceiro_id ( responsavel, nome_fantasia, razao_social, tipo_vinculo )
       `
     const ordensQuery = supabase.from('ordens_servico') as unknown as {
       select: (columns: string) => {
@@ -172,6 +172,7 @@ export async function POST(request: NextRequest) {
     if (error) throw error
 
     await registrarHistoricoFinanceiro(supabase, {
+      responsavel: `${auth.nome} (${auth.email})`,
       contaId: Number(data?.id),
       tipo: 'CONTA_PAGAR_CRIADA',
       statusAnterior: null,
@@ -231,6 +232,7 @@ export async function PATCH(request: NextRequest) {
       if (error) throw error
 
       await registrarHistoricoFinanceiro(supabase, {
+        responsavel: `${auth.nome} (${auth.email})`,
         contaId: id,
         tipo: 'CONTA_PAGAR',
         statusAnterior: String(contaAtual?.status ?? 'PENDENTE'),
@@ -350,6 +352,7 @@ export async function PATCH(request: NextRequest) {
 
       if (error) throw error
       await registrarHistoricoFinanceiro(supabase, {
+        responsavel: `${auth.nome} (${auth.email})`,
         osId: id,
         tipo: 'RECEBIMENTO_OS',
         statusAnterior: ordemAtual?.status_financeiro ?? null,
@@ -368,9 +371,14 @@ export async function PATCH(request: NextRequest) {
       const pagoEm = new Date().toISOString()
       const { data: ordemAtual } = await supabase
         .from('ordens_servico')
-        .select('id, numero_os, status_financeiro, tecnico_status_pagamento, tecnico_total, total')
+        .select('id, numero_os, status_financeiro, tecnico_status_pagamento, tecnico_total, total, parceiros:parceiro_id(tipo_vinculo)')
         .eq('id', id)
         .maybeSingle()
+
+      const parceiro = Array.isArray(ordemAtual?.parceiros) ? ordemAtual.parceiros[0] : ordemAtual?.parceiros
+      if (parceiro?.tipo_vinculo === 'PROPRIO') {
+        return NextResponse.json({ error: 'Tecnico proprio deve ser pago pelo fechamento de comissoes.' }, { status: 400 })
+      }
 
       const documentos = await carregarDocumentosTecnicos(supabase)
       const documentoRecebido = documentos.data.some(
@@ -408,6 +416,7 @@ export async function PATCH(request: NextRequest) {
       }
 
       await registrarHistoricoFinanceiro(supabase, {
+        responsavel: `${auth.nome} (${auth.email})`,
         osId: id,
         tipo: 'PAGAMENTO_TECNICO',
         statusAnterior: ordemAtual?.tecnico_status_pagamento ?? null,
@@ -446,6 +455,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     await registrarHistoricoFinanceiro(supabase, {
+      responsavel: `${auth.nome} (${auth.email})`,
       osId: documento?.os_id ?? null,
       documentoId: id,
       tipo: 'DOCUMENTO_TECNICO',
@@ -493,6 +503,7 @@ async function registrarHistoricoFinanceiro(
     statusNovo?: string | null
     valor: number
     descricao: string
+    responsavel?: string
   }
 ) {
   const { error } = await supabase.from('financeiro_historico').insert({
@@ -504,7 +515,7 @@ async function registrarHistoricoFinanceiro(
     status_novo: item.statusNovo ?? null,
     valor: item.valor,
     descricao: item.descricao,
-    responsavel: 'Admin',
+    responsavel: item.responsavel ?? 'Admin',
   })
 
   if (

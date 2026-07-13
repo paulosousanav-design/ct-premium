@@ -11,6 +11,9 @@ const colunasParceiros = [
   'observacoes',
   'portal_pin_hash',
   'tipo_vinculo',
+  'comissao_pecas_percentual',
+  'comissao_mao_obra_percentual',
+  'periodicidade_comissao',
 ] as const
 
 function getSupabaseAdmin() {
@@ -65,6 +68,11 @@ export async function GET(request: NextRequest) {
         '',
         'alter table parceiros',
         "add column if not exists tipo_vinculo text not null default 'TERCEIRIZADO';",
+        '',
+        'alter table parceiros',
+        'add column if not exists comissao_pecas_percentual numeric(5,2) not null default 0,',
+        'add column if not exists comissao_mao_obra_percentual numeric(5,2) not null default 0,',
+        "add column if not exists periodicidade_comissao text not null default 'MENSAL';",
         '',
         'create table if not exists tecnico_documentos (',
         '  id bigserial primary key,',

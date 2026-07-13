@@ -435,7 +435,7 @@ export async function PATCH(request: NextRequest) {
     const supabase = getSupabaseAdmin()
 
     if (body?.acao === 'TECNICO_AVULSO') {
-      return salvarTecnicoAvulso(supabase, body)
+      return salvarTecnicoAvulso(supabase, body, `${auth.nome} (${auth.email})`)
     }
 
     if (!osId || !statusFinal) {
@@ -591,7 +591,7 @@ export async function PATCH(request: NextRequest) {
       prioridade_anterior: osAtual.prioridade ?? 'NORMAL',
       prioridade_nova: prioridade,
       descricao: resumo,
-      responsavel: 'Sistema',
+      responsavel: `${auth.nome} (${auth.email})`,
     })
 
     if (historicoError) throw historicoError
@@ -608,7 +608,8 @@ export async function PATCH(request: NextRequest) {
 
 async function salvarTecnicoAvulso(
   supabase: ReturnType<typeof getSupabaseAdmin>,
-  body: Record<string, unknown> | null
+  body: Record<string, unknown> | null,
+  responsavel: string
 ) {
   const osId = Number(body?.osId)
   const nome = String(body?.nome ?? '').trim()
@@ -663,7 +664,7 @@ async function salvarTecnicoAvulso(
     ]
       .filter(Boolean)
       .join(' | '),
-    responsavel: 'Admin',
+    responsavel,
   })
 
   if (historicoError) throw historicoError

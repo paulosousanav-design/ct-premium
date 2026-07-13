@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       os_id: osId,
       acao: 'DESBLOQUEIO_MASTER',
       descricao: 'OS desbloqueada com senha master.',
-      responsavel: 'Admin',
+      responsavel: `${auth.nome} (${auth.email})`,
     })
 
     if (historicoError) throw historicoError

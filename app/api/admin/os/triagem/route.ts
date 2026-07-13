@@ -295,7 +295,7 @@ export async function PATCH(request: NextRequest) {
       descricao: parceiroId
         ? `Tecnico externo atribuido: ${nomeTecnico}`
         : `Status alterado para ${novoStatus}`,
-      responsavel: 'Admin',
+      responsavel: `${auth.nome} (${auth.email})`,
     })
 
     if (historicoError) throw historicoError

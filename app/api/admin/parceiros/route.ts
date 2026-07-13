@@ -71,6 +71,9 @@ export async function POST(request: NextRequest) {
     const chavePix = String(body?.chavePix ?? '').trim()
     const portalPin = String(body?.portalPin ?? '').trim()
     const tipoVinculo = body?.tipoVinculo === 'PROPRIO' ? 'PROPRIO' : 'TERCEIRIZADO'
+    const comissaoPecasPercentual = percentual(body?.comissaoPecasPercentual)
+    const comissaoMaoObraPercentual = percentual(body?.comissaoMaoObraPercentual)
+    const periodicidadeComissao = normalizarPeriodicidade(body?.periodicidadeComissao)
     const especialidades = Array.isArray(body?.especialidades)
       ? body.especialidades.map(String).filter(Boolean)
       : []
@@ -120,6 +123,14 @@ export async function POST(request: NextRequest) {
     if (colunaTipoVinculoExiste) payload.tipo_vinculo = tipoVinculo
     else avisos.push("Tipo de vinculo nao salvo: falta a coluna 'tipo_vinculo' no Supabase.")
 
+    if (await colunaExiste(supabase, 'comissao_pecas_percentual')) {
+      payload.comissao_pecas_percentual = comissaoPecasPercentual
+      payload.comissao_mao_obra_percentual = comissaoMaoObraPercentual
+      payload.periodicidade_comissao = periodicidadeComissao
+    } else if (tipoVinculo === 'PROPRIO') {
+      avisos.push('Comissoes nao salvas: rode o SQL de comissoes dos tecnicos.')
+    }
+
     const { error } = await supabase.from('parceiros').insert(payload)
 
     if (error) throw error
@@ -161,6 +172,9 @@ export async function PATCH(request: NextRequest) {
       body?.especialidades !== undefined ||
       body?.observacoes !== undefined ||
       body?.tipoVinculo !== undefined ||
+      body?.comissaoPecasPercentual !== undefined ||
+      body?.comissaoMaoObraPercentual !== undefined ||
+      body?.periodicidadeComissao !== undefined ||
       body?.ativo !== undefined
 
     if (!id || (!['ATIVO', 'INATIVO', 'PENDENTE', 'REPROVADO'].includes(status) && !portalPin && !temDadosCadastro)) {
@@ -229,6 +243,12 @@ export async function PATCH(request: NextRequest) {
       if (body?.tipoVinculo !== undefined && await colunaExiste(supabase, 'tipo_vinculo')) {
         updatePayload.tipo_vinculo = tipoVinculo
       }
+
+      if (body?.comissaoPecasPercentual !== undefined && await colunaExiste(supabase, 'comissao_pecas_percentual')) {
+        updatePayload.comissao_pecas_percentual = percentual(body.comissaoPecasPercentual)
+        updatePayload.comissao_mao_obra_percentual = percentual(body.comissaoMaoObraPercentual)
+        updatePayload.periodicidade_comissao = normalizarPeriodicidade(body.periodicidadeComissao)
+      }
     }
 
     if (portalPin) {
@@ -261,6 +281,15 @@ export async function PATCH(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+function percentual(value: unknown) {
+  return Math.min(100, Math.max(0, Number(value ?? 0) || 0))
+}
+
+function normalizarPeriodicidade(value: unknown) {
+  const result = String(value ?? 'MENSAL').toUpperCase()
+  return ['SEMANAL', 'QUINZENAL', 'MENSAL'].includes(result) ? result : 'MENSAL'
 }
 
 function formatarErro(error: unknown, fallback: string) {

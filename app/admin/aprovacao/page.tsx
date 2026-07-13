@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { getAdminActorLabel } from '@/lib/admin-actor'
 
 type OrcamentoFiltro = 'TODOS' | 'REVISAO' | 'PENDENTE' | 'APROVADO' | 'REPROVADO'
 
@@ -225,6 +226,7 @@ export default function AprovacaoPage() {
 
       if (updateError) throw updateError
 
+      const responsavel = await getAdminActorLabel()
       const { error: historicoError } = await supabase.from('os_historico').insert({
         os_id: id,
         acao: novoStatus === 'APROVADO' ? 'ORCAMENTO_APROVADO' : 'ORCAMENTO_REPROVADO',
@@ -236,7 +238,7 @@ export default function AprovacaoPage() {
           novoStatus === 'APROVADO'
             ? 'Orçamento aprovado manualmente no administrativo.'
             : 'Orçamento reprovado manualmente no administrativo.',
-        responsavel: 'Admin',
+        responsavel,
       })
 
       if (historicoError) throw historicoError
@@ -275,13 +277,14 @@ export default function AprovacaoPage() {
 
     if (updateError) throw updateError
 
+    const responsavel = await getAdminActorLabel()
     const { error: historicoError } = await supabase.from('os_historico').insert({
       os_id: item.id,
       acao: 'ORCAMENTO_ENVIADO_CLIENTE',
       status_anterior: item.status ?? 'AGUARDANDO_REVISAO',
       status_novo: 'AGUARDANDO_APROVACAO',
       descricao: 'Orcamento revisado pelo administrativo e enviado ao cliente.',
-      responsavel: 'Admin',
+      responsavel,
     })
 
     if (historicoError) throw historicoError

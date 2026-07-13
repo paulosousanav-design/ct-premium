@@ -15,6 +15,7 @@ import { type ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { adminFetch } from '@/lib/admin-fetch'
+import { getAdminActorLabel } from '@/lib/admin-actor'
 
 type Cliente = {
   id: number
@@ -878,6 +879,7 @@ export default function OrdemServicoAtendimentoPage() {
         .filter(Boolean)
         .join(' | ')
 
+      const responsavel = await getAdminActorLabel()
       const { error: historicoError } = await supabase.from('os_historico').insert({
         os_id: os?.id ?? id,
         acao: statusFinal === 'FINALIZADA' ? 'OS_FINALIZADA' : 'ATENDIMENTO_TECNICO',
@@ -886,7 +888,7 @@ export default function OrdemServicoAtendimentoPage() {
         prioridade_anterior: prioridadeAnterior,
         prioridade_nova: form.prioridade,
         descricao: resumo,
-        responsavel: 'Sistema',
+        responsavel,
       })
 
       if (historicoError) throw historicoError
