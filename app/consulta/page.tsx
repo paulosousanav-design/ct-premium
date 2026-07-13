@@ -31,26 +31,6 @@ type Marca = {
   nome: string | null
 }
 
-type Foto = {
-  id: number
-  nome_arquivo: string | null
-  url: string | null
-  criado_em: string | null
-}
-
-type HistoricoItem = {
-  id: number
-  os_id: number | null
-  acao: string | null
-  status_anterior: string | null
-  status_novo: string | null
-  prioridade_anterior: string | null
-  prioridade_nova: string | null
-  descricao: string | null
-  responsavel: string | null
-  criado_em: string | null
-}
-
 type PecaItem = {
   id: number
   descricao: string | null
@@ -66,40 +46,21 @@ type ConsultaResultado = {
     numero_os: string | null
     created_at: string
     status: string | null
-    prioridade: string | null
     modelo: string | null
     numero_serie: string | null
     defeito: string | null
-    diagnostico_tecnico: string | null
-    servico_executado: string | null
-    pecas_utilizadas: string | null
     valor_pecas: number | string | null
     valor_mao_obra: number | string | null
     desconto: number | string | null
     total: number | string | null
-    observacao_tecnica: string | null
     orcamento_status: string | null
     orcamento_resposta_em: string | null
     cliente: Cliente
     categoria: Categoria | null
     marca: Marca | null
   }
-  fotos: Foto[]
-  historico: HistoricoItem[]
   pecas: PecaItem[]
-  ultimaAtualizacao: string | null
 }
-
-const STATUS_STEPS = [
-  { key: 'NOVA', label: 'Recebido' },
-  { key: 'EM_TRIAGEM', label: 'Triagem' },
-  { key: 'EM_ATENDIMENTO', label: 'Atendimento' },
-  { key: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto/entrega' },
-  { key: 'AGUARDANDO_APROVACAO', label: 'Aprovação' },
-  { key: 'AGUARDANDO_PECA', label: 'Peça' },
-  { key: 'CRITICA', label: 'Crítica' },
-  { key: 'FINALIZADA', label: 'Finalizada' },
-] as const
 
 export default function ConsultaPage() {
   const [form, setForm] = useState<ConsultaForm>(() => getConsultaInicial().form)
@@ -141,10 +102,6 @@ export default function ConsultaPage() {
 
     return total > 0 ? total : Math.max(0, valorPecas + maoObra - desconto)
   }, [resultado, totalPecas])
-
-  const statusAtual = resultado?.os.status ?? 'NOVA'
-  const passoAtual = STATUS_STEPS.findIndex((step) => step.key === statusAtual)
-  const passoSeguro = passoAtual === -1 ? 0 : passoAtual
 
   async function consultarChamado(payload: ConsultaForm) {
     setLoading(true)
@@ -317,281 +274,100 @@ export default function ConsultaPage() {
         )}
 
         {resultado && (
-          <>
-            <section className="grid gap-4 md:grid-cols-4">
+          <div className="space-y-6">
+            <section className="grid gap-4 md:grid-cols-2">
               <InfoCard label="OS" value={resultado.os.numero_os ?? '-'} />
-              <InfoCard label="Status" value={formatarStatusOs(resultado.os.status)} />
-              <InfoCard label="Prioridade" value={resultado.os.prioridade ?? '-'} />
-              <InfoCard
-                label="Última atualização"
-                value={formatDate(resultado.ultimaAtualizacao ?? resultado.os.created_at)}
-              />
+              <InfoCard label="Status atual" value={formatarStatusOs(resultado.os.status)} />
             </section>
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <h2 className="mb-4 text-xl font-semibold text-slate-900">Dados do cliente</h2>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <InfoBlock label="Cliente" value={resultado.os.cliente.nome ?? '-'} />
+                <InfoBlock label="CPF/CNPJ" value={resultado.os.cliente.cpf_cnpj ?? '-'} />
+                <InfoBlock label="WhatsApp" value={resultado.os.cliente.whatsapp ?? '-'} />
+                <InfoBlock label="E-mail" value={resultado.os.cliente.email ?? '-'} />
+                <InfoBlock label="CEP" value={resultado.os.cliente.cep ?? '-'} />
+                <InfoBlock
+                  label="Endereço"
+                  value={[
+                    resultado.os.cliente.logradouro,
+                    resultado.os.cliente.numero,
+                    resultado.os.cliente.bairro,
+                    resultado.os.cliente.cidade,
+                    resultado.os.cliente.estado,
+                  ].filter(Boolean).join(', ') || '-'}
+                  wide
+                />
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-white p-6 shadow-sm">
+              <h2 className="mb-4 text-xl font-semibold text-slate-900">Dados do equipamento</h2>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <InfoBlock label="Categoria" value={resultado.os.categoria?.nome ?? '-'} />
+                <InfoBlock label="Marca" value={resultado.os.marca?.nome ?? '-'} />
+                <InfoBlock label="Modelo" value={resultado.os.modelo ?? '-'} />
+                <InfoBlock label="Número de série" value={resultado.os.numero_serie ?? '-'} />
+                <InfoBlock label="Defeito informado" value={resultado.os.defeito ?? '-'} wide />
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-white p-6 shadow-sm">
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-slate-900">Acompanhamento</h2>
-                  <p className="text-sm text-slate-500">Veja em que etapa o chamado está.</p>
+                  <h2 className="text-xl font-semibold text-slate-900">Orçamento</h2>
+                  <p className="text-sm text-slate-500">
+                    Situação: {resultado.os.orcamento_status ?? 'PENDENTE'}
+                  </p>
                 </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                    Orçamento: {resultado.os.orcamento_status ?? 'PENDENTE'}
-                  </span>
-
-                  {resultado.os.orcamento_status === 'APROVADO' && (
-                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                      Orçamento aprovado
-                    </span>
-                  )}
-
-                  {resultado.os.orcamento_status === 'REPROVADO' && (
-                    <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
-                      Orçamento reprovado
-                    </span>
-                  )}
-                </div>
+                <span className="rounded-full bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-700">
+                  Total: {formatCurrency(totalGeral)}
+                </span>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-                {STATUS_STEPS.map((step, index) => {
-                  const active = index <= passoSeguro
-                  const current = index === passoSeguro
-                  const isCritical = step.key === 'CRITICA' && resultado.os.status === 'CRITICA'
-
-                  const cls = isCritical
-                    ? 'border-red-500 bg-red-500 text-white'
-                    : active
-                      ? 'border-orange-500 bg-orange-500 text-white'
-                      : 'border-slate-200 bg-slate-50 text-slate-500'
-
-                  return (
-                    <div
-                      key={step.key}
-                      className={`rounded-xl border px-4 py-3 text-center text-sm font-medium ${cls}`}
-                    >
-                      <div className="text-xs uppercase opacity-80">{current ? 'Atual' : 'Etapa'}</div>
-                      <div className="mt-1">{step.label}</div>
+              {resultado.pecas.length > 0 && (
+                <div className="mb-4 space-y-3">
+                  {resultado.pecas.map((peca) => (
+                    <div key={peca.id} className="flex flex-col gap-2 rounded-xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-900">{peca.descricao ?? 'Peça'}</p>
+                        <p className="text-sm text-slate-500">
+                          {toNumber(peca.quantidade)}x • {formatCurrency(toNumber(peca.valor_unitario))} cada
+                        </p>
+                      </div>
+                      <p className="font-bold text-slate-900">{formatCurrency(toNumber(peca.total_item))}</p>
                     </div>
-                  )
-                })}
+                  ))}
+                </div>
+              )}
+
+              <div className="grid gap-3 md:grid-cols-4">
+                <InfoBlock label="Peças" value={formatCurrency(toNumber(resultado.os.valor_pecas) || totalPecas)} />
+                <InfoBlock label="Mão de obra" value={formatCurrency(toNumber(resultado.os.valor_mao_obra))} />
+                <InfoBlock label="Desconto" value={formatCurrency(toNumber(resultado.os.desconto))} />
+                <InfoBlock label="Total" value={formatCurrency(totalGeral)} />
               </div>
 
               {podeResponderOrcamento && (
                 <div className="mt-6">
                   {acaoSugerida && (
                     <div className="mb-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-medium text-orange-800">
-                      Link recebido para {acaoSugerida === 'APROVAR' ? 'aprovar' : 'reprovar'} este orçamento.
-                      Confira os dados e confirme no botão abaixo.
+                      Confira o orçamento e confirme sua decisão abaixo.
                     </div>
                   )}
-
                   <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() => responderOrcamento('APROVAR')}
-                    disabled={processandoAcao !== null}
-                    className={`rounded-lg px-5 py-3 font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-70 ${
-                      acaoSugerida === 'APROVAR'
-                        ? 'bg-emerald-700 ring-4 ring-emerald-100 hover:bg-emerald-800'
-                        : 'bg-emerald-600 hover:bg-emerald-700'
-                    }`}
-                  >
-                    {processandoAcao === 'APROVAR' ? 'Processando...' : 'Aprovar orçamento'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => responderOrcamento('REPROVAR')}
-                    disabled={processandoAcao !== null}
-                    className={`rounded-lg px-5 py-3 font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-70 ${
-                      acaoSugerida === 'REPROVAR'
-                        ? 'bg-red-700 ring-4 ring-red-100 hover:bg-red-800'
-                        : 'bg-red-600 hover:bg-red-700'
-                    }`}
-                  >
-                    {processandoAcao === 'REPROVAR' ? 'Processando...' : 'Reprovar orçamento'}
-                  </button>
+                    <button type="button" onClick={() => responderOrcamento('APROVAR')} disabled={processandoAcao !== null} className="rounded-lg bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-700 disabled:opacity-70">
+                      {processandoAcao === 'APROVAR' ? 'Processando...' : 'Aprovar orçamento'}
+                    </button>
+                    <button type="button" onClick={() => responderOrcamento('REPROVAR')} disabled={processandoAcao !== null} className="rounded-lg bg-red-600 px-5 py-3 font-semibold text-white hover:bg-red-700 disabled:opacity-70">
+                      {processandoAcao === 'REPROVAR' ? 'Processando...' : 'Reprovar orçamento'}
+                    </button>
                   </div>
                 </div>
               )}
             </section>
-
-            <section className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-              <div className="space-y-6">
-                <div className="rounded-2xl bg-white p-6 shadow-sm">
-                  <h2 className="mb-4 text-xl font-semibold text-slate-900">Dados do chamado</h2>
-
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <InfoBlock label="Cliente" value={resultado.os.cliente.nome ?? '-'} />
-                    <InfoBlock label="CPF/CNPJ" value={resultado.os.cliente.cpf_cnpj ?? '-'} />
-                    <InfoBlock label="WhatsApp" value={resultado.os.cliente.whatsapp ?? '-'} />
-                    <InfoBlock label="E-mail" value={resultado.os.cliente.email ?? '-'} />
-                    <InfoBlock label="Categoria" value={resultado.os.categoria?.nome ?? '-'} />
-                    <InfoBlock label="Marca" value={resultado.os.marca?.nome ?? '-'} />
-                    <InfoBlock label="Modelo" value={resultado.os.modelo ?? '-'} />
-                    <InfoBlock label="Número de série" value={resultado.os.numero_serie ?? '-'} />
-                  </div>
-
-                  <div className="mt-4">
-                    <InfoBlock label="Defeito informado" value={resultado.os.defeito ?? '-'} wide />
-                  </div>
-
-                  {resultado.os.diagnostico_tecnico ||
-                  resultado.os.servico_executado ||
-                  resultado.os.observacao_tecnica ? (
-                    <div className="mt-4 grid gap-4 xl:grid-cols-3">
-                      <InfoBlock label="Diagnóstico técnico" value={resultado.os.diagnostico_tecnico ?? '-'} wide />
-                      <InfoBlock label="Serviço executado" value={resultado.os.servico_executado ?? '-'} wide />
-                      <InfoBlock label="Observação técnica" value={resultado.os.observacao_tecnica ?? '-'} wide />
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="rounded-2xl bg-white p-6 shadow-sm">
-                  <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-xl font-semibold text-slate-900">Peças e orçamento</h2>
-                    <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-                      Total: {formatCurrency(totalGeral)}
-                    </span>
-                  </div>
-
-                  {resultado.pecas.length > 0 ? (
-                    <div className="space-y-3">
-                      {resultado.pecas.map((peca) => (
-                        <div
-                          key={peca.id}
-                          className="flex flex-col gap-2 rounded-xl border border-slate-200 p-4 md:flex-row md:items-center md:justify-between"
-                        >
-                          <div>
-                            <p className="font-semibold text-slate-900">{peca.descricao ?? 'Peça'}</p>
-                            <p className="text-sm text-slate-500">
-                              {toNumber(peca.quantidade)}x • {formatCurrency(toNumber(peca.valor_unitario))} cada
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm text-slate-500">Subtotal</p>
-                            <p className="text-lg font-bold text-slate-900">
-                              {formatCurrency(toNumber(peca.total_item))}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">Ainda não há peças lançadas para esta OS.</p>
-                  )}
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-3">
-                    <InfoBlock label="Peças" value={formatCurrency(toNumber(resultado.os.valor_pecas) || totalPecas)} />
-                    <InfoBlock label="Mão de obra" value={formatCurrency(toNumber(resultado.os.valor_mao_obra))} />
-                    <InfoBlock label="Desconto" value={formatCurrency(toNumber(resultado.os.desconto))} />
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-white p-6 shadow-sm">
-                  <h2 className="mb-4 text-xl font-semibold text-slate-900">Fotos do chamado</h2>
-
-                  {resultado.fotos.length > 0 ? (
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                      {resultado.fotos.map((foto) => (
-                        <a
-                          key={foto.id}
-                          href={foto.url ?? '#'}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
-                        >
-                          <div className="aspect-video bg-slate-200">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={foto.url ?? ''}
-                              alt={foto.nome_arquivo ?? 'Foto da OS'}
-                              className="h-full w-full object-cover"
-                            />
-                          </div>
-                          <div className="p-3">
-                            <p className="text-sm font-medium text-slate-800">
-                              {foto.nome_arquivo ?? 'Foto'}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {foto.criado_em ? formatDate(foto.criado_em) : ''}
-                            </p>
-                          </div>
-                        </a>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">Nenhuma foto cadastrada ainda.</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div className="rounded-2xl bg-white p-6 shadow-sm">
-                  <h2 className="mb-4 text-xl font-semibold text-slate-900">Resumo do cliente</h2>
-
-                  <div className="space-y-3">
-                    <MiniItem label="Cliente" value={resultado.os.cliente.nome ?? '-'} />
-                    <MiniItem label="WhatsApp" value={resultado.os.cliente.whatsapp ?? '-'} />
-                    <MiniItem label="CEP" value={resultado.os.cliente.cep ?? '-'} />
-                    <MiniItem
-                      label="Endereço"
-                      value={[
-                        resultado.os.cliente.logradouro,
-                        resultado.os.cliente.numero,
-                        resultado.os.cliente.bairro,
-                        resultado.os.cliente.cidade,
-                        resultado.os.cliente.estado,
-                      ]
-                        .filter(Boolean)
-                        .join(', ') || '-'}
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-white p-6 shadow-sm">
-                  <h2 className="mb-4 text-xl font-semibold text-slate-900">Linha do tempo</h2>
-
-                  <div className="max-h-[720px] space-y-4 overflow-y-auto pr-2">
-                    {resultado.historico.length > 0 ? (
-                      resultado.historico.map((item) => (
-                        <div key={item.id} className="rounded-xl border border-slate-200 p-4">
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-900">
-                                {item.acao ?? 'Evento'}
-                              </p>
-                              <p className="text-xs text-slate-500">
-                                {item.criado_em ? formatDate(item.criado_em) : ''}
-                              </p>
-                            </div>
-                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
-                              {item.responsavel ?? 'Sistema'}
-                            </span>
-                          </div>
-
-                          {item.descricao && (
-                            <p className="mt-3 text-sm text-slate-600">{item.descricao}</p>
-                          )}
-
-                          <div className="mt-3 grid gap-2 text-xs text-slate-500">
-                            <span>Status: {item.status_anterior ?? '-'} → {item.status_novo ?? '-'}</span>
-                            <span>
-                              Prioridade: {item.prioridade_anterior ?? '-'} → {item.prioridade_nova ?? '-'}
-                            </span>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-slate-500">Sem movimentações registradas ainda.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </section>
-          </>
+          </div>
         )}
       </div>
     </main>
@@ -652,15 +428,6 @@ function InfoBlock({
   )
 }
 
-function MiniItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl bg-slate-50 px-4 py-3">
-      <p className="text-xs uppercase text-slate-500">{label}</p>
-      <p className="mt-1 text-sm font-medium text-slate-900">{value}</p>
-    </div>
-  )
-}
-
 function getConsultaInicial(): { form: ConsultaForm; acao: 'APROVAR' | 'REPROVAR' | null } {
   if (typeof window === 'undefined') {
     return { form: { numeroOs: '', whatsapp: '' }, acao: null }
@@ -680,10 +447,6 @@ function getConsultaInicial(): { form: ConsultaForm; acao: 'APROVAR' | 'REPROVAR
     },
     acao,
   }
-}
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleString('pt-BR')
 }
 
 function formatarStatusOs(status?: string | null) {

@@ -50,18 +50,13 @@ export async function POST(request: NextRequest) {
         numero_os,
         created_at,
         status,
-        prioridade,
         modelo,
         numero_serie,
         defeito,
-        diagnostico_tecnico,
-        servico_executado,
-        pecas_utilizadas,
         valor_pecas,
         valor_mao_obra,
         desconto,
         total,
-        observacao_tecnica,
         orcamento_status,
         orcamento_resposta_em,
         cliente_id,
@@ -115,33 +110,6 @@ export async function POST(request: NextRequest) {
       .eq('id', os.marca_id ?? 0)
       .maybeSingle()
 
-    const fotos = await safeList(
-      supabase
-        .from('os_fotos')
-        .select('id, nome_arquivo, url, criado_em')
-        .eq('os_id', os.id)
-        .order('criado_em', { ascending: false })
-    )
-
-    const historico = await safeList(
-      supabase
-        .from('os_historico')
-        .select(`
-          id,
-          os_id,
-          acao,
-          status_anterior,
-          status_novo,
-          prioridade_anterior,
-          prioridade_nova,
-          descricao,
-          responsavel,
-          criado_em
-        `)
-        .eq('os_id', os.id)
-        .order('criado_em', { ascending: false })
-    )
-
     const pecas = await safeList(
       supabase
         .from('os_pecas')
@@ -150,8 +118,6 @@ export async function POST(request: NextRequest) {
         .order('criado_em', { ascending: true })
     )
 
-    const ultimaAtualizacao = historico[0]?.criado_em ?? os.created_at
-
     return NextResponse.json({
       os: {
         ...os,
@@ -159,10 +125,7 @@ export async function POST(request: NextRequest) {
         categoria: categoria ?? null,
         marca: marca ?? null,
       },
-      fotos,
-      historico,
       pecas,
-      ultimaAtualizacao,
     })
   } catch (error) {
     console.error('Erro na consulta da OS:', error)
