@@ -349,6 +349,17 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void carregarDashboard()
 
+    let atualizacaoPendente: ReturnType<typeof setTimeout> | null = null
+
+    function agendarAtualizacao() {
+      if (atualizacaoPendente) clearTimeout(atualizacaoPendente)
+      atualizacaoPendente = setTimeout(() => void carregarDashboard(), 250)
+    }
+
+    function atualizarAoVoltar() {
+      if (document.visibilityState === 'visible') agendarAtualizacao()
+    }
+
     function atualizarSlaEntreAbas(event: StorageEvent) {
       if (
         event.key === 'relatorios_sla_particular_dias' ||
@@ -359,7 +370,19 @@ export default function DashboardPage() {
     }
 
     window.addEventListener('storage', atualizarSlaEntreAbas)
-    return () => window.removeEventListener('storage', atualizarSlaEntreAbas)
+    window.addEventListener('focus', agendarAtualizacao)
+    document.addEventListener('visibilitychange', atualizarAoVoltar)
+    const atualizacaoAutomatica = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void carregarDashboard()
+    }, 60_000)
+
+    return () => {
+      window.removeEventListener('storage', atualizarSlaEntreAbas)
+      window.removeEventListener('focus', agendarAtualizacao)
+      document.removeEventListener('visibilitychange', atualizarAoVoltar)
+      window.clearInterval(atualizacaoAutomatica)
+      if (atualizacaoPendente) clearTimeout(atualizacaoPendente)
+    }
   }, [carregarDashboard])
 
   async function atualizarStatusRapido(osId: number, novoStatus: string) {
