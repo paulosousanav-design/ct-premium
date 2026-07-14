@@ -217,6 +217,14 @@ export default function PainelTecnicoPage() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              {!tecnicoId && (
+                <Link
+                  href="/tecnico/academia"
+                  className="inline-flex h-10 items-center rounded-lg bg-orange-500 px-4 text-sm font-semibold text-white"
+                >
+                  Academia Técnica
+                </Link>
+              )}
               <button
                 type="button"
                 onClick={carregarOrdens}

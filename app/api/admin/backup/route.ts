@@ -7,6 +7,9 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 const tabelasBackup = [
   'empresas',
+  'academia_conteudos',
+  'academia_conteudo_tecnicos',
+  'academia_progresso',
   'clientes',
   'ordens_servico',
   'os_historico',
