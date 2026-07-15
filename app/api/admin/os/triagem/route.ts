@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdminPermission } from '@/lib/admin-auth'
+import { requireAdminUnidade } from '@/lib/admin-unidade'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -88,7 +88,7 @@ async function colunaExiste(
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'os')
+    const auth = await requireAdminUnidade(request, 'os')
     if (!auth.ok) return auth.response
 
     const supabase = getSupabaseAdmin()
@@ -136,11 +136,15 @@ export async function GET(request: NextRequest) {
         marcas:marca_id ( nome )
       `
 
-    const { data: ordensData, error: ordensError } = await supabase
+    let ordensQuery = supabase
       .from('ordens_servico')
       .select(ordensSelect)
       .neq('status', 'FINALIZADA')
       .order('created_at', { ascending: false })
+    if (await colunaExiste(supabase, 'ordens_servico', 'unidade_id')) {
+      ordensQuery = ordensQuery.eq('unidade_id', auth.unidadeId)
+    }
+    const { data: ordensData, error: ordensError } = await ordensQuery
 
     if (ordensError) throw ordensError
 
@@ -217,7 +221,7 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'os')
+    const auth = await requireAdminUnidade(request, 'os')
     if (!auth.ok) return auth.response
 
     const body = await request.json().catch(() => null)
@@ -234,11 +238,14 @@ export async function PATCH(request: NextRequest) {
 
     const supabase = getSupabaseAdmin()
 
-    const { data: osAtual, error: osAtualError } = await supabase
+    let osAtualQuery = supabase
       .from('ordens_servico')
       .select('id, status, prioridade, parceiro_id')
       .eq('id', osId)
-      .maybeSingle()
+    if (await colunaExiste(supabase, 'ordens_servico', 'unidade_id')) {
+      osAtualQuery = osAtualQuery.eq('unidade_id', auth.unidadeId)
+    }
+    const { data: osAtual, error: osAtualError } = await osAtualQuery.maybeSingle()
 
     if (osAtualError) throw osAtualError
     if (!osAtual) {

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getAdminActorLabel } from '@/lib/admin-actor'
+import { getUnidadeSelecionadaId } from '@/lib/unidade-client'
 
 type OrcamentoFiltro = 'TODOS' | 'REVISAO' | 'PENDENTE' | 'APROVADO' | 'REPROVADO'
 
@@ -57,12 +58,15 @@ export default function AprovacaoPage() {
     setErro('')
 
     try {
-      const { data, error } = await supabase
+      const unidadeId = getUnidadeSelecionadaId()
+      let query = supabase
         .from('ordens_servico')
         .select(
           'id, numero_os, status, orcamento_status, orcamento_resposta_em, total, valor_pecas, valor_mao_obra, desconto, tecnico_valor_pecas, tecnico_valor_mao_obra, tecnico_desconto, tecnico_total, cliente_valor_pecas, cliente_valor_mao_obra, cliente_desconto, cliente_total, garantia, created_at, modelo, diagnostico_tecnico, servico_executado, pecas_utilizadas, categoria_id, marca_id, cliente_id'
         )
         .order('created_at', { ascending: false })
+      if (unidadeId) query = query.eq('unidade_id', unidadeId)
+      const { data, error } = await query
 
       if (error) throw error
 
@@ -179,6 +183,7 @@ export default function AprovacaoPage() {
         .from('ordens_servico')
         .select('id, status, prioridade, orcamento_status')
         .eq('id', id)
+        .eq('unidade_id', getUnidadeSelecionadaId() ?? 0)
         .maybeSingle()
 
       if (atualError) throw atualError
@@ -223,6 +228,7 @@ export default function AprovacaoPage() {
         .from('ordens_servico')
         .update(updatePayload)
         .eq('id', id)
+        .eq('unidade_id', getUnidadeSelecionadaId() ?? 0)
 
       if (updateError) throw updateError
 
@@ -274,6 +280,7 @@ export default function AprovacaoPage() {
         orcamento_status: item.orcamento_status ?? 'PENDENTE',
       })
       .eq('id', item.id)
+      .eq('unidade_id', getUnidadeSelecionadaId() ?? 0)
 
     if (updateError) throw updateError
 

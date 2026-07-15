@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdminPermission } from '@/lib/admin-auth'
+import { requireAdminUnidade } from '@/lib/admin-unidade'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -17,6 +17,7 @@ type PecaInput = {
 
 type OrdemServico = {
   id: number
+  unidade_id?: number | null
   cliente_id: number | null
   categoria_id: number | null
   marca_id: number | null
@@ -85,7 +86,8 @@ async function tabelaExiste(
 async function baixarEstoquePecas(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   osId: number,
-  rows: Record<string, unknown>[]
+  rows: Record<string, unknown>[],
+  unidadeId: number
 ) {
   const pecasEstoque = rows.filter(
     (row) => String(row.origem ?? '').toUpperCase() === 'ESTOQUE' && row.peca_id
@@ -105,11 +107,14 @@ async function baixarEstoquePecas(
   for (const [pecaId, quantidade] of quantidadePorPeca.entries()) {
     if (quantidade <= 0) continue
 
-    const { data: peca, error: pecaError } = await supabase
+    let pecaQuery = supabase
       .from('pecas')
       .select('id, estoque')
       .eq('id', pecaId)
-      .maybeSingle()
+    if (await colunaExiste(supabase, 'pecas', 'unidade_id')) {
+      pecaQuery = pecaQuery.eq('unidade_id', unidadeId)
+    }
+    const { data: peca, error: pecaError } = await pecaQuery.maybeSingle()
 
     if (pecaError) throw pecaError
     if (!peca?.id) continue
@@ -130,7 +135,7 @@ async function baixarEstoquePecas(
     if (updateEstoqueError) throw updateEstoqueError
 
     if (movimentacoesExistem) {
-      const { error: movimentacaoError } = await supabase.from('pecas_movimentacoes').insert({
+      const movimentoPayload: Record<string, unknown> = {
         peca_id: pecaId,
         os_id: osId,
         tipo: 'SAIDA_OS',
@@ -138,7 +143,9 @@ async function baixarEstoquePecas(
         estoque_anterior: estoqueAnterior,
         estoque_posterior: estoquePosterior,
         observacao: `Baixa automatica ao finalizar OS ${osId}.`,
-      })
+      }
+      if (await colunaExiste(supabase, 'pecas_movimentacoes', 'unidade_id')) movimentoPayload.unidade_id = unidadeId
+      const { error: movimentacaoError } = await supabase.from('pecas_movimentacoes').insert(movimentoPayload)
 
       if (movimentacaoError) throw movimentacaoError
     }
@@ -147,7 +154,7 @@ async function baixarEstoquePecas(
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'os')
+    const auth = await requireAdminUnidade(request, 'os')
     if (!auth.ok) return auth.response
 
     const osId = Number(request.nextUrl.searchParams.get('osId'))
@@ -157,6 +164,7 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin()
+    const temUnidade = await colunaExiste(supabase, 'ordens_servico', 'unidade_id')
     const colunasOrcamentoSeparadoExistem = await colunaExiste(supabase, 'ordens_servico', 'tecnico_total')
     const colunaReferenciaGarantidorExiste = await colunaExiste(supabase, 'ordens_servico', 'referencia_garantidor')
     const colunaValorRecebidoClienteExiste = await colunaExiste(supabase, 'ordens_servico', 'valor_recebido_cliente')
@@ -205,7 +213,7 @@ export async function GET(request: NextRequest) {
         cliente_id,
         categoria_id,
         marca_id,
-        parceiro_id
+        parceiro_id${temUnidade ? ', unidade_id' : ''}
       `
     const selectAvulso = `,
         garantidor_id,
@@ -240,6 +248,9 @@ export async function GET(request: NextRequest) {
     }
 
     const ordem = data as unknown as OrdemServico
+    if (temUnidade && Number(ordem.unidade_id) !== auth.unidadeId) {
+      return NextResponse.json({ error: 'OS nao encontrada nesta unidade.' }, { status: 404 })
+    }
     let cliente = null
     let categoria: { id: number; nome: string | null } | null = null
     let marca = null
@@ -331,11 +342,15 @@ export async function GET(request: NextRequest) {
     const pecasEstoqueExiste = await tabelaExiste(supabase, 'pecas')
     let estoquePecas: unknown[] = []
     if (pecasEstoqueExiste) {
-      const { data: estoqueData, error: estoqueError } = await supabase
+      let estoqueQuery = supabase
         .from('pecas')
         .select('id, codigo, descricao, categoria, marca, valor_custo, valor_venda, estoque, ativo')
         .eq('ativo', true)
         .order('descricao', { ascending: true })
+      if (await colunaExiste(supabase, 'pecas', 'unidade_id')) {
+        estoqueQuery = estoqueQuery.eq('unidade_id', auth.unidadeId)
+      }
+      const { data: estoqueData, error: estoqueError } = await estoqueQuery
 
       if (estoqueError) throw estoqueError
       estoquePecas = estoqueData ?? []
@@ -425,7 +440,7 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'os')
+    const auth = await requireAdminUnidade(request, 'os')
     if (!auth.ok) return auth.response
 
     const body = await request.json().catch(() => null)
@@ -435,22 +450,30 @@ export async function PATCH(request: NextRequest) {
     const supabase = getSupabaseAdmin()
 
     if (body?.acao === 'TECNICO_AVULSO') {
-      return salvarTecnicoAvulso(supabase, body, `${auth.nome} (${auth.email})`)
+      return salvarTecnicoAvulso(supabase, body, `${auth.nome} (${auth.email})`, auth.unidadeId)
     }
 
     if (!osId || !statusFinal) {
       return NextResponse.json({ error: 'Dados invalidos para salvar a OS.' }, { status: 400 })
     }
 
-    const { data: osAtual, error: osAtualError } = await supabase
+    const temUnidade = await colunaExiste(supabase, 'ordens_servico', 'unidade_id')
+    const osAtualSelect: string = temUnidade
+      ? 'id, status, prioridade, bloqueada, unidade_id'
+      : 'id, status, prioridade, bloqueada'
+    const { data: osAtualData, error: osAtualError } = await supabase
       .from('ordens_servico')
-      .select('id, status, prioridade, bloqueada')
+      .select(osAtualSelect)
       .eq('id', osId)
       .maybeSingle()
+    const osAtual = osAtualData as unknown as { id: number; status: string | null; prioridade: string | null; bloqueada: boolean | null; unidade_id?: number | null } | null
 
     if (osAtualError) throw osAtualError
     if (!osAtual?.id) {
       return NextResponse.json({ error: 'OS nao encontrada.' }, { status: 404 })
+    }
+    if (temUnidade && Number(osAtual.unidade_id) !== auth.unidadeId) {
+      return NextResponse.json({ error: 'OS nao encontrada nesta unidade.' }, { status: 404 })
     }
 
     const pecas = Array.isArray(body?.pecas) ? (body.pecas as PecaInput[]) : []
@@ -557,7 +580,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (bloqueada && osAtual.status !== 'FINALIZADA' && osPecasTemPecaId) {
-      await baixarEstoquePecas(supabase, osId, rows)
+      await baixarEstoquePecas(supabase, osId, rows, auth.unidadeId)
     }
 
     const resumo = [
@@ -609,7 +632,8 @@ export async function PATCH(request: NextRequest) {
 async function salvarTecnicoAvulso(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   body: Record<string, unknown> | null,
-  responsavel: string
+  responsavel: string,
+  unidadeId: number
 ) {
   const osId = Number(body?.osId)
   const nome = String(body?.nome ?? '').trim()
@@ -625,15 +649,21 @@ async function salvarTecnicoAvulso(
     )
   }
 
-  const { data: osAtual, error: osAtualError } = await supabase
+  const temUnidade = await colunaExiste(supabase, 'ordens_servico', 'unidade_id')
+  const osAtualSelect: string = temUnidade ? 'id, status, unidade_id' : 'id, status'
+  const { data: osAtualData, error: osAtualError } = await supabase
     .from('ordens_servico')
-    .select('id, status')
+    .select(osAtualSelect)
     .eq('id', osId)
     .maybeSingle()
+  const osAtual = osAtualData as unknown as { id: number; status: string | null; unidade_id?: number | null } | null
 
   if (osAtualError) throw osAtualError
   if (!osAtual?.id) {
     return NextResponse.json({ error: 'OS nao encontrada.' }, { status: 404 })
+  }
+  if (temUnidade && Number(osAtual.unidade_id) !== unidadeId) {
+    return NextResponse.json({ error: 'OS nao encontrada nesta unidade.' }, { status: 404 })
   }
 
   const { error: updateError } = await supabase

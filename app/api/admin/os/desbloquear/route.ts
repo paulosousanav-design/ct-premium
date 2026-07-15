@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdminPermission } from '@/lib/admin-auth'
+import { requireAdminUnidade } from '@/lib/admin-unidade'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -8,7 +8,7 @@ const masterPassword = process.env.MASTER_UNLOCK_PASSWORD
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'os')
+    const auth = await requireAdminUnidade(request, 'os')
     if (!auth.ok) return auth.response
 
     if (!supabaseUrl || !serviceRoleKey || !masterPassword) {
@@ -43,14 +43,18 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    const { error: updateError } = await supabase
+    const { data: ordemAtualizada, error: updateError } = await supabase
       .from('ordens_servico')
       .update({
         bloqueada: false,
       })
       .eq('id', osId)
+      .eq('unidade_id', auth.unidadeId)
+      .select('id')
+      .maybeSingle()
 
     if (updateError) throw updateError
+    if (!ordemAtualizada) return NextResponse.json({ error: 'OS nao encontrada nesta unidade.' }, { status: 404 })
 
     const { error: historicoError } = await supabase.from('os_historico').insert({
       os_id: osId,

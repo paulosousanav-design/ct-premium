@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdminPermission } from '@/lib/admin-auth'
+import { requireAdminUnidade } from '@/lib/admin-unidade'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -29,7 +29,7 @@ async function colunaExiste(
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'os')
+    const auth = await requireAdminUnidade(request, 'os')
     if (!auth.ok) return auth.response
 
     const termo = String(request.nextUrl.searchParams.get('q') ?? '').trim()
@@ -61,11 +61,15 @@ export async function GET(request: NextRequest) {
     const resumoOs = new Map<number, { total: number; ultima_os: string | null; ultimo_atendimento: string | null }>()
 
     if (ids.length > 0) {
-      const { data: ordens, error: ordensError } = await supabase
+      let ordensQuery = supabase
         .from('ordens_servico')
         .select('cliente_id, numero_os, created_at')
         .in('cliente_id', ids)
         .order('created_at', { ascending: false })
+      if (await colunaExiste(supabase, 'ordens_servico', 'unidade_id')) {
+        ordensQuery = ordensQuery.eq('unidade_id', auth.unidadeId)
+      }
+      const { data: ordens, error: ordensError } = await ordensQuery
 
       if (ordensError) throw ordensError
 
@@ -100,7 +104,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'os')
+    const auth = await requireAdminUnidade(request, 'os')
     if (!auth.ok) return auth.response
 
     const body = await request.json().catch(() => null)
@@ -214,6 +218,9 @@ export async function POST(request: NextRequest) {
 
     if (await colunaExiste(supabase, 'ordens_servico', 'origem_os')) {
       osPayload.origem_os = origemOs
+    }
+    if (await colunaExiste(supabase, 'ordens_servico', 'unidade_id')) {
+      osPayload.unidade_id = auth.unidadeId
     }
 
     const { data: osCriada, error: osError } = await supabase

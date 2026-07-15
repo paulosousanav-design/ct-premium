@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdminPermission } from '@/lib/admin-auth'
+import { requireAdminUnidade } from '@/lib/admin-unidade'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -34,7 +34,7 @@ function getSupabaseAdmin() {
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'pecas')
+    const auth = await requireAdminUnidade(request, 'pecas')
     if (!auth.ok) return auth.response
 
     const supabase = getSupabaseAdmin()
@@ -43,14 +43,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: [], tabelaPendente: true })
     }
 
-    const { data, error } = await supabase
+    let pecasQuery = supabase
       .from('pecas')
       .select('*')
       .order('descricao', { ascending: true })
+    const temUnidade = await colunaExiste(supabase, 'pecas', 'unidade_id')
+    if (temUnidade) pecasQuery = pecasQuery.eq('unidade_id', auth.unidadeId)
+    const { data, error } = await pecasQuery
 
     if (error) throw error
 
-    const movimentacoes = await carregarMovimentacoes(supabase)
+    const movimentacoes = await carregarMovimentacoes(supabase, temUnidade ? auth.unidadeId : null)
 
     return NextResponse.json({
       data: data ?? [],
@@ -66,7 +69,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'pecas')
+    const auth = await requireAdminUnidade(request, 'pecas')
     if (!auth.ok) return auth.response
 
     const body = await request.json().catch(() => null)
@@ -97,6 +100,7 @@ export async function POST(request: NextRequest) {
       localizacao: texto(body?.localizacao) || null,
       ativo: body?.ativo !== false,
     }
+    if (await colunaExiste(supabase, 'pecas', 'unidade_id')) payload.unidade_id = auth.unidadeId
 
     const { data, error } = await supabase.from('pecas').insert(payload).select('*').single()
     if (error) throw error
@@ -110,7 +114,7 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'pecas')
+    const auth = await requireAdminUnidade(request, 'pecas')
     if (!auth.ok) return auth.response
 
     const body = await request.json().catch(() => null)
@@ -120,7 +124,7 @@ export async function PATCH(request: NextRequest) {
     const supabase = getSupabaseAdmin()
 
     if (tipo === 'MOVIMENTACAO') {
-      const resultado = await movimentarEstoque(supabase, body)
+      const resultado = await movimentarEstoque(supabase, body, auth.unidadeId)
       return NextResponse.json({ ok: true, data: resultado })
     }
 
@@ -149,11 +153,14 @@ export async function PATCH(request: NextRequest) {
       ativo: body?.ativo !== false,
     }
 
-    const { data, error } = await supabase
+    let atualizarQuery = supabase
       .from('pecas')
       .update(payload)
       .eq('id', id)
-      .select('*')
+    if (await colunaExiste(supabase, 'pecas', 'unidade_id')) {
+      atualizarQuery = atualizarQuery.eq('unidade_id', auth.unidadeId)
+    }
+    const { data, error } = await atualizarQuery.select('*')
       .single()
 
     if (error) throw error
@@ -170,15 +177,19 @@ async function pecasExiste(supabase: ReturnType<typeof getSupabaseAdmin>) {
   return !error
 }
 
-async function carregarMovimentacoes(supabase: ReturnType<typeof getSupabaseAdmin>) {
+async function carregarMovimentacoes(supabase: ReturnType<typeof getSupabaseAdmin>, unidadeId: number | null) {
   const existe = await tabelaExiste(supabase, 'pecas_movimentacoes')
   if (!existe) return { data: [] as MovimentoPeca[], tabelaPendente: true }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('pecas_movimentacoes')
     .select('id, peca_id, os_id, tipo, quantidade, estoque_anterior, estoque_posterior, observacao, criado_em, pecas:peca_id ( descricao, codigo ), ordens_servico:os_id ( numero_os )')
     .order('criado_em', { ascending: false })
     .limit(30)
+  if (unidadeId && await colunaExiste(supabase, 'pecas_movimentacoes', 'unidade_id')) {
+    query = query.eq('unidade_id', unidadeId)
+  }
+  const { data, error } = await query
 
   if (error) {
     if (String(error.code) === '42P01' || String(error.code) === 'PGRST205') {
@@ -190,7 +201,7 @@ async function carregarMovimentacoes(supabase: ReturnType<typeof getSupabaseAdmi
   return { data: (data ?? []) as unknown as MovimentoPeca[], tabelaPendente: false }
 }
 
-async function movimentarEstoque(supabase: ReturnType<typeof getSupabaseAdmin>, body: Record<string, unknown> | null) {
+async function movimentarEstoque(supabase: ReturnType<typeof getSupabaseAdmin>, body: Record<string, unknown> | null, unidadeId: number) {
   const pecaId = Number(body?.pecaId ?? body?.peca_id)
   const tipo = texto(body?.movimentoTipo ?? body?.movimento_tipo).toUpperCase()
   const quantidade = numero(body?.quantidade)
@@ -200,11 +211,13 @@ async function movimentarEstoque(supabase: ReturnType<typeof getSupabaseAdmin>, 
     throw new Error('Informe peca, tipo e quantidade valida para movimentar o estoque.')
   }
 
-  const { data: peca, error: pecaError } = await supabase
+  let pecaQuery = supabase
     .from('pecas')
     .select('id, estoque')
     .eq('id', pecaId)
-    .maybeSingle()
+  const temUnidade = await colunaExiste(supabase, 'pecas', 'unidade_id')
+  if (temUnidade) pecaQuery = pecaQuery.eq('unidade_id', unidadeId)
+  const { data: peca, error: pecaError } = await pecaQuery.maybeSingle()
 
   if (pecaError) throw pecaError
   if (!peca?.id) throw new Error('Peca nao encontrada.')
@@ -230,14 +243,16 @@ async function movimentarEstoque(supabase: ReturnType<typeof getSupabaseAdmin>, 
 
   const movimentacoesExistem = await tabelaExiste(supabase, 'pecas_movimentacoes')
   if (movimentacoesExistem) {
-    const { error: movimentoError } = await supabase.from('pecas_movimentacoes').insert({
+    const movimentoPayload: Record<string, unknown> = {
       peca_id: pecaId,
       tipo: tipo === 'AJUSTE' ? 'AJUSTE_MANUAL' : `${tipo}_MANUAL`,
       quantidade: tipo === 'AJUSTE' ? Math.abs(estoquePosterior - estoqueAnterior) : quantidade,
       estoque_anterior: estoqueAnterior,
       estoque_posterior: estoquePosterior,
       observacao,
-    })
+    }
+    if (await colunaExiste(supabase, 'pecas_movimentacoes', 'unidade_id')) movimentoPayload.unidade_id = unidadeId
+    const { error: movimentoError } = await supabase.from('pecas_movimentacoes').insert(movimentoPayload)
 
     if (movimentoError) throw movimentoError
   }
@@ -247,6 +262,11 @@ async function movimentarEstoque(supabase: ReturnType<typeof getSupabaseAdmin>, 
 
 async function tabelaExiste(supabase: ReturnType<typeof getSupabaseAdmin>, tabela: string) {
   const { error } = await supabase.from(tabela).select('id').limit(0)
+  return !error
+}
+
+async function colunaExiste(supabase: ReturnType<typeof getSupabaseAdmin>, tabela: string, coluna: string) {
+  const { error } = await supabase.from(tabela).select(coluna).limit(0)
   return !error
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { getUnidadeSelecionadaId } from '@/lib/unidade-client'
 
 type OSItem = {
   id: number
@@ -39,13 +40,16 @@ export default function FinalizadasPage() {
     setErro('')
 
     try {
-      const { data, error } = await supabase
+      const unidadeId = getUnidadeSelecionadaId()
+      let query = supabase
         .from('ordens_servico')
         .select(
           'id, numero_os, status, prioridade, garantia, total, created_at, finalizada_em, modelo, categoria_id, marca_id, cliente_id'
         )
         .eq('status', 'FINALIZADA')
         .order('finalizada_em', { ascending: false, nullsFirst: false })
+      if (unidadeId) query = query.eq('unidade_id', unidadeId)
+      const { data, error } = await query
 
       if (error) throw error
 

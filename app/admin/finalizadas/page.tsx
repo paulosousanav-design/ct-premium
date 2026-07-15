@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { getUnidadeSelecionadaId } from '@/lib/unidade-client'
 
 type OrdemServico = {
   id: number
@@ -35,7 +36,8 @@ export default function FinalizadasPage() {
   const carregarOrdens = useCallback(async () => {
     setLoading(true)
 
-    const { data, error } = await supabase
+    const unidadeId = getUnidadeSelecionadaId()
+    let query = supabase
       .from('ordens_servico')
       .select(`
         id,
@@ -55,6 +57,8 @@ export default function FinalizadasPage() {
       `)
       .eq('status', 'FINALIZADA')
       .order('created_at', { ascending: false })
+    if (unidadeId) query = query.eq('unidade_id', unidadeId)
+    const { data, error } = await query
 
     if (!error && data) {
       setOrdens(

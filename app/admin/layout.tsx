@@ -5,11 +5,20 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
+import { getUnidadeSelecionadaId, setUnidadeSelecionadaId } from '@/lib/unidade-client'
 
 type MenuItem = {
   label: string
   href: string
   permissao: string
+}
+
+type UnidadeAcesso = {
+  id: number
+  codigo: string
+  tipo: 'MATRIZ' | 'FILIAL'
+  nome_fantasia: string
+  ativa: boolean
 }
 
 const menu: MenuItem[] = [
@@ -36,6 +45,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [permissoes, setPermissoes] = useState<string[] | null>(null)
   const [verificandoAcesso, setVerificandoAcesso] = useState(true)
   const [usuarioInativo, setUsuarioInativo] = useState(false)
+  const [unidades, setUnidades] = useState<UnidadeAcesso[]>([])
+  const [unidadeSelecionadaId, setUnidadeSelecionada] = useState<number | null>(null)
   const pathname = usePathname()
   const router = useRouter()
   const isLoginPage = pathname === '/admin/login'
@@ -70,6 +81,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     }
 
     setPermissoes(Array.isArray(data.permissoes) ? data.permissoes : [])
+    const unidadesAcesso = Array.isArray(data.unidades) ? data.unidades as UnidadeAcesso[] : []
+    const selecionadaSalva = getUnidadeSelecionadaId()
+    const unidadeValida = unidadesAcesso.find((item) => item.id === selecionadaSalva)
+    const unidadePadrao = unidadesAcesso.find((item) => item.id === Number(data.unidadePadraoId)) ?? unidadesAcesso[0]
+    const unidadeAtual = unidadeValida ?? unidadePadrao ?? null
+    setUnidades(unidadesAcesso)
+    setUnidadeSelecionada(unidadeAtual?.id ?? null)
+    if (unidadeAtual) setUnidadeSelecionadaId(unidadeAtual.id)
     setUsuarioInativo(false)
     setVerificandoAcesso(false)
   }, [isLoginPage, router])
@@ -91,6 +110,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   async function sair() {
     await supabase.auth.signOut()
     router.replace('/admin/login')
+  }
+
+  function alterarUnidade(id: number) {
+    if (!id || id === unidadeSelecionadaId) return
+    setUnidadeSelecionadaId(id)
+    setUnidadeSelecionada(id)
+    window.location.reload()
   }
 
   if (isLoginPage) {
@@ -166,6 +192,24 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 priority
               />
             </div>
+            {unidades.length > 0 && (
+              <div className="border-t border-slate-200 px-4 py-2">
+                <div className="mx-auto flex max-w-7xl items-center justify-end gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Unidade ativa — OS, estoque e vendas</span>
+                  <select
+                    value={unidadeSelecionadaId ?? ''}
+                    onChange={(event) => alterarUnidade(Number(event.target.value))}
+                    className="max-w-[260px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-black text-slate-800 outline-none focus:border-orange-500"
+                  >
+                    {unidades.map((unidade) => (
+                      <option key={unidade.id} value={unidade.id}>
+                        {unidade.tipo === 'MATRIZ' ? 'Matriz' : 'Filial'} - {unidade.nome_fantasia}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="hidden">
