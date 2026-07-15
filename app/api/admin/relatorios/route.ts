@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdminPermission } from '@/lib/admin-auth'
+import { requireAdminEscopoGerencial } from '@/lib/admin-unidade'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -67,7 +67,7 @@ async function tabelaExiste(supabase: ReturnType<typeof getSupabaseAdmin>, tabel
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'relatorios')
+    const auth = await requireAdminEscopoGerencial(request, 'relatorios')
     if (!auth.ok) return auth.response
 
     const supabase = getSupabaseAdmin()
@@ -123,22 +123,30 @@ export async function GET(request: NextRequest) {
       ${temGarantidor ? ', garantidores:garantidor_id ( nome )' : ''}
     `
 
-    const { data: ordens, error: ordensError } = await supabase
+    let ordensQuery = supabase
       .from('ordens_servico')
       .select(selectOrdens)
       .gte('created_at', inicioIso)
       .lte('created_at', fimIso)
       .order('created_at', { ascending: false })
+    ordensQuery = auth.unidadeId
+      ? ordensQuery.eq('unidade_id', auth.unidadeId)
+      : ordensQuery.in('unidade_id', auth.unidadesPermitidas)
+    const { data: ordens, error: ordensError } = await ordensQuery
 
     if (ordensError) throw ordensError
 
     const inicioMensal = new Date(hoje.getFullYear(), hoje.getMonth() - 5, 1)
-    const { data: ordensMensais, error: ordensMensaisError } = await supabase
+    let ordensMensaisQuery = supabase
       .from('ordens_servico')
       .select(selectOrdens)
       .gte('created_at', inicioMensal.toISOString())
       .lte('created_at', fimIso)
       .order('created_at', { ascending: true })
+    ordensMensaisQuery = auth.unidadeId
+      ? ordensMensaisQuery.eq('unidade_id', auth.unidadeId)
+      : ordensMensaisQuery.in('unidade_id', auth.unidadesPermitidas)
+    const { data: ordensMensais, error: ordensMensaisError } = await ordensMensaisQuery
 
     if (ordensMensaisError) throw ordensMensaisError
 
@@ -214,9 +222,9 @@ export async function GET(request: NextRequest) {
       }
     )
 
-    const pecas = await carregarResumoPecas(supabase)
-    const contasPagar = await carregarResumoContasPagar(supabase, inicioIso, fimIso)
-    const contasPagarMensal = await carregarResumoContasPagar(supabase, inicioMensal.toISOString(), fimIso)
+    const pecas = await carregarResumoPecas(supabase, auth.unidadeId, auth.unidadesPermitidas)
+    const contasPagar = await carregarResumoContasPagar(supabase, inicioIso, fimIso, auth.unidadeId, auth.unidadesPermitidas)
+    const contasPagarMensal = await carregarResumoContasPagar(supabase, inicioMensal.toISOString(), fimIso, auth.unidadeId, auth.unidadesPermitidas)
     const resumoMensal = montarResumoMensal(
       filtrarOrdens((ordensMensais ?? []) as unknown as OrdemRelatorio[], {
         origemFinanceira: origemFiltro,
@@ -394,16 +402,18 @@ async function carregarDocumentosTecnicosPagos(supabase: ReturnType<typeof getSu
   )
 }
 
-async function carregarResumoPecas(supabase: ReturnType<typeof getSupabaseAdmin>) {
+async function carregarResumoPecas(supabase: ReturnType<typeof getSupabaseAdmin>, unidadeId: number | null, unidadesPermitidas: number[]) {
   const pecasExiste = await tabelaExiste(supabase, 'pecas')
   if (!pecasExiste) {
     return { total: 0, estoqueBaixo: 0, valorEstoque: 0, movimentacoes: [] }
   }
 
-  const { data: pecas, error } = await supabase
+  let pecasQuery = supabase
     .from('pecas')
     .select('id, codigo, descricao, valor_custo, estoque, estoque_minimo, localizacao')
     .order('descricao', { ascending: true })
+  pecasQuery = unidadeId ? pecasQuery.eq('unidade_id', unidadeId) : pecasQuery.in('unidade_id', unidadesPermitidas)
+  const { data: pecas, error } = await pecasQuery
 
   if (error) throw error
 
@@ -420,11 +430,13 @@ async function carregarResumoPecas(supabase: ReturnType<typeof getSupabaseAdmin>
   const movimentacoesExiste = await tabelaExiste(supabase, 'pecas_movimentacoes')
   let movimentacoes: unknown[] = []
   if (movimentacoesExiste) {
-    const { data: movs, error: movError } = await supabase
+    let movimentosQuery = supabase
       .from('pecas_movimentacoes')
       .select('id, tipo, quantidade, estoque_anterior, estoque_posterior, criado_em, pecas:peca_id ( descricao ), ordens_servico:os_id ( numero_os )')
       .order('criado_em', { ascending: false })
       .limit(8)
+    movimentosQuery = unidadeId ? movimentosQuery.eq('unidade_id', unidadeId) : movimentosQuery.in('unidade_id', unidadesPermitidas)
+    const { data: movs, error: movError } = await movimentosQuery
 
     if (movError) throw movError
     movimentacoes = movs ?? []
@@ -452,17 +464,21 @@ async function carregarResumoPecas(supabase: ReturnType<typeof getSupabaseAdmin>
 async function carregarResumoContasPagar(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   inicioIso: string,
-  fimIso: string
+  fimIso: string,
+  unidadeId: number | null,
+  unidadesPermitidas: number[]
 ) {
   const existe = await tabelaExiste(supabase, 'contas_pagar')
   if (!existe) {
     return { pendentes: 0, pagas: 0, total: 0, despesasCategorias: [], itens: [] }
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('contas_pagar')
     .select('id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, criado_em')
     .order('vencimento', { ascending: true, nullsFirst: false })
+  query = unidadeId ? query.eq('unidade_id', unidadeId) : query.in('unidade_id', unidadesPermitidas)
+  const { data, error } = await query
 
   if (error) throw error
 

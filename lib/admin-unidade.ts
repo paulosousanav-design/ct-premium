@@ -6,6 +6,21 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 export async function requireAdminUnidade(request: NextRequest, permissao: string) {
+  const resultado = await resolverEscopo(request, permissao, false)
+  if (resultado.ok && resultado.unidadeId === null) {
+    return {
+      ok: false as const,
+      response: NextResponse.json({ error: 'Selecione uma unidade operacional.' }, { status: 400 }),
+    }
+  }
+  return resultado
+}
+
+export async function requireAdminEscopoGerencial(request: NextRequest, permissao: string) {
+  return resolverEscopo(request, permissao, true)
+}
+
+async function resolverEscopo(request: NextRequest, permissao: string, permiteConsolidado: boolean) {
   const auth = await requireAdminPermission(request, permissao)
   if (!auth.ok) return auth
 
@@ -45,7 +60,11 @@ export async function requireAdminUnidade(request: NextRequest, permissao: strin
   }
 
   const permitidas = (vinculos ?? []).map((item) => Number(item.unidade_id)).filter(Boolean)
-  const solicitada = Number(request.headers.get('x-unidade-id'))
+  const cabecalho = String(request.headers.get('x-unidade-id') ?? '').trim().toUpperCase()
+  if (permiteConsolidado && cabecalho === 'CONSOLIDADO') {
+    return { ...auth, unidadeId: null, unidadesPermitidas: permitidas, consolidado: true as const }
+  }
+  const solicitada = Number(cabecalho)
   const padrao = Number(usuario?.unidade_padrao_id)
   const unidadeId = permitidas.includes(solicitada)
     ? solicitada
@@ -60,5 +79,5 @@ export async function requireAdminUnidade(request: NextRequest, permissao: strin
     }
   }
 
-  return { ...auth, unidadeId }
+  return { ...auth, unidadeId, unidadesPermitidas: permitidas, consolidado: false as const }
 }

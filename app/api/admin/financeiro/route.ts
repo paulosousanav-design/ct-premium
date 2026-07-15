@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
+import { requireAdminEscopoGerencial } from '@/lib/admin-unidade'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -45,7 +46,7 @@ async function colunaExiste(
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'financeiro')
+    const auth = await requireAdminEscopoGerencial(request, 'financeiro')
     if (!auth.ok) return auth.response
 
     const supabase = getSupabaseAdmin()
@@ -91,24 +92,27 @@ export async function GET(request: NextRequest) {
         parceiros:parceiro_id ( responsavel, nome_fantasia, razao_social, tipo_vinculo ),
         garantidores:garantidor_id ( nome )
       `
-    const ordensQuery = supabase.from('ordens_servico') as unknown as {
-      select: (columns: string) => {
-        order: (
-          column: string,
-          options: { ascending: boolean }
-        ) => Promise<{ data: unknown[] | null; error: unknown }>
-      }
+    type QueryOrdens = {
+      eq: (column: string, value: number) => QueryOrdens
+      in: (column: string, values: number[]) => QueryOrdens
+      order: (column: string, options: { ascending: boolean }) => Promise<{ data: unknown[] | null; error: unknown }>
     }
-    const { data: ordens, error: ordensError } = await ordensQuery
-      .select(selectOrdens)
-      .order('created_at', { ascending: false })
+    let ordensQuery = supabase.from('ordens_servico').select(selectOrdens) as unknown as QueryOrdens
+    ordensQuery = auth.unidadeId
+      ? ordensQuery.eq('unidade_id', auth.unidadeId)
+      : ordensQuery.in('unidade_id', auth.unidadesPermitidas)
+    const { data: ordens, error: ordensError } = await ordensQuery.order('created_at', { ascending: false })
 
     if (ordensError) throw ordensError
 
-    const documentos = await carregarDocumentosTecnicos(supabase)
-    const historico = await carregarHistoricoFinanceiro(supabase)
-    const contasPagar = await carregarContasPagar(supabase)
-    const vendasResumo = await carregarResumoVendas(supabase)
+    const ordensIds = new Set(((ordens ?? []) as Array<{ id?: number }>).map((item) => Number(item.id)).filter(Boolean))
+    const documentosBase = await carregarDocumentosTecnicos(supabase)
+    const documentos = { ...documentosBase, data: documentosBase.data.filter((item: { os_id?: number | null }) => item.os_id && ordensIds.has(Number(item.os_id))) }
+    const contasPagar = await carregarContasPagar(supabase, auth.unidadeId, auth.unidadesPermitidas)
+    const contasIds = new Set(contasPagar.data.map((item) => Number(item.id)))
+    const historicoBase = await carregarHistoricoFinanceiro(supabase)
+    const historico = { ...historicoBase, data: historicoBase.data.filter((item: { os_id?: number | null; conta_id?: number | null }) => (item.os_id && ordensIds.has(Number(item.os_id))) || (item.conta_id && contasIds.has(Number(item.conta_id)))) }
+    const vendasResumo = await carregarResumoVendas(supabase, auth.unidadeId, auth.unidadesPermitidas)
     const ordensData = (ordens ?? []) as unknown as OrdemFinanceiro[]
     const ordensComPagamentoTecnico = ordensData.map((ordem) => {
       const documentoPago = documentos.data.some(
@@ -146,8 +150,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAdminPermission(request, 'financeiro')
+    const auth = await requireAdminEscopoGerencial(request, 'financeiro')
     if (!auth.ok) return auth.response
+    if (!auth.unidadeId) {
+      return NextResponse.json({ error: 'Selecione Matriz ou uma Filial para cadastrar a conta.' }, { status: 400 })
+    }
 
     const body = await request.json().catch(() => null)
     const descricao = String(body?.descricao ?? '').trim()
@@ -168,6 +175,7 @@ export async function POST(request: NextRequest) {
         valor,
         vencimento,
         status: 'PENDENTE',
+        unidade_id: auth.unidadeId,
         observacao: String(body?.observacao ?? '').trim() || null,
       })
       .select('id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em')
@@ -484,7 +492,7 @@ async function carregarHistoricoFinanceiro(supabase: ReturnType<typeof getSupaba
     .from('financeiro_historico')
     .select('id, os_id, documento_id, conta_id, tipo, status_anterior, status_novo, valor, descricao, responsavel, criado_em')
     .order('criado_em', { ascending: false })
-    .limit(12)
+    .limit(100)
 
   if (error) {
     if (String(error.code) === '42P01' || String(error.code) === 'PGRST205') {
@@ -496,8 +504,10 @@ async function carregarHistoricoFinanceiro(supabase: ReturnType<typeof getSupaba
   return { data: data ?? [], tabelaPendente: false }
 }
 
-async function carregarResumoVendas(supabase: ReturnType<typeof getSupabaseAdmin>) {
-  const { data, error } = await supabase.from('vendas').select('total, criado_em').eq('status', 'PAGO')
+async function carregarResumoVendas(supabase: ReturnType<typeof getSupabaseAdmin>, unidadeId: number | null, unidadesPermitidas: number[]) {
+  let query = supabase.from('vendas').select('total, criado_em').eq('status', 'PAGO')
+  query = unidadeId ? query.eq('unidade_id', unidadeId) : query.in('unidade_id', unidadesPermitidas)
+  const { data, error } = await query
   if (error) {
     if (String(error.code) === '42P01' || String(error.code) === 'PGRST205') return { total: 0, totalMes: 0, quantidade: 0 }
     throw error
@@ -606,11 +616,13 @@ async function carregarDocumentosTecnicos(supabase: ReturnType<typeof getSupabas
   return { data: data ?? [], tabelaPendente: false }
 }
 
-async function carregarContasPagar(supabase: ReturnType<typeof getSupabaseAdmin>) {
-  const { data, error } = await supabase
+async function carregarContasPagar(supabase: ReturnType<typeof getSupabaseAdmin>, unidadeId: number | null, unidadesPermitidas: number[]) {
+  let query = supabase
     .from('contas_pagar')
     .select('id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em')
     .order('vencimento', { ascending: true, nullsFirst: false })
+  query = unidadeId ? query.eq('unidade_id', unidadeId) : query.in('unidade_id', unidadesPermitidas)
+  const { data, error } = await query
 
   if (error) {
     if (String(error.code) === '42P01' || String(error.code) === 'PGRST205') {

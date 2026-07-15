@@ -5,7 +5,15 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
-import { getUnidadeSelecionadaId, setUnidadeSelecionadaId } from '@/lib/unidade-client'
+import {
+  ESCOPO_CONSOLIDADO,
+  getEscopoGerencial,
+  getUnidadeSelecionadaId,
+  paginaUsaEscopoGerencial,
+  setEscopoGerencial,
+  setUnidadeSelecionadaId,
+  setUnidadesPermitidasIds,
+} from '@/lib/unidade-client'
 
 type MenuItem = {
   label: string
@@ -47,9 +55,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [usuarioInativo, setUsuarioInativo] = useState(false)
   const [unidades, setUnidades] = useState<UnidadeAcesso[]>([])
   const [unidadeSelecionadaId, setUnidadeSelecionada] = useState<number | null>(null)
+  const [escopoGerencial, setEscopoGerencialState] = useState(ESCOPO_CONSOLIDADO)
   const pathname = usePathname()
   const router = useRouter()
   const isLoginPage = pathname === '/admin/login'
+  const visaoGerencial = paginaUsaEscopoGerencial(pathname)
 
   const carregarPermissoes = useCallback(async () => {
     setVerificandoAcesso(true)
@@ -87,8 +97,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     const unidadePadrao = unidadesAcesso.find((item) => item.id === Number(data.unidadePadraoId)) ?? unidadesAcesso[0]
     const unidadeAtual = unidadeValida ?? unidadePadrao ?? null
     setUnidades(unidadesAcesso)
+    setUnidadesPermitidasIds(unidadesAcesso.map((item) => item.id))
     setUnidadeSelecionada(unidadeAtual?.id ?? null)
     if (unidadeAtual) setUnidadeSelecionadaId(unidadeAtual.id)
+    const escopoSalvo = getEscopoGerencial()
+    const escopoValido = escopoSalvo === ESCOPO_CONSOLIDADO || unidadesAcesso.some((item) => item.id === Number(escopoSalvo))
+    const escopoAtual = escopoValido ? escopoSalvo : ESCOPO_CONSOLIDADO
+    setEscopoGerencialState(escopoAtual)
+    setEscopoGerencial(escopoAtual)
     setUsuarioInativo(false)
     setVerificandoAcesso(false)
   }, [isLoginPage, router])
@@ -116,6 +132,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     if (!id || id === unidadeSelecionadaId) return
     setUnidadeSelecionadaId(id)
     setUnidadeSelecionada(id)
+    window.location.reload()
+  }
+
+  function alterarEscopoGerencial(value: string) {
+    if (!value || value === escopoGerencial) return
+    setEscopoGerencial(value)
+    setEscopoGerencialState(value)
     window.location.reload()
   }
 
@@ -195,12 +218,17 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             {unidades.length > 0 && (
               <div className="border-t border-slate-200 px-4 py-2">
                 <div className="mx-auto flex max-w-7xl items-center justify-end gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Unidade ativa — OS, estoque e vendas</span>
+                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    {visaoGerencial ? 'Visão gerencial' : 'Unidade ativa — OS, estoque e vendas'}
+                  </span>
                   <select
-                    value={unidadeSelecionadaId ?? ''}
-                    onChange={(event) => alterarUnidade(Number(event.target.value))}
+                    value={visaoGerencial ? escopoGerencial : unidadeSelecionadaId ?? ''}
+                    onChange={(event) => visaoGerencial
+                      ? alterarEscopoGerencial(event.target.value)
+                      : alterarUnidade(Number(event.target.value))}
                     className="max-w-[260px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-black text-slate-800 outline-none focus:border-orange-500"
                   >
+                    {visaoGerencial && <option value={ESCOPO_CONSOLIDADO}>Consolidado — todas as unidades</option>}
                     {unidades.map((unidade) => (
                       <option key={unidade.id} value={unidade.id}>
                         {unidade.tipo === 'MATRIZ' ? 'Matriz' : 'Filial'} - {unidade.nome_fantasia}

@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { getUnidadeSelecionadaId } from '@/lib/unidade-client'
+import { getEscopoCabecalho } from '@/lib/unidade-client'
 
 export async function adminFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const { data } = await supabase.auth.getSession()
@@ -7,8 +7,8 @@ export async function adminFetch(input: RequestInfo | URL, init: RequestInit = {
   const headers = new Headers(init.headers)
 
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  const unidadeId = getUnidadeSelecionadaId()
-  if (unidadeId) headers.set('X-Unidade-Id', String(unidadeId))
+  const escopoUnidade = getEscopoCabecalho()
+  if (escopoUnidade) headers.set('X-Unidade-Id', escopoUnidade)
 
   return fetch(input, {
     ...init,

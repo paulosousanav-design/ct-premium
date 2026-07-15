@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { adminFetch } from '@/lib/admin-fetch'
 import { getAdminActorLabel } from '@/lib/admin-actor'
+import { getUnidadeGerencialId, getUnidadesPermitidasIds } from '@/lib/unidade-client'
 
 type DashboardStats = {
   osNovas: number
@@ -111,6 +112,16 @@ function aplicarFiltroGarantidorQuery<T>(query: T, garantidorId: string): T {
   return builder.eq('garantidor_id', Number(garantidorId))
 }
 
+function aplicarEscopoUnidadeQuery<T>(query: T, unidadeId: number | null, unidadesPermitidas: number[]): T {
+  const builder = query as T & {
+    eq: (column: string, value: unknown) => T
+    in: (column: string, values: number[]) => T
+  }
+  return unidadeId
+    ? builder.eq('unidade_id', unidadeId)
+    : builder.in('unidade_id', unidadesPermitidas)
+}
+
 export default function DashboardPage() {
   const router = useRouter()
 
@@ -159,6 +170,8 @@ export default function DashboardPage() {
     setErro('')
 
     try {
+      const unidadeId = getUnidadeGerencialId()
+      const unidadesPermitidas = getUnidadesPermitidasIds()
       const countOsSemTecnico3Dias = async () => {
         try {
           let query = supabase
@@ -170,6 +183,7 @@ export default function DashboardPage() {
 
           query = aplicarFiltroOrigemQuery(query, filtroOrigem)
           query = aplicarFiltroGarantidorQuery(query, filtroGarantidor)
+          query = aplicarEscopoUnidadeQuery(query, unidadeId, unidadesPermitidas)
 
           const { count } = await query
           return count ?? 0
@@ -186,6 +200,7 @@ export default function DashboardPage() {
 
           query = aplicarFiltroOrigemQuery(query, filtroOrigem)
           query = aplicarFiltroGarantidorQuery(query, filtroGarantidor)
+          query = aplicarEscopoUnidadeQuery(query, unidadeId, unidadesPermitidas)
 
           const { count } = await query
           return count ?? 0
@@ -240,6 +255,7 @@ export default function DashboardPage() {
 
       ultimasOsQuery = aplicarFiltroOrigemQuery(ultimasOsQuery, filtroOrigem)
       ultimasOsQuery = aplicarFiltroGarantidorQuery(ultimasOsQuery, filtroGarantidor)
+      ultimasOsQuery = aplicarEscopoUnidadeQuery(ultimasOsQuery, unidadeId, unidadesPermitidas)
 
       const { data: ultimasOsData, error: ultimasOsError } = await ultimasOsQuery
 
@@ -260,18 +276,19 @@ export default function DashboardPage() {
           criado_em
         `)
         .order('criado_em', { ascending: false })
-        .limit(6)
+        .limit(100)
 
       if (historicoError) throw historicoError
 
       let volumeQuery = supabase
         .from('ordens_servico')
-        .select('created_at')
+        .select('id, created_at')
         .order('created_at', { ascending: false })
         .limit(500)
 
       volumeQuery = aplicarFiltroOrigemQuery(volumeQuery, filtroOrigem)
       volumeQuery = aplicarFiltroGarantidorQuery(volumeQuery, filtroGarantidor)
+      volumeQuery = aplicarEscopoUnidadeQuery(volumeQuery, unidadeId, unidadesPermitidas)
 
       const { data: volumeData, error: volumeError } = await volumeQuery
 
@@ -335,7 +352,8 @@ export default function DashboardPage() {
       })
       setVolume(volumeArray)
       setUltimasOs((ultimasOsData ?? []) as OrdemResumo[])
-      setHistorico((historicoData ?? []) as HistoricoResumo[])
+      const idsEscopo = new Set((volumeData ?? []).map((item) => Number(item.id)))
+      setHistorico(((historicoData ?? []) as HistoricoResumo[]).filter((item) => item.os_id && idsEscopo.has(Number(item.os_id))).slice(0, 6))
       setGarantidoresFiltro(garantidoresResumo)
     } catch (err) {
       setErro(formatarErro(err, 'Erro ao carregar o dashboard.'))
@@ -379,11 +397,14 @@ export default function DashboardPage() {
     setErro('')
 
     try {
-      const { data: osAtual, error: osAtualError } = await supabase
+      const unidadeId = getUnidadeGerencialId()
+      const unidadesPermitidas = getUnidadesPermitidasIds()
+      let osAtualQuery = supabase
         .from('ordens_servico')
         .select('id, numero_os, status, prioridade')
         .eq('id', osId)
-        .maybeSingle()
+      osAtualQuery = aplicarEscopoUnidadeQuery(osAtualQuery, unidadeId, unidadesPermitidas)
+      const { data: osAtual, error: osAtualError } = await osAtualQuery.maybeSingle()
 
       if (osAtualError) throw osAtualError
       if (!osAtual) throw new Error('OS não encontrada.')
@@ -391,10 +412,12 @@ export default function DashboardPage() {
       const statusAnterior = osAtual.status ?? 'NOVA'
       const prioridadeAnterior = osAtual.prioridade ?? 'NORMAL'
 
-      const { error: updateError } = await supabase
+      let updateQuery = supabase
         .from('ordens_servico')
         .update({ status: novoStatus })
         .eq('id', osId)
+      updateQuery = aplicarEscopoUnidadeQuery(updateQuery, unidadeId, unidadesPermitidas)
+      const { error: updateError } = await updateQuery
 
       if (updateError) throw updateError
 
