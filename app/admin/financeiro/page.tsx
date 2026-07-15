@@ -904,11 +904,27 @@ function ContasPagarPanel({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onPagar: (id: number) => void
 }) {
+  const contasOrdenadas = [...contas].sort((a, b) => {
+    const situacaoA = situacaoVencimentoConta(a)
+    const situacaoB = situacaoVencimentoConta(b)
+    if (situacaoA.prioridade !== situacaoB.prioridade) return situacaoA.prioridade - situacaoB.prioridade
+    return String(a.vencimento ?? '9999-12-31').localeCompare(String(b.vencimento ?? '9999-12-31'))
+  })
+  const contasVencidas = contas.filter((conta) => situacaoVencimentoConta(conta).tipo === 'VENCIDA')
+  const totalVencido = contasVencidas.reduce((acc, conta) => acc + toNumber(conta.valor), 0)
+
   return (
     <div className="space-y-4 p-3">
       {tabelaPendente && (
         <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">
           Rode o SQL de contas a pagar para liberar o lançamento manual de despesas.
+        </div>
+      )}
+
+      {contasVencidas.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-sm font-black">⚠ {contasVencidas.length} conta(s) vencida(s)</span>
+          <span className="text-sm font-black">Total vencido: {formatCurrency(totalVencido)}</span>
         </div>
       )}
 
@@ -975,16 +991,17 @@ function ContasPagarPanel({
             {loading && <LinhaMensagem colSpan={7} texto="Carregando..." />}
             {!loading && contas.length === 0 && <LinhaMensagem colSpan={7} texto="Nenhuma conta encontrada." />}
             {!loading &&
-              contas.map((conta) => {
+              contasOrdenadas.map((conta) => {
                 const status = String(conta.status ?? 'PENDENTE').toUpperCase()
+                const vencimento = situacaoVencimentoConta(conta)
                 return (
-                  <tr key={conta.id} className="border-t border-slate-200">
+                  <tr key={conta.id} className={`border-t border-slate-200 ${vencimento.tipo === 'VENCIDA' ? 'bg-red-50/80' : vencimento.tipo === 'HOJE' ? 'bg-amber-50/80' : vencimento.tipo === 'PROXIMA' ? 'bg-orange-50/50' : ''}`}>
                     <td className="p-3">
                       <div className="font-bold text-slate-950">{conta.descricao ?? '-'}</div>
                       <div className="text-xs text-slate-500">{conta.fornecedor ?? '-'}</div>
                     </td>
                     <td className="p-3">{formatarCategoriaConta(conta.categoria)}</td>
-                    <td className="p-3">{formatDate(conta.vencimento)}</td>
+                    <td className="p-3"><div>{formatDate(conta.vencimento)}</div>{vencimento.label && <span className={`mt-1 inline-flex rounded-full px-2 py-1 text-[10px] font-black ${vencimento.tipo === 'VENCIDA' ? 'bg-red-100 text-red-700' : vencimento.tipo === 'HOJE' ? 'bg-amber-100 text-amber-800' : 'bg-orange-100 text-orange-700'}`}>{vencimento.label}</span>}</td>
                     <td className="p-3 font-black text-slate-950">{formatCurrency(toNumber(conta.valor))}</td>
                     <td className="p-3"><StatusFinanceiro status={status === 'PAGO' ? 'RECEBIDO' : status} pagoLabel="PAGO" /></td>
                     <td className="p-3">{formatarFormaPagamento(conta.forma_pagamento)}</td>
@@ -1317,6 +1334,25 @@ function estaNoPeriodo(value: string | null | undefined, inicio: Date, fim: Date
   const time = new Date(value).getTime()
   if (!Number.isFinite(time)) return false
   return time >= inicio.getTime() && time <= fim.getTime()
+}
+
+function situacaoVencimentoConta(conta: ContaPagar) {
+  const status = String(conta.status ?? 'PENDENTE').toUpperCase()
+  if (status !== 'PENDENTE' || !conta.vencimento) return { tipo: 'NORMAL', label: '', prioridade: status === 'PENDENTE' ? 3 : 4 }
+
+  const hoje = new Date()
+  hoje.setHours(0, 0, 0, 0)
+  const vencimento = new Date(`${conta.vencimento}T00:00:00`)
+  if (!Number.isFinite(vencimento.getTime())) return { tipo: 'NORMAL', label: '', prioridade: 3 }
+  const diferencaDias = Math.round((vencimento.getTime() - hoje.getTime()) / 86_400_000)
+
+  if (diferencaDias < 0) {
+    const dias = Math.abs(diferencaDias)
+    return { tipo: 'VENCIDA', label: `VENCIDA HÁ ${dias} ${dias === 1 ? 'DIA' : 'DIAS'}`, prioridade: 0 }
+  }
+  if (diferencaDias === 0) return { tipo: 'HOJE', label: 'VENCE HOJE', prioridade: 1 }
+  if (diferencaDias <= 3) return { tipo: 'PROXIMA', label: `VENCE EM ${diferencaDias} ${diferencaDias === 1 ? 'DIA' : 'DIAS'}`, prioridade: 2 }
+  return { tipo: 'NORMAL', label: '', prioridade: 3 }
 }
 
 function montarDespesasPorCategoria(contas: ContaPagar[]) {
