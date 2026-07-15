@@ -7,12 +7,12 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { supabase } from '@/lib/supabase'
 import {
   ESCOPO_CONSOLIDADO,
-  getEscopoGerencial,
   getUnidadeSelecionadaId,
   paginaUsaEscopoGerencial,
   setEscopoGerencial,
   setUnidadeSelecionadaId,
   setUnidadesPermitidasIds,
+  sincronizarEscopoGerencialPadrao,
 } from '@/lib/unidade-client'
 
 type MenuItem = {
@@ -100,7 +100,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     setUnidadesPermitidasIds(unidadesAcesso.map((item) => item.id))
     setUnidadeSelecionada(unidadeAtual?.id ?? null)
     if (unidadeAtual) setUnidadeSelecionadaId(unidadeAtual.id)
-    const escopoSalvo = getEscopoGerencial()
+    const escopoSalvo = sincronizarEscopoGerencialPadrao(unidadeAtual?.id ?? null)
     const escopoValido = escopoSalvo === ESCOPO_CONSOLIDADO || unidadesAcesso.some((item) => item.id === Number(escopoSalvo))
     const escopoAtual = escopoValido ? escopoSalvo : ESCOPO_CONSOLIDADO
     setEscopoGerencialState(escopoAtual)

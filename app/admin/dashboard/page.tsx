@@ -226,11 +226,28 @@ export default function DashboardPage() {
           return { total: 0, pendentes: 0 }
         }
       }
+      const carregarResumoEscopo = async () => {
+        try {
+          let query = supabase
+            .from('ordens_servico')
+            .select('cliente_id, parceiro_id')
+            .limit(5000)
+          query = aplicarEscopoUnidadeQuery(query, unidadeId, unidadesPermitidas)
+          const { data, error } = await query
+          if (error) throw error
+          return {
+            clientes: new Set((data ?? []).map((item) => Number(item.cliente_id)).filter(Boolean)).size,
+            tecnicos: new Set((data ?? []).map((item) => Number(item.parceiro_id)).filter(Boolean)).size,
+          }
+        } catch {
+          return { clientes: 0, tecnicos: 0 }
+        }
+      }
       const limiteSemTecnico = new Date()
       limiteSemTecnico.setDate(limiteSemTecnico.getDate() - 3)
 
       const [
-        clientes,
+        resumoEscopo,
         notificacoes,
         osSemTecnico3Dias,
         orcamentosPendentes,
@@ -238,7 +255,7 @@ export default function DashboardPage() {
         relatoriosResumo,
         garantidoresResumo,
       ] = await Promise.all([
-        contarTabela('clientes').catch(() => 0),
+        carregarResumoEscopo(),
         contarTabela('notificacoes').catch(() => 0),
         countOsSemTecnico3Dias(),
         countOrcamentosPendentes(),
@@ -329,9 +346,9 @@ export default function DashboardPage() {
         aguardandoRevisao: relatoriosResumo.aguardandoRevisao,
         aguardandoPeca: relatoriosResumo.aguardandoPeca,
         criticas: relatoriosResumo.criticas,
-        parceirosAtivos: parceirosResumo.total,
+        parceirosAtivos: resumoEscopo.tecnicos,
         parceirosPendentes: parceirosResumo.pendentes,
-        clientes,
+        clientes: resumoEscopo.clientes,
         notificacoes,
         ordensTotal: relatoriosResumo.ordensTotal,
         finalizadas: relatoriosResumo.finalizadas,
@@ -617,13 +634,13 @@ export default function DashboardPage() {
             iconTone="red"
           />
           <MetricCard
-            title="Parceiros Ativos"
+            title="Tecnicos na unidade"
             value={loading ? '...' : String(stats.parceirosAtivos)}
             icon={<UsersIcon />}
             iconTone="blue"
           />
           <MetricCard
-            title="Clientes"
+            title="Clientes atendidos"
             value={loading ? '...' : String(stats.clientes)}
             icon={<UsersIcon />}
             iconTone="green"
