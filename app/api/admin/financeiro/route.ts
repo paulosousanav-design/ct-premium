@@ -83,11 +83,13 @@ export async function GET(request: NextRequest) {
         ${selectPagamentoTecnico}
         ${selectFormaPagamentoTecnico}
         parceiro_id,
+        garantidor_id,
         garantia,
         tipo_atendimento,
         numero_nota_fiscal,
         clientes:cliente_id ( nome ),
-        parceiros:parceiro_id ( responsavel, nome_fantasia, razao_social, tipo_vinculo )
+        parceiros:parceiro_id ( responsavel, nome_fantasia, razao_social, tipo_vinculo ),
+        garantidores:garantidor_id ( nome )
       `
     const ordensQuery = supabase.from('ordens_servico') as unknown as {
       select: (columns: string) => {

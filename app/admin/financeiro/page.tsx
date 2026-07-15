@@ -6,6 +6,7 @@ import { adminFetch } from '@/lib/admin-fetch'
 
 type AbaFinanceiro = 'receber' | 'tecnicos' | 'contas'
 type FiltroFinanceiro = 'TODOS' | 'PENDENTE' | 'FATURADO' | 'PARCIAL' | 'RECEBIDO'
+type FiltroOrigemRecebimento = 'GERAL' | 'CLIENTE' | 'GARANTIDOR'
 
 type RelacaoNome = { nome?: string | null; responsavel?: string | null; nome_fantasia?: string | null; razao_social?: string | null; tipo_vinculo?: string | null }
 
@@ -27,11 +28,13 @@ type OrdemFinanceira = {
   forma_pagamento_tecnico?: string | null
   cliente_total?: number | string | null
   parceiro_id?: number | null
+  garantidor_id?: number | null
   garantia?: boolean | null
   tipo_atendimento?: string | null
   numero_nota_fiscal?: string | null
   clientes?: RelacaoNome | RelacaoNome[] | null
   parceiros?: RelacaoNome | RelacaoNome[] | null
+  garantidores?: RelacaoNome | RelacaoNome[] | null
 }
 
 type DocumentoTecnico = {
@@ -123,6 +126,8 @@ export default function FinanceiroPage() {
   const [salvandoId, setSalvandoId] = useState<number | null>(null)
   const [erro, setErro] = useState('')
   const [filtro, setFiltro] = useState<FiltroFinanceiro>('TODOS')
+  const [filtroOrigemRecebimento, setFiltroOrigemRecebimento] = useState<FiltroOrigemRecebimento>('GERAL')
+  const [filtroGarantidor, setFiltroGarantidor] = useState('TODOS')
   const [busca, setBusca] = useState('')
   const [contaForm, setContaForm] = useState<ContaForm>(contaInicial)
   const [vendasResumo, setVendasResumo] = useState({ total: 0, totalMes: 0, quantidade: 0 })
@@ -160,12 +165,36 @@ export default function FinanceiroPage() {
   const ordensRecebimentoFiltradas = useMemo(() => {
     return ordens.filter((os) => {
       const statusFinanceiro = os.status_financeiro ?? 'PENDENTE'
-      const texto = `${os.numero_os ?? ''} ${nomeCliente(os)} ${nomeTecnico(os)}`.toLowerCase()
+      const texto = `${os.numero_os ?? ''} ${nomeCliente(os)} ${nomeTecnico(os)} ${nomeGarantidor(os)}`.toLowerCase()
       const atendeFiltro = filtro === 'TODOS' || statusFinanceiro === filtro
+      const origemGarantidor = ehGarantidorOuSeguradora(os)
+      const atendeOrigem = filtroOrigemRecebimento === 'GERAL' || (filtroOrigemRecebimento === 'GARANTIDOR' ? origemGarantidor : !origemGarantidor)
+      const atendeGarantidor = filtroOrigemRecebimento !== 'GARANTIDOR' || filtroGarantidor === 'TODOS' || String(os.garantidor_id ?? '') === filtroGarantidor
       const atendeBusca = !busca.trim() || texto.includes(busca.trim().toLowerCase())
-      return os.status === 'FINALIZADA' && valorCliente(os) > 0 && atendeFiltro && atendeBusca
+      return os.status === 'FINALIZADA' && valorCliente(os) > 0 && atendeFiltro && atendeOrigem && atendeGarantidor && atendeBusca
     })
-  }, [busca, filtro, ordens])
+  }, [busca, filtro, filtroGarantidor, filtroOrigemRecebimento, ordens])
+
+  const garantidoresDisponiveis = useMemo(() => {
+    const mapa = new Map<number, string>()
+    for (const os of ordens) if (os.garantidor_id && nomeGarantidor(os) !== '-') mapa.set(os.garantidor_id, nomeGarantidor(os))
+    return [...mapa.entries()].map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  }, [ordens])
+
+  const resumoRecebimentosFiltrado = useMemo(() => {
+    const base = ordens.filter((os) => {
+      const origemGarantidor = ehGarantidorOuSeguradora(os)
+      const atendeOrigem = filtroOrigemRecebimento === 'GERAL' || (filtroOrigemRecebimento === 'GARANTIDOR' ? origemGarantidor : !origemGarantidor)
+      const atendeGarantidor = filtroOrigemRecebimento !== 'GARANTIDOR' || filtroGarantidor === 'TODOS' || String(os.garantidor_id ?? '') === filtroGarantidor
+      return os.status === 'FINALIZADA' && valorCliente(os) > 0 && atendeOrigem && atendeGarantidor
+    })
+    return {
+      total: base.reduce((acc, os) => acc + valorCliente(os), 0),
+      recebido: base.reduce((acc, os) => acc + valorRecebidoCliente(os), 0),
+      aReceber: base.reduce((acc, os) => acc + saldoCliente(os), 0),
+      descontos: base.reduce((acc, os) => acc + descontoRecebimentoCliente(os), 0),
+    }
+  }, [filtroGarantidor, filtroOrigemRecebimento, ordens])
 
   const ordensTecnicos = useMemo(() => {
     return ordens.filter((os) => {
@@ -523,6 +552,33 @@ export default function FinanceiroPage() {
           </Link>
 
           <div className="flex flex-col gap-2 sm:flex-row">
+            {aba === 'receber' && (
+              <>
+                <select
+                  value={filtroOrigemRecebimento}
+                  onChange={(event) => {
+                    const origem = event.target.value as FiltroOrigemRecebimento
+                    setFiltroOrigemRecebimento(origem)
+                    if (origem !== 'GARANTIDOR') setFiltroGarantidor('TODOS')
+                  }}
+                  className="h-10 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-orange-500"
+                >
+                  <option value="GERAL">Recebimentos: geral</option>
+                  <option value="CLIENTE">Recebimentos: clientes</option>
+                  <option value="GARANTIDOR">Recebimentos: garantidores</option>
+                </select>
+                {filtroOrigemRecebimento === 'GARANTIDOR' && (
+                  <select
+                    value={filtroGarantidor}
+                    onChange={(event) => setFiltroGarantidor(event.target.value)}
+                    className="h-10 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-orange-500"
+                  >
+                    <option value="TODOS">Todos os garantidores</option>
+                    {garantidoresDisponiveis.map((garantidor) => <option key={garantidor.id} value={garantidor.id}>{garantidor.nome}</option>)}
+                  </select>
+                )}
+              </>
+            )}
             <input
               value={busca}
               onChange={(event) => setBusca(event.target.value)}
@@ -553,12 +609,20 @@ export default function FinanceiroPage() {
         </div>
 
         {aba === 'receber' ? (
-          <RecebimentosTable
-            loading={loading}
-            ordens={ordensRecebimentoFiltradas}
-            salvandoId={salvandoId}
-            onStatus={alterarFinanceiro}
-          />
+          <div>
+            <div className="grid grid-cols-2 gap-2 border-b border-slate-200 bg-slate-50/60 p-3 md:grid-cols-4">
+              <MiniFinanceCard label="Valor total" value={formatCurrency(resumoRecebimentosFiltrado.total)} tone="blue" />
+              <MiniFinanceCard label="Recebido" value={formatCurrency(resumoRecebimentosFiltrado.recebido)} tone="green" />
+              <MiniFinanceCard label="A receber" value={formatCurrency(resumoRecebimentosFiltrado.aReceber)} tone="orange" />
+              <MiniFinanceCard label="Descontos" value={formatCurrency(resumoRecebimentosFiltrado.descontos)} tone="slate" />
+            </div>
+            <RecebimentosTable
+              loading={loading}
+              ordens={ordensRecebimentoFiltradas}
+              salvandoId={salvandoId}
+              onStatus={alterarFinanceiro}
+            />
+          </div>
         ) : aba === 'tecnicos' ? (
           <PagamentosTecnicoTable
             loading={loading}
@@ -649,6 +713,7 @@ function RecebimentosTable({
           <tr className="bg-slate-50 text-left text-xs uppercase text-slate-500">
             <th className="p-3">OS</th>
             <th className="p-3">Cliente</th>
+            <th className="p-3">Origem</th>
             <th className="p-3">Valor cliente</th>
             <th className="p-3">Recebido</th>
             <th className="p-3">Desconto</th>
@@ -660,8 +725,8 @@ function RecebimentosTable({
           </tr>
         </thead>
         <tbody>
-          {loading && <LinhaMensagem colSpan={10} texto="Carregando..." />}
-          {!loading && ordens.length === 0 && <LinhaMensagem colSpan={10} texto="Nenhum registro encontrado." />}
+          {loading && <LinhaMensagem colSpan={11} texto="Carregando..." />}
+          {!loading && ordens.length === 0 && <LinhaMensagem colSpan={11} texto="Nenhum registro encontrado." />}
           {!loading &&
             ordens.map((os) => {
               const saldo = saldoCliente(os)
@@ -669,6 +734,7 @@ function RecebimentosTable({
                 <tr key={os.id} className="border-t border-slate-200">
                   <td className="p-3 font-bold text-slate-950">{os.numero_os ?? `#${os.id}`}</td>
                   <td className="p-3">{nomeCliente(os)}</td>
+                  <td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-black ${ehGarantidorOuSeguradora(os) ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'}`}>{ehGarantidorOuSeguradora(os) ? nomeGarantidor(os) : 'CLIENTE'}</span></td>
                   <td className="p-3 font-semibold">{formatCurrency(valorCliente(os))}</td>
                   <td className="p-3 font-semibold text-emerald-700">{formatCurrency(valorRecebidoCliente(os))}</td>
                   <td className="p-3 font-semibold text-orange-700">{formatCurrency(descontoRecebimentoCliente(os))}</td>
@@ -1188,6 +1254,10 @@ function nomeCliente(os: OrdemFinanceira) {
 function nomeTecnico(os: OrdemFinanceira) {
   const tecnico = primeiraRelacao(os.parceiros)
   return tecnico?.responsavel ?? tecnico?.nome_fantasia ?? tecnico?.razao_social ?? '-'
+}
+
+function nomeGarantidor(os: OrdemFinanceira) {
+  return primeiraRelacao(os.garantidores)?.nome ?? (ehGarantidorOuSeguradora(os) ? 'GARANTIDOR/SEGURADORA' : '-')
 }
 
 function tecnicoProprio(os: OrdemFinanceira) {
