@@ -5,6 +5,20 @@ import { requireAdminPermission } from '@/lib/admin-auth'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
+type UsuarioAdminRow = {
+  id: number
+  auth_user_id: string | null
+  nome: string
+  email: string
+  ativo: boolean
+  permissoes: string[]
+  unidade_padrao_id?: number | null
+  criado_em: string
+  atualizado_em: string
+}
+
+type VinculoUnidadeRow = { admin_usuario_id: number; unidade_id: number }
+
 const permissoesValidas = new Set([
   'dashboard',
   'os',
@@ -20,6 +34,7 @@ const permissoesValidas = new Set([
   'relatorios',
   'academia',
   'documentos',
+  'unidades',
   'configuracoes',
 ])
 
@@ -47,14 +62,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: [], tabelaPendente: true })
     }
 
+    const temUnidades = await unidadesExistem(supabase)
+    const camposUsuario: string = temUnidades
+      ? 'id, auth_user_id, nome, email, ativo, permissoes, unidade_padrao_id, criado_em, atualizado_em'
+      : 'id, auth_user_id, nome, email, ativo, permissoes, criado_em, atualizado_em'
     const { data, error } = await supabase
       .from('admin_usuarios')
-      .select('id, auth_user_id, nome, email, ativo, permissoes, criado_em, atualizado_em')
+      .select(camposUsuario)
       .order('nome', { ascending: true })
 
     if (error) throw error
 
-    return NextResponse.json({ data: data ?? [], tabelaPendente: false })
+    const [{ data: unidades }, { data: vinculos }] = temUnidades
+      ? await Promise.all([
+          supabase.from('unidades').select('id, codigo, tipo, nome_fantasia, ativa').order('tipo').order('nome_fantasia'),
+          supabase.from('admin_usuario_unidades').select('admin_usuario_id, unidade_id'),
+        ])
+      : [{ data: [] }, { data: [] }]
+    const vinculosUsuario = (vinculos ?? []) as VinculoUnidadeRow[]
+    const usuarios = ((data ?? []) as unknown as UsuarioAdminRow[]).map((usuario) => ({
+      ...usuario,
+      unidade_ids: vinculosUsuario
+        .filter((vinculo) => Number(vinculo.admin_usuario_id) === Number(usuario.id))
+        .map((vinculo) => Number(vinculo.unidade_id)),
+    }))
+    return NextResponse.json({ data: usuarios, tabelaPendente: false, unidadesPendente: !temUnidades, unidades: unidades ?? [] })
   } catch (error) {
     console.error('Erro ao listar usuarios admin:', error)
     return NextResponse.json(
@@ -103,23 +135,28 @@ export async function POST(request: NextRequest) {
     if (authError && !String(authError.message).toLowerCase().includes('already')) throw authError
 
     const authUserId = authData.user?.id ?? null
+    const temUnidades = await unidadesExistem(supabase)
+    const selecaoUnidades = temUnidades ? await normalizarSelecaoUnidades(supabase, body?.unidadeIds, body?.unidadePadraoId) : { ids: [], padraoId: null }
+    const camposUsuario: string = temUnidades
+      ? 'id, auth_user_id, nome, email, ativo, permissoes, unidade_padrao_id, criado_em, atualizado_em'
+      : 'id, auth_user_id, nome, email, ativo, permissoes, criado_em, atualizado_em'
+    const payload: Record<string, unknown> = {
+      auth_user_id: authUserId,
+      nome,
+      email,
+      ativo,
+      permissoes,
+      atualizado_em: new Date().toISOString(),
+    }
+    if (temUnidades) payload.unidade_padrao_id = selecaoUnidades.padraoId
     const { data, error } = await supabase
       .from('admin_usuarios')
-      .upsert(
-        {
-          auth_user_id: authUserId,
-          nome,
-          email,
-          ativo,
-          permissoes,
-          atualizado_em: new Date().toISOString(),
-        },
-        { onConflict: 'email' }
-      )
-      .select('id, auth_user_id, nome, email, ativo, permissoes, criado_em, atualizado_em')
+      .upsert(payload, { onConflict: 'email' })
+      .select(camposUsuario)
       .single()
 
     if (error) throw error
+    if (temUnidades) await salvarVinculosUnidades(supabase, Number((data as unknown as UsuarioAdminRow).id), selecaoUnidades.ids)
 
     return NextResponse.json({ ok: true, data })
   } catch (error) {
@@ -148,20 +185,28 @@ export async function PATCH(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin()
+    const temUnidades = await unidadesExistem(supabase)
+    const selecaoUnidades = temUnidades ? await normalizarSelecaoUnidades(supabase, body?.unidadeIds, body?.unidadePadraoId) : { ids: [], padraoId: null }
+    const camposUsuario: string = temUnidades
+      ? 'id, auth_user_id, nome, email, ativo, permissoes, unidade_padrao_id, criado_em, atualizado_em'
+      : 'id, auth_user_id, nome, email, ativo, permissoes, criado_em, atualizado_em'
+    const payload: Record<string, unknown> = {
+      nome,
+      email,
+      ativo,
+      permissoes,
+      atualizado_em: new Date().toISOString(),
+    }
+    if (temUnidades) payload.unidade_padrao_id = selecaoUnidades.padraoId
     const { data, error } = await supabase
       .from('admin_usuarios')
-      .update({
-        nome,
-        email,
-        ativo,
-        permissoes,
-        atualizado_em: new Date().toISOString(),
-      })
+      .update(payload)
       .eq('id', id)
-      .select('id, auth_user_id, nome, email, ativo, permissoes, criado_em, atualizado_em')
+      .select(camposUsuario)
       .single()
 
     if (error) throw error
+    if (temUnidades) await salvarVinculosUnidades(supabase, Number((data as unknown as UsuarioAdminRow).id), selecaoUnidades.ids)
 
     return NextResponse.json({ ok: true, data })
   } catch (error) {
@@ -176,6 +221,34 @@ export async function PATCH(request: NextRequest) {
 async function adminUsuariosExiste(supabase: ReturnType<typeof getSupabaseAdmin>) {
   const { error } = await supabase.from('admin_usuarios').select('id').limit(0)
   return !error
+}
+
+async function unidadesExistem(supabase: ReturnType<typeof getSupabaseAdmin>) {
+  const { error } = await supabase.from('admin_usuario_unidades').select('admin_usuario_id, unidade_id').limit(0)
+  if (error) return false
+  const { error: colunaError } = await supabase.from('admin_usuarios').select('unidade_padrao_id').limit(0)
+  return !colunaError
+}
+
+async function normalizarSelecaoUnidades(supabase: ReturnType<typeof getSupabaseAdmin>, value: unknown, padraoValue: unknown) {
+  let ids = Array.isArray(value) ? [...new Set(value.map(Number).filter(Boolean))] : []
+  const { data: ativas } = await supabase.from('unidades').select('id, tipo').eq('ativa', true)
+  const idsAtivas = new Set((ativas ?? []).map((unidade) => Number(unidade.id)))
+  ids = ids.filter((id) => idsAtivas.has(id))
+  if (!ids.length) {
+    const matriz = (ativas ?? []).find((unidade) => unidade.tipo === 'MATRIZ')
+    if (matriz) ids = [Number(matriz.id)]
+  }
+  const padraoInformado = Number(padraoValue)
+  return { ids, padraoId: ids.includes(padraoInformado) ? padraoInformado : ids[0] ?? null }
+}
+
+async function salvarVinculosUnidades(supabase: ReturnType<typeof getSupabaseAdmin>, usuarioId: number, unidadeIds: number[]) {
+  const { error: deleteError } = await supabase.from('admin_usuario_unidades').delete().eq('admin_usuario_id', usuarioId)
+  if (deleteError) throw deleteError
+  if (!unidadeIds.length) return
+  const { error } = await supabase.from('admin_usuario_unidades').insert(unidadeIds.map((unidadeId) => ({ admin_usuario_id: usuarioId, unidade_id: unidadeId })))
+  if (error) throw error
 }
 
 function normalizarPermissoes(value: unknown) {

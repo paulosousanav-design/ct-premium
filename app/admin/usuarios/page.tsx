@@ -10,9 +10,13 @@ type UsuarioAdmin = {
   email: string
   ativo: boolean
   permissoes: string[]
+  unidade_padrao_id?: number | null
+  unidade_ids?: number[]
   criado_em: string
   atualizado_em: string
 }
+
+type Unidade = { id: number; codigo: string; tipo: 'MATRIZ' | 'FILIAL'; nome_fantasia: string; ativa: boolean }
 
 type FormState = {
   id: number | null
@@ -21,6 +25,8 @@ type FormState = {
   senha: string
   ativo: boolean
   permissoes: string[]
+  unidadeIds: number[]
+  unidadePadraoId: number | null
 }
 
 const permissoes = [
@@ -34,6 +40,7 @@ const permissoes = [
   { id: 'vendas', label: 'Vendas' },
   { id: 'pecas', label: 'Pecas e estoque' },
   { id: 'clientes', label: 'Clientes' },
+  { id: 'unidades', label: 'Matriz e Filiais' },
   { id: 'usuarios', label: 'Usuarios e acessos' },
   { id: 'relatorios', label: 'Relatorios' },
   { id: 'academia', label: 'Academia Tecnica' },
@@ -48,6 +55,8 @@ const formInicial: FormState = {
   senha: '',
   ativo: true,
   permissoes: ['dashboard', 'os'],
+  unidadeIds: [],
+  unidadePadraoId: null,
 }
 
 export default function UsuariosAdminPage() {
@@ -58,6 +67,8 @@ export default function UsuariosAdminPage() {
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [tabelaPendente, setTabelaPendente] = useState(false)
+  const [unidadesPendente, setUnidadesPendente] = useState(false)
+  const [unidades, setUnidades] = useState<Unidade[]>([])
 
   useEffect(() => {
     void carregar()
@@ -76,6 +87,11 @@ export default function UsuariosAdminPage() {
       if (!response.ok) throw new Error(data?.error ?? 'Erro ao carregar usuarios.')
 
       setUsuarios((data?.data ?? []) as UsuarioAdmin[])
+      const unidadesData = (data?.unidades ?? []) as Unidade[]
+      setUnidades(unidadesData)
+      setUnidadesPendente(Boolean(data?.unidadesPendente))
+      const matriz = unidadesData.find((item) => item.tipo === 'MATRIZ' && item.ativa)
+      if (matriz) setForm((atual) => atual.id === null && atual.unidadeIds.length === 0 ? { ...atual, unidadeIds: [matriz.id], unidadePadraoId: matriz.id } : atual)
       setTabelaPendente(Boolean(data?.tabelaPendente))
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Erro ao carregar usuarios.')
@@ -107,6 +123,15 @@ export default function UsuariosAdminPage() {
     setForm((prev) => ({ ...prev, permissoes: [] }))
   }
 
+  function toggleUnidade(id: number) {
+    setForm((prev) => {
+      const existe = prev.unidadeIds.includes(id)
+      const unidadeIds = existe ? prev.unidadeIds.filter((item) => item !== id) : [...prev.unidadeIds, id]
+      const unidadePadraoId = unidadeIds.includes(Number(prev.unidadePadraoId)) ? prev.unidadePadraoId : unidadeIds[0] ?? null
+      return { ...prev, unidadeIds, unidadePadraoId }
+    })
+  }
+
   function editar(usuario: UsuarioAdmin) {
     setForm({
       id: usuario.id,
@@ -115,6 +140,8 @@ export default function UsuariosAdminPage() {
       senha: '',
       ativo: usuario.ativo,
       permissoes: usuario.permissoes ?? [],
+      unidadeIds: usuario.unidade_ids ?? [],
+      unidadePadraoId: usuario.unidade_padrao_id ?? usuario.unidade_ids?.[0] ?? null,
     })
     setMensagem('')
     setErro('')
@@ -164,6 +191,11 @@ export default function UsuariosAdminPage() {
           Rode o SQL atualizado para criar a tabela admin_usuarios.
         </div>
       )}
+      {unidadesPendente && (
+        <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
+          Execute o arquivo supabase-add-unidades.sql para liberar Matriz e Filiais nos usuários.
+        </div>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <form onSubmit={salvar} className="rounded-xl bg-white p-5 shadow-sm">
@@ -191,6 +223,27 @@ export default function UsuariosAdminPage() {
               <input type="checkbox" name="ativo" checked={form.ativo} onChange={handleChange} />
               Usuario ativo
             </label>
+
+            {!unidadesPendente && unidades.length > 0 && (
+              <div className="rounded-xl border border-slate-200 p-3">
+                <h3 className="text-sm font-black text-slate-900">Unidades permitidas</h3>
+                <p className="mt-1 text-xs text-slate-500">O usuário poderá acessar somente as unidades selecionadas nas próximas etapas da implantação.</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {unidades.filter((item) => item.ativa).map((unidade) => (
+                    <label key={unidade.id} className={`cursor-pointer rounded-lg border px-3 py-2 text-xs font-bold ${form.unidadeIds.includes(unidade.id) ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600'}`}>
+                      <input type="checkbox" checked={form.unidadeIds.includes(unidade.id)} onChange={() => toggleUnidade(unidade.id)} className="mr-2" />
+                      {unidade.tipo} • {unidade.nome_fantasia}
+                    </label>
+                  ))}
+                </div>
+                <label className="mt-3 block text-xs font-black text-slate-600">Unidade padrão
+                  <select value={form.unidadePadraoId ?? ''} onChange={(event) => setForm((atual) => ({ ...atual, unidadePadraoId: Number(event.target.value) || null }))} className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm">
+                    <option value="">Selecione</option>
+                    {unidades.filter((item) => form.unidadeIds.includes(item.id)).map((unidade) => <option key={unidade.id} value={unidade.id}>{unidade.nome_fantasia}</option>)}
+                  </select>
+                </label>
+              </div>
+            )}
 
             <div className="rounded-xl border border-slate-200 p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
@@ -259,6 +312,7 @@ export default function UsuariosAdminPage() {
                     <td className="p-3">
                       <div className="font-black text-slate-950">{usuario.nome}</div>
                       <div className="text-xs text-slate-500">{usuario.email}</div>
+                      <div className="mt-1 text-[10px] font-bold text-blue-700">{(usuario.unidade_ids ?? []).map((id) => unidades.find((unidade) => unidade.id === id)?.nome_fantasia).filter(Boolean).join(' • ') || 'Sem unidade'}</div>
                     </td>
                     <td className="p-3">
                       <span className={`rounded-full px-3 py-1 text-xs font-black ${usuario.ativo ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>

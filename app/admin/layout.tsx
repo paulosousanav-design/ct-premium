@@ -23,6 +23,7 @@ const menu: MenuItem[] = [
   { label: 'Vendas', href: '/admin/vendas', permissao: 'vendas' },
   { label: 'Pecas', href: '/admin/pecas', permissao: 'pecas' },
   { label: 'Clientes', href: '/admin/clientes', permissao: 'clientes' },
+  { label: 'Matriz e Filiais', href: '/admin/unidades', permissao: 'unidades' },
   { label: 'Usuarios', href: '/admin/usuarios', permissao: 'usuarios' },
   { label: 'Relatorios', href: '/admin/relatorios', permissao: 'relatorios' },
   { label: 'Academia Tecnica', href: '/admin/academia', permissao: 'academia' },
