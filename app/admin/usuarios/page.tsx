@@ -37,6 +37,7 @@ const permissoes = [
   { id: 'usuarios', label: 'Usuarios e acessos' },
   { id: 'relatorios', label: 'Relatorios' },
   { id: 'academia', label: 'Academia Tecnica' },
+  { id: 'documentos', label: 'Documentos Tecnicos' },
   { id: 'configuracoes', label: 'Configuracoes' },
 ]
 

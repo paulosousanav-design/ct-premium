@@ -19,6 +19,7 @@ const permissoesValidas = new Set([
   'usuarios',
   'relatorios',
   'academia',
+  'documentos',
   'configuracoes',
 ])
 
