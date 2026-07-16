@@ -37,7 +37,7 @@ const menu: MenuItem[] = [
   { label: 'Garantidores', href: '/admin/garantidores', permissao: 'garantidores' },
   { label: 'Aprovacao', href: '/admin/aprovacao', permissao: 'aprovacao' },
   { label: 'Financeiro', href: '/admin/financeiro', permissao: 'financeiro' },
-  { label: 'DRE Gerencial', href: '/admin/financeiro/dre', permissao: 'financeiro' },
+  { label: 'DRE Gerencial', href: '/admin/financeiro/dre', permissao: 'dre' },
   { label: 'Vendas', href: '/admin/vendas', permissao: 'vendas' },
   { label: 'Pecas', href: '/admin/pecas', permissao: 'pecas' },
   { label: 'Clientes', href: '/admin/clientes', permissao: 'clientes' },

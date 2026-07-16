@@ -15,7 +15,7 @@ function db() {
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdminEscopoGerencial(request, 'financeiro')
+    const auth = await requireAdminEscopoGerencial(request, 'dre')
     if (!auth.ok) return auth.response
 
     const hoje = new Date()

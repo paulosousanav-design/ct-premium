@@ -37,6 +37,7 @@ const permissoes = [
   { id: 'garantidores', label: 'Garantidores' },
   { id: 'aprovacao', label: 'Aprovacao' },
   { id: 'financeiro', label: 'Financeiro' },
+  { id: 'dre', label: 'DRE Gerencial' },
   { id: 'vendas', label: 'Vendas' },
   { id: 'pecas', label: 'Pecas e estoque' },
   { id: 'clientes', label: 'Clientes' },
