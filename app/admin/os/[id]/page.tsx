@@ -1059,6 +1059,11 @@ export default function OrdemServicoAtendimentoPage() {
             .muted { color: #475569; font-weight: 600; }
             .service-box .value { min-height: 24px; }
             .service-box .value-tall { min-height: 42px; }
+            .service-mode { margin-top: 9px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
+            .service-mode-title { margin-bottom: 6px; font-size: 9px; font-weight: 700; color: #475569; text-transform: uppercase; }
+            .service-mode-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
+            .service-mode-option { display: flex; align-items: flex-start; gap: 7px; font-size: 10px; font-weight: 700; color: #1e293b; }
+            .service-mode-check { flex: 0 0 auto; font-size: 17px; line-height: 12px; color: #0f172a; }
             table { width: 100%; border-collapse: collapse; }
             th, td { border-bottom: 1px solid #e5e7eb; text-align: left; padding: 5px 6px; font-size: 10px; }
             th { background: #f9fafb; }
@@ -1106,6 +1111,13 @@ export default function OrdemServicoAtendimentoPage() {
               <div><div class="label">Marca</div><div class="value">${os.marca?.nome ?? '-'}</div></div>
               <div><div class="label">Modelo</div><div class="value">${os.modelo ?? '-'}</div></div>
               <div><div class="label">Número de série</div><div class="value">${os.numero_serie ?? '-'}</div></div>
+            </div>
+            <div class="service-mode">
+              <div class="service-mode-title">Modalidade do atendimento &mdash; marque uma op&ccedil;&atilde;o</div>
+              <div class="service-mode-options">
+                <div class="service-mode-option"><span class="service-mode-check">&#9633;</span><span>Equipamento retirado para diagn&oacute;stico/reparo em laborat&oacute;rio</span></div>
+                <div class="service-mode-option"><span class="service-mode-check">&#9633;</span><span>Atendimento realizado no local, sem retirada do equipamento</span></div>
+              </div>
             </div>
           </div>
 
