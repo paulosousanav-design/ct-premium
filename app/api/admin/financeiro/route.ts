@@ -16,6 +16,7 @@ type ContaPagar = {
   descricao?: string | null
   fornecedor?: string | null
   categoria?: string | null
+  classificacao_dre?: string | null
   valor?: number | string | null
   vencimento?: string | null
   status?: string | null
@@ -166,26 +167,34 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin()
+    const temClassificacaoDre = await colunaExiste(supabase, 'contas_pagar', 'classificacao_dre')
+    const selectConta = temClassificacaoDre
+      ? 'id, descricao, fornecedor, categoria, classificacao_dre, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em'
+      : 'id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em'
+    const classificacaoDre = normalizarClassificacaoDre(body?.classificacaoDre)
+    const insertPayload: Record<string, unknown> = {
+      descricao,
+      fornecedor: String(body?.fornecedor ?? '').trim() || null,
+      categoria: String(body?.categoria ?? '').trim() || 'OPERACIONAL',
+      valor,
+      vencimento,
+      status: 'PENDENTE',
+      unidade_id: auth.unidadeId,
+      observacao: String(body?.observacao ?? '').trim() || null,
+    }
+    if (temClassificacaoDre) insertPayload.classificacao_dre = classificacaoDre
     const { data, error } = await supabase
       .from('contas_pagar')
-      .insert({
-        descricao,
-        fornecedor: String(body?.fornecedor ?? '').trim() || null,
-        categoria: String(body?.categoria ?? '').trim() || 'OPERACIONAL',
-        valor,
-        vencimento,
-        status: 'PENDENTE',
-        unidade_id: auth.unidadeId,
-        observacao: String(body?.observacao ?? '').trim() || null,
-      })
-      .select('id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em')
+      .insert(insertPayload)
+      .select(selectConta)
       .single()
 
     if (error) throw error
+    const contaCriada = data as unknown as { id?: number }
 
     await registrarHistoricoFinanceiro(supabase, {
       responsavel: `${auth.nome} (${auth.email})`,
-      contaId: Number(data?.id),
+      contaId: Number(contaCriada?.id),
       tipo: 'CONTA_PAGAR_CRIADA',
       statusAnterior: null,
       statusNovo: 'PENDENTE',
@@ -213,8 +222,26 @@ export async function PATCH(request: NextRequest) {
     const id = Number(body?.id)
     const supabase = getSupabaseAdmin()
 
-    if (!id || !['OS', 'DOCUMENTO', 'TECNICO', 'CONTA'].includes(tipo)) {
+    if (!id || !['OS', 'DOCUMENTO', 'TECNICO', 'CONTA', 'CONTA_CLASSIFICACAO'].includes(tipo)) {
       return NextResponse.json({ error: 'Dados invalidos para atualizar financeiro.' }, { status: 400 })
+    }
+
+    if (tipo === 'CONTA_CLASSIFICACAO') {
+      if (!await colunaExiste(supabase, 'contas_pagar', 'classificacao_dre')) {
+        return NextResponse.json({ error: 'Execute o SQL de classificação do DRE antes de editar.' }, { status: 400 })
+      }
+      const classificacaoDre = normalizarClassificacaoDre(body?.classificacaoDre)
+      const { data: contaAtual, error: contaError } = await supabase.from('contas_pagar').select('id, descricao, valor, classificacao_dre').eq('id', id).maybeSingle()
+      if (contaError) throw contaError
+      if (!contaAtual) return NextResponse.json({ error: 'Conta não encontrada.' }, { status: 404 })
+      const { error } = await supabase.from('contas_pagar').update({ classificacao_dre: classificacaoDre }).eq('id', id)
+      if (error) throw error
+      await registrarHistoricoFinanceiro(supabase, {
+        responsavel: `${auth.nome} (${auth.email})`, contaId: id, tipo: 'CONTA_CLASSIFICACAO_DRE',
+        statusAnterior: String(contaAtual.classificacao_dre ?? ''), statusNovo: classificacaoDre,
+        valor: toNumber(contaAtual.valor), descricao: `${contaAtual.descricao ?? `Conta #${id}`} classificada no DRE como ${classificacaoDre}.`,
+      })
+      return NextResponse.json({ ok: true })
     }
 
     if (tipo === 'CONTA') {
@@ -617,9 +644,13 @@ async function carregarDocumentosTecnicos(supabase: ReturnType<typeof getSupabas
 }
 
 async function carregarContasPagar(supabase: ReturnType<typeof getSupabaseAdmin>, unidadeId: number | null, unidadesPermitidas: number[]) {
+  const temClassificacaoDre = await colunaExiste(supabase, 'contas_pagar', 'classificacao_dre')
+  const selectConta = temClassificacaoDre
+    ? 'id, descricao, fornecedor, categoria, classificacao_dre, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em'
+    : 'id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em'
   let query = supabase
     .from('contas_pagar')
-    .select('id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em')
+    .select(selectConta)
     .order('vencimento', { ascending: true, nullsFirst: false })
   query = unidadeId ? query.eq('unidade_id', unidadeId) : query.in('unidade_id', unidadesPermitidas)
   const { data, error } = await query
@@ -631,7 +662,13 @@ async function carregarContasPagar(supabase: ReturnType<typeof getSupabaseAdmin>
     throw error
   }
 
-  return { data: (data ?? []) as ContaPagar[], tabelaPendente: false }
+  return { data: (data ?? []) as unknown as ContaPagar[], tabelaPendente: false }
+}
+
+function normalizarClassificacaoDre(value: unknown) {
+  const classificacao = String(value ?? 'DESPESA_OPERACIONAL').trim().toUpperCase()
+  const permitidas = new Set(['CUSTO_DIRETO', 'DESPESA_ADMINISTRATIVA', 'DESPESA_COMERCIAL', 'DESPESA_OPERACIONAL', 'DESPESA_FINANCEIRA', 'IMPOSTOS_SOBRE_VENDAS', 'INVESTIMENTO', 'NAO_OPERACIONAL'])
+  return permitidas.has(classificacao) ? classificacao : 'DESPESA_OPERACIONAL'
 }
 
 function formatarErro(error: unknown, fallback: string) {

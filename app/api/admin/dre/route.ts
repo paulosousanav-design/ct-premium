@@ -7,6 +7,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 type BaseCalculo = 'COMPETENCIA' | 'CAIXA'
 type Registro = Record<string, unknown>
+type Detalhe = { id: string; origem: string; documento: string; descricao: string; data: string | null; valor: number }
 
 function db() {
   if (!supabaseUrl || !serviceRoleKey) throw new Error('Configuracao do Supabase ausente no servidor.')
@@ -30,11 +31,13 @@ export async function GET(request: NextRequest) {
     const inicioIso = `${inicio}T00:00:00.000Z`
     const fimIso = `${fim}T23:59:59.999Z`
     const idsUnidades = auth.unidadeId ? [auth.unidadeId] : auth.unidadesPermitidas
+    if (!idsUnidades.length) return NextResponse.json({ error: 'Usuário sem unidade autorizada.' }, { status: 403 })
+    const temClassificacaoDre = await colunaExiste(supabase, 'contas_pagar', 'classificacao_dre')
 
     const [ordens, vendas, contas, recebimentos, pagamentosTecnicos] = await Promise.all([
       carregarOrdens(supabase, idsUnidades, inicioIso, fimIso, base),
       carregarVendas(supabase, idsUnidades, inicioIso, fimIso),
-      carregarContas(supabase, idsUnidades),
+      carregarContas(supabase, idsUnidades, temClassificacaoDre),
       base === 'CAIXA' ? carregarHistorico(supabase, 'RECEBIMENTO_OS', inicioIso, fimIso) : Promise.resolve([]),
       base === 'CAIXA' ? carregarHistorico(supabase, 'PAGAMENTO_TECNICO', inicioIso, fimIso) : Promise.resolve([]),
     ])
@@ -97,14 +100,27 @@ export async function GET(request: NextRequest) {
       if (base === 'CAIXA') return String(item.status ?? '').toUpperCase() === 'PAGO' && noPeriodo(item.pago_em, inicio, fim)
       return noPeriodo(item.vencimento ?? item.criado_em, inicio, fim)
     })
-    const despesasCategorias = agruparCategorias(contasPeriodo)
+    const contasCustosDiretos = contasPeriodo.filter((item) => classificacaoConta(item) === 'CUSTO_DIRETO')
+    const contasImpostos = contasPeriodo.filter((item) => classificacaoConta(item) === 'IMPOSTOS_SOBRE_VENDAS')
+    const contasFinanceiras = contasPeriodo.filter((item) => classificacaoConta(item) === 'DESPESA_FINANCEIRA')
+    const contasInvestimentos = contasPeriodo.filter((item) => classificacaoConta(item) === 'INVESTIMENTO')
+    const contasNaoOperacionais = contasPeriodo.filter((item) => classificacaoConta(item) === 'NAO_OPERACIONAL')
+    const contasOperacionais = contasPeriodo.filter((item) => ['DESPESA_ADMINISTRATIVA', 'DESPESA_COMERCIAL', 'DESPESA_OPERACIONAL'].includes(classificacaoConta(item)))
+    const despesasCategorias = agruparCategorias(contasOperacionais)
     const despesasOperacionais = despesasCategorias.reduce((total, item) => total + item.valor, 0)
+    const custosContas = soma(contasCustosDiretos, (item) => numero(item.valor))
+    const impostosSobreVendas = soma(contasImpostos, (item) => numero(item.valor))
+    const despesasFinanceiras = soma(contasFinanceiras, (item) => numero(item.valor))
+    const despesasNaoOperacionais = soma(contasNaoOperacionais, (item) => numero(item.valor))
+    const investimentos = soma(contasInvestimentos, (item) => numero(item.valor))
 
     const receitaBruta = receitaServicos + receitaPecasOs + receitaVendas
-    const receitaLiquida = Math.max(receitaBruta - deducoes, 0)
-    const custosDiretos = custoPecasOs + custoVendas + custoTecnicos
+    deducoes += impostosSobreVendas
+    const receitaLiquida = receitaBruta - deducoes
+    const custosDiretos = custoPecasOs + custoVendas + custoTecnicos + custosContas
     const lucroBruto = receitaLiquida - custosDiretos
     const resultadoOperacional = lucroBruto - despesasOperacionais
+    const resultadoLiquido = resultadoOperacional - despesasFinanceiras - despesasNaoOperacionais
 
     const meses = montarMeses(inicio, fim)
     if (base === 'COMPETENCIA') {
@@ -124,24 +140,37 @@ export async function GET(request: NextRequest) {
       for (const item of pagamentosTecnicosEscopo) adicionarMes(meses, item.criado_em, { custos: numero(item.valor) })
       for (const item of comissoesPagas) adicionarMes(meses, item.pago_em, { custos: numero(item.total_comissao) })
     }
-    for (const conta of contasPeriodo) adicionarMes(meses, base === 'CAIXA' ? conta.pago_em : conta.vencimento ?? conta.criado_em, { despesas: numero(conta.valor) })
+    for (const conta of contasPeriodo) {
+      if (classificacaoConta(conta) === 'INVESTIMENTO') continue
+      adicionarMes(meses, base === 'CAIXA' ? conta.pago_em : conta.vencimento ?? conta.criado_em, classificacaoConta(conta) === 'CUSTO_DIRETO' ? { custos: numero(conta.valor) } : { despesas: numero(conta.valor) })
+    }
+
+    const detalhes = montarDetalhes({
+      base, ordens, vendas, contasPeriodo, pecasOs, itensVenda, recebimentosEscopo,
+      pagamentosTecnicosEscopo, comissoesPagas,
+      proporcaoServico: receitaServicosCompetencia + receitaPecasOsCompetencia > 0 ? receitaServicosCompetencia / (receitaServicosCompetencia + receitaPecasOsCompetencia) : 1,
+      custoPecaOsReconhecido,
+    })
 
     return NextResponse.json({
       filtros: { inicio, fim, base, consolidado: auth.consolidado },
       resumo: {
         receitaBruta, deducoes, receitaLiquida, custosDiretos, lucroBruto,
-        despesasOperacionais, resultadoOperacional,
+        despesasOperacionais, despesasFinanceiras, despesasNaoOperacionais, investimentos,
+        resultadoOperacional, resultadoLiquido,
         margemBruta: percentual(lucroBruto, receitaLiquida),
-        margemOperacional: percentual(resultadoOperacional, receitaLiquida),
+        margemOperacional: percentual(resultadoLiquido, receitaLiquida),
       },
       linhas: {
         receitaServicos, receitaPecasOs, receitaVendas,
-        descontos: deducoes,
-        custoPecasOs, custoVendas, custoTecnicos,
+        descontos: deducoes - impostosSobreVendas, impostosSobreVendas,
+        custoPecasOs, custoVendas, custoTecnicos, custosContas,
       },
       despesasCategorias,
+      detalhes,
       meses: Array.from(meses.values()).map((item) => ({ ...item, resultado: item.receita - item.custos - item.despesas })),
       contagens: { ordens: ordens.length, vendas: vendas.length, despesas: contasPeriodo.length },
+      classificacaoPendente: !temClassificacaoDre,
       avisos: base === 'CAIXA'
         ? ['A visao de caixa considera valores efetivamente recebidos e pagos. Custos de estoque sao reconhecidos na competencia para evitar dupla contagem com compras pagas.']
         : pecasOs.some((item) => numero(item.valor_custo) === 0)
@@ -170,15 +199,23 @@ async function carregarOrdens(supabase: ReturnType<typeof db>, unidades: number[
 }
 
 async function carregarVendas(supabase: ReturnType<typeof db>, unidades: number[], inicio: string, fim: string) {
-  const { data, error } = await supabase.from('vendas').select('id, unidade_id, subtotal, desconto, total, criado_em').in('unidade_id', unidades).eq('status', 'PAGO').gte('criado_em', inicio).lte('criado_em', fim)
+  const { data, error } = await supabase.from('vendas').select('id, unidade_id, numero_venda, subtotal, desconto, total, criado_em').in('unidade_id', unidades).eq('status', 'PAGO').gte('criado_em', inicio).lte('criado_em', fim)
   if (error && !tabelaAusente(error)) throw error
-  return (data ?? []) as Registro[]
+  return (data ?? []) as unknown as Registro[]
 }
 
-async function carregarContas(supabase: ReturnType<typeof db>, unidades: number[]) {
-  const { data, error } = await supabase.from('contas_pagar').select('id, unidade_id, descricao, categoria, valor, vencimento, status, pago_em, criado_em').in('unidade_id', unidades)
+async function carregarContas(supabase: ReturnType<typeof db>, unidades: number[], temClassificacaoDre: boolean) {
+  const selectConta = temClassificacaoDre
+    ? 'id, unidade_id, descricao, fornecedor, categoria, classificacao_dre, valor, vencimento, status, pago_em, criado_em'
+    : 'id, unidade_id, descricao, fornecedor, categoria, valor, vencimento, status, pago_em, criado_em'
+  const { data, error } = await supabase.from('contas_pagar').select(selectConta).in('unidade_id', unidades)
   if (error && !tabelaAusente(error)) throw error
-  return (data ?? []) as Registro[]
+  return (data ?? []) as unknown as Registro[]
+}
+
+async function colunaExiste(supabase: ReturnType<typeof db>, tabela: string, coluna: string) {
+  const { error } = await supabase.from(tabela).select(coluna).limit(0)
+  return !error
 }
 
 async function carregarPecasOs(supabase: ReturnType<typeof db>, ids: number[]) {
@@ -223,6 +260,110 @@ function custoTecnicoCompetencia(ordem: Registro) {
     return pecas * numero(parceiro.comissao_pecas_percentual) / 100 + mao * numero(parceiro.comissao_mao_obra_percentual) / 100
   }
   return numero(ordem.tecnico_total)
+}
+
+function classificacaoConta(conta: Registro) {
+  const explicita = String(conta.classificacao_dre ?? '').trim().toUpperCase()
+  if (explicita) return explicita
+  const categoria = String(conta.categoria ?? '').trim().toUpperCase()
+  if (categoria === 'IMPOSTOS') return 'IMPOSTOS_SOBRE_VENDAS'
+  if (['FORNECEDOR', 'PECAS_ESTOQUE'].includes(categoria)) return 'CUSTO_DIRETO'
+  if (categoria === 'TAXAS_BANCARIAS') return 'DESPESA_FINANCEIRA'
+  if (['ADMINISTRATIVO', 'ALUGUEL', 'CONTABILIDADE', 'SISTEMAS'].includes(categoria)) return 'DESPESA_ADMINISTRATIVA'
+  if (categoria === 'MARKETING') return 'DESPESA_COMERCIAL'
+  return 'DESPESA_OPERACIONAL'
+}
+
+function montarDetalhes(params: {
+  base: BaseCalculo
+  ordens: Registro[]
+  vendas: Registro[]
+  contasPeriodo: Registro[]
+  pecasOs: Registro[]
+  itensVenda: Registro[]
+  recebimentosEscopo: Registro[]
+  pagamentosTecnicosEscopo: Registro[]
+  comissoesPagas: Registro[]
+  proporcaoServico: number
+  custoPecaOsReconhecido: (item: Registro) => number
+}) {
+  const { base, ordens, vendas, contasPeriodo, pecasOs, itensVenda, recebimentosEscopo, pagamentosTecnicosEscopo, comissoesPagas, proporcaoServico, custoPecaOsReconhecido } = params
+  const mapa: Record<string, Detalhe[]> = {}
+  const adicionar = (chave: string, item: Detalhe) => {
+    if (!item.valor) return
+    mapa[chave] = [...(mapa[chave] ?? []), item]
+  }
+  const ordemPorId = new Map(ordens.map((item) => [numero(item.id), item]))
+  const dataOrdem = (ordem: Registro) => String(base === 'CAIXA' ? ordem.data_ultimo_recebimento ?? ordem.data_pagamento ?? '' : ordem.finalizada_em ?? '') || null
+
+  if (base === 'COMPETENCIA') {
+    for (const ordem of ordens) {
+      const comum = { id: `os-${ordem.id}`, origem: 'OS', documento: String(ordem.numero_os ?? `OS #${ordem.id}`), descricao: 'Ordem de serviço finalizada', data: dataOrdem(ordem) }
+      adicionar('receitaServicos', { ...comum, valor: valorPreferencial(ordem.cliente_valor_mao_obra, ordem.valor_mao_obra) })
+      adicionar('receitaPecasOs', { ...comum, valor: valorPreferencial(ordem.cliente_valor_pecas, ordem.valor_pecas) })
+      adicionar('descontos', { ...comum, descricao: 'Desconto concedido na OS', valor: valorPreferencial(ordem.cliente_desconto, ordem.desconto) })
+      adicionar('custoTecnicos', { ...comum, descricao: 'Custo técnico/comissão', valor: custoTecnicoCompetencia(ordem) })
+    }
+  } else {
+    for (const recebimento of recebimentosEscopo) {
+      const ordem = ordemPorId.get(numero(recebimento.os_id)) ?? {}
+      const comum = { id: `rec-${recebimento.os_id}-${recebimento.criado_em}`, origem: 'Recebimento', documento: String(ordem.numero_os ?? `OS #${recebimento.os_id}`), descricao: 'Valor recebido da OS', data: String(recebimento.criado_em ?? '') || null }
+      adicionar('receitaServicos', { ...comum, valor: numero(recebimento.valor) * proporcaoServico })
+      adicionar('receitaPecasOs', { ...comum, valor: numero(recebimento.valor) * (1 - proporcaoServico) })
+    }
+    if (!recebimentosEscopo.length) {
+      for (const ordem of ordens) {
+        const valor = numero(ordem.valor_recebido_cliente)
+        const comum = { id: `rec-fallback-${ordem.id}`, origem: 'Recebimento', documento: String(ordem.numero_os ?? `OS #${ordem.id}`), descricao: 'Valor recebido da OS', data: dataOrdem(ordem) }
+        adicionar('receitaServicos', { ...comum, valor: valor * proporcaoServico })
+        adicionar('receitaPecasOs', { ...comum, valor: valor * (1 - proporcaoServico) })
+      }
+    }
+    for (const pagamento of pagamentosTecnicosEscopo) {
+      const ordem = ordemPorId.get(numero(pagamento.os_id)) ?? {}
+      adicionar('custoTecnicos', { id: `pag-tecnico-${pagamento.os_id}-${pagamento.criado_em}`, origem: 'Pagamento técnico', documento: String(ordem.numero_os ?? `OS #${pagamento.os_id}`), descricao: 'Pagamento ao técnico', data: String(pagamento.criado_em ?? '') || null, valor: numero(pagamento.valor) })
+    }
+    for (const comissao of comissoesPagas) adicionar('custoTecnicos', { id: `comissao-${comissao.pago_em}`, origem: 'Comissão', documento: 'Fechamento de comissão', descricao: 'Comissão paga no período', data: String(comissao.pago_em ?? '') || null, valor: numero(comissao.total_comissao) })
+  }
+
+  for (const venda of vendas) {
+    const comum = { id: `venda-${venda.id}`, origem: 'Venda', documento: String(venda.numero_venda ?? `Venda #${venda.id}`), data: String(venda.criado_em ?? '') || null }
+    adicionar('receitaVendas', { ...comum, descricao: 'Venda de balcão', valor: base === 'CAIXA' ? numero(venda.total) : numero(venda.subtotal) })
+    if (base === 'COMPETENCIA') adicionar('descontos', { ...comum, descricao: 'Desconto da venda', valor: numero(venda.desconto) })
+  }
+
+  if (base === 'COMPETENCIA') {
+    const custoOsPorId = agruparValor(pecasOs, 'os_id', custoPecaOsReconhecido)
+    for (const [osId, valor] of custoOsPorId) {
+      const ordem = ordemPorId.get(osId) ?? {}
+      adicionar('custoPecasOs', { id: `custo-os-${osId}`, origem: 'OS', documento: String(ordem.numero_os ?? `OS #${osId}`), descricao: 'Custo das peças utilizadas', data: dataOrdem(ordem), valor })
+    }
+    const custoVendaPorId = agruparValor(itensVenda, 'venda_id', (item) => numero(item.quantidade) * numero(item.valor_custo_unitario))
+    for (const [vendaId, valor] of custoVendaPorId) {
+      const venda = vendas.find((item) => numero(item.id) === vendaId) ?? {}
+      adicionar('custoVendas', { id: `custo-venda-${vendaId}`, origem: 'Venda', documento: String(venda.numero_venda ?? `Venda #${vendaId}`), descricao: 'Custo dos produtos vendidos', data: String(venda.criado_em ?? '') || null, valor })
+    }
+  }
+
+  for (const conta of contasPeriodo) {
+    const classificacao = classificacaoConta(conta)
+    const chave = classificacao === 'CUSTO_DIRETO' ? 'custosContas'
+      : classificacao === 'IMPOSTOS_SOBRE_VENDAS' ? 'impostosSobreVendas'
+      : classificacao === 'DESPESA_FINANCEIRA' ? 'despesasFinanceiras'
+      : classificacao === 'INVESTIMENTO' ? 'investimentos'
+      : classificacao === 'NAO_OPERACIONAL' ? 'despesasNaoOperacionais'
+      : `despesa:${String(conta.categoria ?? 'SEM CATEGORIA').trim().toUpperCase() || 'SEM CATEGORIA'}`
+    adicionar(chave, {
+      id: `conta-${conta.id}`,
+      origem: 'Conta a pagar',
+      documento: `Conta #${conta.id}`,
+      descricao: [conta.descricao, conta.fornecedor].filter(Boolean).map(String).join(' • '),
+      data: String(base === 'CAIXA' ? conta.pago_em ?? '' : conta.vencimento ?? conta.criado_em ?? '') || null,
+      valor: numero(conta.valor),
+    })
+  }
+
+  return mapa
 }
 
 function agruparCategorias(contas: Registro[]) {

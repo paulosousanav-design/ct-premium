@@ -11,7 +11,11 @@ type Resumo = {
   custosDiretos: number
   lucroBruto: number
   despesasOperacionais: number
+  despesasFinanceiras: number
+  despesasNaoOperacionais: number
+  investimentos: number
   resultadoOperacional: number
+  resultadoLiquido: number
   margemBruta: number
   margemOperacional: number
 }
@@ -23,15 +27,21 @@ type Dre = {
     receitaPecasOs: number
     receitaVendas: number
     descontos: number
+    impostosSobreVendas: number
     custoPecasOs: number
     custoVendas: number
     custoTecnicos: number
+    custosContas: number
   }
   despesasCategorias: Array<{ categoria: string; valor: number }>
   meses: Array<{ chave: string; label: string; receita: number; custos: number; despesas: number; resultado: number }>
   contagens: { ordens: number; vendas: number; despesas: number }
   avisos: string[]
+  classificacaoPendente: boolean
+  detalhes: Record<string, Detalhe[]>
 }
+
+type Detalhe = { id: string; origem: string; documento: string; descricao: string; data: string | null; valor: number }
 
 function periodoInicial() {
   const hoje = new Date()
@@ -49,6 +59,7 @@ export default function DrePage() {
   const [dados, setDados] = useState<Dre | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
+  const [detalheAtivo, setDetalheAtivo] = useState<{ chave: string; titulo: string } | null>(null)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -59,6 +70,7 @@ export default function DrePage() {
       const payload = await response.json().catch(() => null)
       if (!response.ok) throw new Error(payload?.error ?? 'Não foi possível calcular o DRE.')
       setDados(payload as Dre)
+      setDetalheAtivo(null)
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Não foi possível calcular o DRE.')
     } finally {
@@ -126,12 +138,13 @@ export default function DrePage() {
             <Card label="Receita líquida" valor={dados.resumo.receitaLiquida} detalhe={`${dados.contagens.ordens} OS • ${dados.contagens.vendas} vendas`} />
             <Card label="Lucro bruto" valor={dados.resumo.lucroBruto} detalhe={`Margem ${percent(dados.resumo.margemBruta)}`} tom={dados.resumo.lucroBruto >= 0 ? 'green' : 'red'} />
             <Card label="Despesas operacionais" valor={dados.resumo.despesasOperacionais} detalhe={`${dados.contagens.despesas} lançamentos`} tom="amber" />
-            <Card label="Resultado operacional" valor={dados.resumo.resultadoOperacional} detalhe={`Margem ${percent(dados.resumo.margemOperacional)}`} tom={dados.resumo.resultadoOperacional >= 0 ? 'green' : 'red'} destaque />
+            <Card label="Resultado líquido gerencial" valor={dados.resumo.resultadoLiquido} detalhe={`Margem ${percent(dados.resumo.margemOperacional)}`} tom={dados.resumo.resultadoLiquido >= 0 ? 'green' : 'red'} destaque />
           </div>
 
           {dados.avisos.map((aviso) => (
             <div key={aviso} className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">{aviso}</div>
           ))}
+          {dados.classificacaoPendente && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-800">Execute o arquivo <code>supabase-add-classificacao-dre.sql</code> para liberar a classificação contábil individual das contas.</div>}
 
           <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
@@ -140,21 +153,29 @@ export default function DrePage() {
             </div>
             <div className="divide-y divide-slate-100 text-sm">
               <Linha label="(+) Receita bruta" valor={dados.resumo.receitaBruta} forte />
-              <Linha label="Serviços de OS" valor={dados.linhas.receitaServicos} nivel={1} />
-              <Linha label="Peças aplicadas em OS" valor={dados.linhas.receitaPecasOs} nivel={1} />
-              <Linha label="Vendas de balcão" valor={dados.linhas.receitaVendas} nivel={1} />
-              <Linha label="(-) Descontos e deduções comerciais" valor={-dados.resumo.deducoes} />
+              <Linha label="Serviços de OS" valor={dados.linhas.receitaServicos} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: 'receitaServicos', titulo: 'Receitas de serviços de OS' })} />
+              <Linha label="Peças aplicadas em OS" valor={dados.linhas.receitaPecasOs} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: 'receitaPecasOs', titulo: 'Receitas de peças aplicadas em OS' })} />
+              <Linha label="Vendas de balcão" valor={dados.linhas.receitaVendas} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: 'receitaVendas', titulo: 'Vendas de balcão' })} />
+              <Linha label="(-) Descontos comerciais" valor={-dados.linhas.descontos} onDetalhe={() => setDetalheAtivo({ chave: 'descontos', titulo: 'Descontos comerciais' })} />
+              <Linha label="(-) Impostos sobre vendas e serviços" valor={-dados.linhas.impostosSobreVendas} onDetalhe={() => setDetalheAtivo({ chave: 'impostosSobreVendas', titulo: 'Impostos sobre vendas e serviços' })} />
               <Linha label="(=) Receita líquida" valor={dados.resumo.receitaLiquida} forte fundo="blue" />
               <Linha label="(-) Custos diretos" valor={-dados.resumo.custosDiretos} forte />
-              <Linha label="Custo das peças utilizadas em OS" valor={-dados.linhas.custoPecasOs} nivel={1} />
-              <Linha label="Custo dos produtos vendidos" valor={-dados.linhas.custoVendas} nivel={1} />
-              <Linha label="Técnicos próprios, terceiros e comissões" valor={-dados.linhas.custoTecnicos} nivel={1} />
+              <Linha label="Custo das peças utilizadas em OS" valor={-dados.linhas.custoPecasOs} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: 'custoPecasOs', titulo: 'Custos das peças utilizadas em OS' })} />
+              <Linha label="Custo dos produtos vendidos" valor={-dados.linhas.custoVendas} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: 'custoVendas', titulo: 'Custos dos produtos vendidos' })} />
+              <Linha label="Técnicos próprios, terceiros e comissões" valor={-dados.linhas.custoTecnicos} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: 'custoTecnicos', titulo: 'Custos técnicos e comissões' })} />
+              <Linha label="Outros custos diretos lançados" valor={-dados.linhas.custosContas} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: 'custosContas', titulo: 'Outros custos diretos' })} />
               <Linha label="(=) Lucro bruto" valor={dados.resumo.lucroBruto} forte fundo={dados.resumo.lucroBruto >= 0 ? 'green' : 'red'} />
               <Linha label="(-) Despesas operacionais" valor={-dados.resumo.despesasOperacionais} forte />
-              {dados.despesasCategorias.map((item) => <Linha key={item.categoria} label={formatLabel(item.categoria)} valor={-item.valor} nivel={1} />)}
+              {dados.despesasCategorias.map((item) => <Linha key={item.categoria} label={formatLabel(item.categoria)} valor={-item.valor} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: `despesa:${item.categoria}`, titulo: `Despesas — ${formatLabel(item.categoria)}` })} />)}
               <Linha label="(=) Resultado operacional" valor={dados.resumo.resultadoOperacional} forte grande fundo={dados.resumo.resultadoOperacional >= 0 ? 'green' : 'red'} />
+              <Linha label="(-) Despesas financeiras" valor={-dados.resumo.despesasFinanceiras} onDetalhe={() => setDetalheAtivo({ chave: 'despesasFinanceiras', titulo: 'Despesas financeiras' })} />
+              <Linha label="(-) Despesas não operacionais" valor={-dados.resumo.despesasNaoOperacionais} onDetalhe={() => setDetalheAtivo({ chave: 'despesasNaoOperacionais', titulo: 'Despesas não operacionais' })} />
+              <Linha label="(=) Resultado líquido gerencial" valor={dados.resumo.resultadoLiquido} forte grande fundo={dados.resumo.resultadoLiquido >= 0 ? 'green' : 'red'} />
+              <Linha label="Investimentos no período (fora do DRE)" valor={-dados.resumo.investimentos} onDetalhe={() => setDetalheAtivo({ chave: 'investimentos', titulo: 'Investimentos — não reduzem o resultado' })} />
             </div>
           </section>
+
+          {detalheAtivo && <PainelDetalhes titulo={detalheAtivo.titulo} itens={dados.detalhes[detalheAtivo.chave] ?? []} onFechar={() => setDetalheAtivo(null)} />}
 
           {dados.meses.length > 0 && (
             <section className="overflow-hidden rounded-2xl bg-white p-5 shadow-sm">
@@ -196,9 +217,15 @@ function Card({ label, valor, detalhe, tom = 'blue', destaque = false }: { label
   return <div className={`rounded-2xl border bg-white p-4 shadow-sm ${cores[tom]} ${destaque ? 'ring-2 ring-current ring-offset-1' : ''}`}><p className="text-xs font-black uppercase text-slate-500">{label}</p><p className="mt-2 text-2xl font-black">{money(valor)}</p><p className="mt-1 text-xs font-bold text-slate-500">{detalhe}</p></div>
 }
 
-function Linha({ label, valor, nivel = 0, forte = false, grande = false, fundo }: { label: string; valor: number; nivel?: number; forte?: boolean; grande?: boolean; fundo?: 'blue' | 'green' | 'red' }) {
+function Linha({ label, valor, nivel = 0, forte = false, grande = false, fundo, onDetalhe }: { label: string; valor: number; nivel?: number; forte?: boolean; grande?: boolean; fundo?: 'blue' | 'green' | 'red'; onDetalhe?: () => void }) {
   const fundos = { blue: 'bg-blue-50', green: 'bg-emerald-50', red: 'bg-red-50' }
-  return <div className={`flex items-center justify-between gap-4 px-5 py-3 ${fundo ? fundos[fundo] : ''} ${forte ? 'font-black' : ''} ${grande ? 'text-lg' : ''}`}><span className={nivel ? 'pl-5 text-slate-600' : 'text-slate-900'}>{label}</span><span className={`${valor < 0 ? 'text-red-700' : valor > 0 && forte ? 'text-emerald-700' : 'text-slate-900'} whitespace-nowrap`}>{money(valor)}</span></div>
+  const conteudo = <><span className={nivel ? 'pl-5 text-slate-600' : 'text-slate-900'}>{label}{onDetalhe && <span className="ml-2 text-[10px] font-black uppercase text-blue-600 print:hidden">ver itens</span>}</span><span className={`${valor < 0 ? 'text-red-700' : valor > 0 && forte ? 'text-emerald-700' : 'text-slate-900'} whitespace-nowrap`}>{money(valor)}</span></>
+  const classe = `flex w-full items-center justify-between gap-4 px-5 py-3 text-left ${fundo ? fundos[fundo] : ''} ${forte ? 'font-black' : ''} ${grande ? 'text-lg' : ''}`
+  return onDetalhe ? <button type="button" onClick={onDetalhe} className={`${classe} transition hover:bg-blue-50`}>{conteudo}</button> : <div className={classe}>{conteudo}</div>
+}
+
+function PainelDetalhes({ titulo, itens, onFechar }: { titulo: string; itens: Detalhe[]; onFechar: () => void }) {
+  return <section className="overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm print:hidden"><div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-blue-50 px-5 py-4"><div><h2 className="font-black text-slate-950">{titulo}</h2><p className="text-xs font-bold text-slate-500">{itens.length} lançamento(s) • Total {money(itens.reduce((total, item) => total + item.valor, 0))}</p></div><button type="button" onClick={onFechar} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700">Fechar</button></div><div className="max-h-[430px] overflow-auto"><table className="w-full min-w-[680px] text-left text-sm"><thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Data</th><th className="p-3">Origem</th><th className="p-3">Documento</th><th className="p-3">Descrição</th><th className="p-3 text-right">Valor</th></tr></thead><tbody>{itens.length === 0 ? <tr><td colSpan={5} className="p-5 text-center text-slate-500">Nenhum lançamento compõe esta linha no período.</td></tr> : itens.map((item) => <tr key={item.id} className="border-t border-slate-100"><td className="p-3 whitespace-nowrap">{item.data ? new Date(item.data).toLocaleDateString('pt-BR') : '-'}</td><td className="p-3 font-bold">{item.origem}</td><td className="p-3 font-black text-blue-700">{item.documento}</td><td className="p-3 text-slate-600">{item.descricao}</td><td className="p-3 text-right font-black">{money(item.valor)}</td></tr>)}</tbody></table></div></section>
 }
 
 function money(value: number) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0) }

@@ -69,6 +69,7 @@ type ContaPagar = {
   descricao: string | null
   fornecedor: string | null
   categoria: string | null
+  classificacao_dre?: string | null
   valor: number | string | null
   vencimento: string | null
   status: string | null
@@ -82,6 +83,7 @@ type ContaForm = {
   descricao: string
   fornecedor: string
   categoria: string
+  classificacaoDre: string
   valor: string
   vencimento: string
   observacao: string
@@ -91,6 +93,7 @@ const contaInicial: ContaForm = {
   descricao: '',
   fornecedor: '',
   categoria: 'OPERACIONAL',
+  classificacaoDre: 'DESPESA_OPERACIONAL',
   valor: '',
   vencimento: '',
   observacao: '',
@@ -110,6 +113,17 @@ const categoriasConta = [
   { value: 'CONTABILIDADE', label: 'Contabilidade' },
   { value: 'TAXAS_BANCARIAS', label: 'Taxas bancarias' },
   { value: 'OUTROS', label: 'Outros' },
+]
+
+const classificacoesDre = [
+  { value: 'CUSTO_DIRETO', label: 'Custo direto' },
+  { value: 'DESPESA_ADMINISTRATIVA', label: 'Despesa administrativa' },
+  { value: 'DESPESA_COMERCIAL', label: 'Despesa comercial' },
+  { value: 'DESPESA_OPERACIONAL', label: 'Outra despesa operacional' },
+  { value: 'DESPESA_FINANCEIRA', label: 'Despesa financeira' },
+  { value: 'IMPOSTOS_SOBRE_VENDAS', label: 'Imposto sobre vendas/serviços' },
+  { value: 'INVESTIMENTO', label: 'Investimento — não reduz o DRE' },
+  { value: 'NAO_OPERACIONAL', label: 'Despesa não operacional' },
 ]
 
 export default function FinanceiroPage() {
@@ -356,6 +370,25 @@ export default function FinanceiroPage() {
       await carregarDados()
     } catch (error) {
       setErro(formatarErro(error, 'Erro ao pagar conta.'))
+    } finally {
+      setSalvandoId(null)
+    }
+  }
+
+  async function classificarContaDre(id: number, classificacaoDre: string) {
+    setSalvandoId(id)
+    setErro('')
+    try {
+      const response = await adminFetch('/api/admin/financeiro', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo: 'CONTA_CLASSIFICACAO', id, classificacaoDre }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error ?? 'Erro ao classificar a conta no DRE.')
+      await carregarDados()
+    } catch (error) {
+      setErro(formatarErro(error, 'Erro ao classificar a conta no DRE.'))
     } finally {
       setSalvandoId(null)
     }
@@ -643,6 +676,7 @@ export default function FinanceiroPage() {
             onFormChange={setContaForm}
             onSubmit={criarContaPagar}
             onPagar={marcarContaPaga}
+            onClassificar={classificarContaDre}
           />
         )}
       </section>
@@ -894,6 +928,7 @@ function ContasPagarPanel({
   onFormChange,
   onSubmit,
   onPagar,
+  onClassificar,
 }: {
   loading: boolean
   contas: ContaPagar[]
@@ -903,6 +938,7 @@ function ContasPagarPanel({
   onFormChange: (form: ContaForm) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onPagar: (id: number) => void
+  onClassificar: (id: number, classificacao: string) => void
 }) {
   const contasOrdenadas = [...contas].sort((a, b) => {
     const situacaoA = situacaoVencimentoConta(a)
@@ -928,7 +964,7 @@ function ContasPagarPanel({
         </div>
       )}
 
-      <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[1.2fr_1fr_150px_140px_150px_auto] lg:items-end">
+      <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[1.1fr_1fr_150px_190px_130px_145px_auto] lg:items-end">
         <FinanceField
           label="Descrição"
           value={form.descricao}
@@ -947,6 +983,13 @@ function ContasPagarPanel({
           label="Categoria"
           value={form.categoria}
           onChange={(value) => onFormChange({ ...form, categoria: value })}
+          disabled={tabelaPendente}
+        />
+        <FinanceSelect
+          label="Classificação no DRE"
+          value={form.classificacaoDre}
+          onChange={(value) => onFormChange({ ...form, classificacaoDre: value })}
+          options={classificacoesDre}
           disabled={tabelaPendente}
         />
         <FinanceField
@@ -980,6 +1023,7 @@ function ContasPagarPanel({
             <tr className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <th className="p-3">Conta</th>
               <th className="p-3">Categoria</th>
+              <th className="p-3">Classificação DRE</th>
               <th className="p-3">Vencimento</th>
               <th className="p-3">Valor</th>
               <th className="p-3">Status</th>
@@ -988,8 +1032,8 @@ function ContasPagarPanel({
             </tr>
           </thead>
           <tbody>
-            {loading && <LinhaMensagem colSpan={7} texto="Carregando..." />}
-            {!loading && contas.length === 0 && <LinhaMensagem colSpan={7} texto="Nenhuma conta encontrada." />}
+            {loading && <LinhaMensagem colSpan={8} texto="Carregando..." />}
+            {!loading && contas.length === 0 && <LinhaMensagem colSpan={8} texto="Nenhuma conta encontrada." />}
             {!loading &&
               contasOrdenadas.map((conta) => {
                 const status = String(conta.status ?? 'PENDENTE').toUpperCase()
@@ -1001,6 +1045,17 @@ function ContasPagarPanel({
                       <div className="text-xs text-slate-500">{conta.fornecedor ?? '-'}</div>
                     </td>
                     <td className="p-3">{formatarCategoriaConta(conta.categoria)}</td>
+                    <td className="p-3">
+                      <select
+                        value={conta.classificacao_dre ?? 'DESPESA_OPERACIONAL'}
+                        onChange={(event) => onClassificar(conta.id, event.target.value)}
+                        disabled={tabelaPendente || salvandoId === conta.id}
+                        className="max-w-[210px] rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-bold text-slate-700 disabled:opacity-60"
+                        aria-label={`Classificação DRE da conta ${conta.descricao ?? conta.id}`}
+                      >
+                        {classificacoesDre.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                      </select>
+                    </td>
                     <td className="p-3"><div>{formatDate(conta.vencimento)}</div>{vencimento.label && <span className={`mt-1 inline-flex rounded-full px-2 py-1 text-[10px] font-black ${vencimento.tipo === 'VENCIDA' ? 'bg-red-100 text-red-700' : vencimento.tipo === 'HOJE' ? 'bg-amber-100 text-amber-800' : 'bg-orange-100 text-orange-700'}`}>{vencimento.label}</span>}</td>
                     <td className="p-3 font-black text-slate-950">{formatCurrency(toNumber(conta.valor))}</td>
                     <td className="p-3"><StatusFinanceiro status={status === 'PAGO' ? 'RECEBIDO' : status} pagoLabel="PAGO" /></td>
@@ -1207,11 +1262,13 @@ function FinanceSelect({
   value,
   onChange,
   disabled = false,
+  options = categoriasConta,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
   disabled?: boolean
+  options?: Array<{ value: string; label: string }>
 }) {
   return (
     <label className="block text-xs font-black text-slate-700">
@@ -1222,7 +1279,7 @@ function FinanceSelect({
         disabled={disabled}
         className="mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium outline-none focus:border-orange-500 disabled:cursor-not-allowed disabled:bg-slate-100"
       >
-        {categoriasConta.map((categoria) => (
+        {options.map((categoria) => (
           <option key={categoria.value} value={categoria.value}>
             {categoria.label}
           </option>
@@ -1462,6 +1519,7 @@ function formatarCategoriaConta(categoria?: string | null) {
 
   return labels[value] ?? (value || '-')
 }
+
 
 function formatDate(data?: string | null) {
   if (!data) return '-'
