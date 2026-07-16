@@ -1289,7 +1289,7 @@ export default function OrdemServicoAtendimentoPage() {
 
           <div className="flex flex-wrap gap-3">
             <button
-              onClick={() => router.push('/admin/os/finalizadas')}
+              onClick={() => router.push('/admin/finalizadas')}
               className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white shadow-sm"
             >
               Finalizadas
