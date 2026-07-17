@@ -65,19 +65,23 @@ export async function POST(request: NextRequest) {
 
     const agora = new Date().toISOString()
     const responsavel = `${auth.nome} (${auth.email})`
+    const updatePayload: Record<string, unknown> = {
+      status: 'ENCERRADA_SEM_REPARO',
+      bloqueada: true,
+      finalizada_em: agora,
+      encerrada_sem_reparo_em: agora,
+      encerramento_motivo: motivo,
+      encerramento_observacao: observacao || null,
+      encerramento_taxa_diagnostico: taxaDiagnostico,
+      encerrada_sem_reparo_por: responsavel,
+      status_financeiro: taxaDiagnostico > 0 ? 'PENDENTE' : 'SEM_COBRANCA',
+    }
+    const { error: entregaColumnError } = await supabase.from('ordens_servico').select('equipamento_entrega_status').limit(0)
+    if (!entregaColumnError) updatePayload.equipamento_entrega_status = 'PENDENTE_DEFINICAO'
+
     const { error: updateError } = await supabase
       .from('ordens_servico')
-      .update({
-        status: 'ENCERRADA_SEM_REPARO',
-        bloqueada: true,
-        finalizada_em: agora,
-        encerrada_sem_reparo_em: agora,
-        encerramento_motivo: motivo,
-        encerramento_observacao: observacao || null,
-        encerramento_taxa_diagnostico: taxaDiagnostico,
-        encerrada_sem_reparo_por: responsavel,
-        status_financeiro: taxaDiagnostico > 0 ? 'PENDENTE' : 'SEM_COBRANCA',
-      })
+      .update(updatePayload)
       .eq('id', osId)
 
     if (updateError) throw updateError

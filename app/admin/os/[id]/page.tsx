@@ -107,6 +107,15 @@ type OrdemServico = {
   encerramento_observacao?: string | null
   encerramento_taxa_diagnostico?: number | string | null
   encerrada_sem_reparo_por?: string | null
+  equipamento_entrega_status?: string | null
+  aguardando_retirada_em?: string | null
+  cliente_avisado_em?: string | null
+  cliente_aviso_meio?: string | null
+  equipamento_entregue_em?: string | null
+  entregue_para_nome?: string | null
+  entregue_para_documento?: string | null
+  entrega_observacao?: string | null
+  entrega_registrada_por?: string | null
   modelo: string | null
   numero_serie: string | null
   defeito: string | null
@@ -1356,6 +1365,13 @@ export default function OrdemServicoAtendimentoPage() {
             </button>
 
             <button
+              onClick={() => router.push('/admin/retiradas')}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm"
+            >
+              Retiradas
+            </button>
+
+            <button
               onClick={() => router.back()}
               className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm"
             >
@@ -1479,6 +1495,15 @@ export default function OrdemServicoAtendimentoPage() {
           <InfoCard label="Garantia" value={form.garantia} />
           <InfoCard label="Modelo" value={os.modelo ?? '-'} />
         </section>
+
+        {['FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(os.status)) && os.equipamento_entrega_status && os.equipamento_entrega_status !== 'NAO_APLICAVEL' && (
+          <section className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div><p className="font-black">Situação do equipamento: {formatarEntregaStatus(os.equipamento_entrega_status)}</p><p className="mt-1 text-xs">{os.cliente_avisado_em ? `Cliente avisado por ${formatarMeioAviso(os.cliente_aviso_meio)} em ${formatDate(os.cliente_avisado_em)}.` : 'Aviso ao cliente ainda não registrado.'}</p></div>
+              <button type="button" onClick={() => router.push('/admin/retiradas')} className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-black text-white">Gerenciar retirada</button>
+            </div>
+          </section>
+        )}
 
         <section className="grid gap-4 xl:grid-cols-[1.55fr_0.95fr]">
           <div className="space-y-4">
@@ -2335,6 +2360,9 @@ export default function OrdemServicoAtendimentoPage() {
 
 function getHistoricoCardClass(acao?: string | null) {
   if (acao === 'OS_ENCERRADA_SEM_REPARO') return 'border-slate-400 bg-slate-50'
+  if (acao === 'EQUIPAMENTO_ENTREGUE') return 'border-emerald-300 bg-emerald-50'
+  if (acao === 'CLIENTE_AVISADO_RETIRADA') return 'border-blue-300 bg-blue-50'
+  if (acao === 'EQUIPAMENTO_AGUARDANDO_RETIRADA') return 'border-amber-300 bg-amber-50'
   if (acao === 'ACEITE_TECNICO') return 'border-emerald-300 bg-emerald-50'
   if (acao === 'RECUSA_TECNICO') return 'border-red-300 bg-red-50'
   if (acao === 'ATRIBUICAO_TECNICO') return 'border-orange-200 bg-orange-50'
@@ -2348,12 +2376,29 @@ function formatarAcaoHistorico(acao?: string | null) {
   if (acao === 'ALTERACAO_STATUS') return 'Status alterado'
   if (acao === 'OS_FINALIZADA') return 'OS finalizada'
   if (acao === 'OS_ENCERRADA_SEM_REPARO') return 'OS encerrada sem reparo'
+  if (acao === 'EQUIPAMENTO_AGUARDANDO_RETIRADA') return 'Equipamento aguardando retirada'
+  if (acao === 'CLIENTE_AVISADO_RETIRADA') return 'Cliente avisado para retirada'
+  if (acao === 'EQUIPAMENTO_ENTREGUE') return 'Equipamento entregue'
+  if (acao === 'EQUIPAMENTO_SEM_RETIRADA') return 'Atendimento no local/sem retirada'
   if (acao === 'ATENDIMENTO_TECNICO') return 'Atendimento técnico'
   return acao ?? 'Evento'
 }
 
 function rotuloMotivoEncerramento(motivo?: string | null) {
   return MOTIVOS_ENCERRAMENTO.find((item) => item.value === motivo)?.label ?? motivo ?? '-'
+}
+
+function formatarEntregaStatus(status?: string | null) {
+  return ({
+    PENDENTE_DEFINICAO: 'definir se ficou na empresa',
+    AGUARDANDO_RETIRADA: 'aguardando retirada pelo cliente',
+    ENTREGUE: 'entregue ao cliente',
+    ATENDIMENTO_LOCAL: 'atendimento no local/sem retirada',
+  } as Record<string, string>)[String(status)] ?? String(status ?? '-')
+}
+
+function formatarMeioAviso(meio?: string | null) {
+  return ({ WHATSAPP: 'WhatsApp', TELEFONE: 'telefone', PRESENCIAL: 'atendimento presencial', EMAIL: 'e-mail' } as Record<string, string>)[String(meio)] ?? '-'
 }
 
 function Field({

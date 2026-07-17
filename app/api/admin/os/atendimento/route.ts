@@ -171,6 +171,7 @@ export async function GET(request: NextRequest) {
     const colunaDataUltimoRecebimentoExiste = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
     const colunaFormaRecebimentoExiste = await colunaExiste(supabase, 'ordens_servico', 'forma_recebimento')
     const colunaEncerramentoExiste = await colunaExiste(supabase, 'ordens_servico', 'encerramento_motivo')
+    const colunaEntregaExiste = await colunaExiste(supabase, 'ordens_servico', 'equipamento_entrega_status')
 
     const selectBase = `
         id,
@@ -188,6 +189,16 @@ export async function GET(request: NextRequest) {
         encerramento_observacao,
         encerramento_taxa_diagnostico,
         encerrada_sem_reparo_por,` : ''}
+        ${colunaEntregaExiste ? `
+        equipamento_entrega_status,
+        aguardando_retirada_em,
+        cliente_avisado_em,
+        cliente_aviso_meio,
+        equipamento_entregue_em,
+        entregue_para_nome,
+        entregue_para_documento,
+        entrega_observacao,
+        entrega_registrada_por,` : ''}
         modelo,
         numero_serie,
         defeito,
@@ -527,6 +538,21 @@ export async function PATCH(request: NextRequest) {
       desconto,
       total,
       observacao_tecnica: String(body?.observacaoTecnica ?? '').trim() || null,
+    }
+
+    const colunaEntregaExiste = await colunaExiste(supabase, 'ordens_servico', 'equipamento_entrega_status')
+    if (colunaEntregaExiste && statusFinal === 'FINALIZADA' && osAtual.status !== 'FINALIZADA') {
+      updatePayload.equipamento_entrega_status = 'PENDENTE_DEFINICAO'
+      updatePayload.aguardando_retirada_em = null
+      updatePayload.cliente_avisado_em = null
+      updatePayload.cliente_aviso_meio = null
+      updatePayload.equipamento_entregue_em = null
+      updatePayload.entregue_para_nome = null
+      updatePayload.entregue_para_documento = null
+      updatePayload.entrega_observacao = null
+      updatePayload.entrega_registrada_por = null
+    } else if (colunaEntregaExiste && ['FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(osAtual.status)) && statusFinal !== 'FINALIZADA') {
+      updatePayload.equipamento_entrega_status = 'NAO_APLICAVEL'
     }
 
     const colunaEncerramentoExiste = await colunaExiste(supabase, 'ordens_servico', 'encerramento_motivo')

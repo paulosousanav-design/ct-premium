@@ -33,6 +33,7 @@ const menu: MenuItem[] = [
   { label: 'Dashboard', href: '/admin/dashboard', permissao: 'dashboard' },
   { label: 'Ordens de Servico', href: '/admin/os', permissao: 'os' },
   { label: 'Finalizadas', href: '/admin/finalizadas', permissao: 'finalizadas' },
+  { label: 'Retirada de Equipamentos', href: '/admin/retiradas', permissao: 'os' },
   { label: 'Tecnicos', href: '/admin/parceiros', permissao: 'tecnicos' },
   { label: 'Garantidores', href: '/admin/garantidores', permissao: 'garantidores' },
   { label: 'Aprovacao', href: '/admin/aprovacao', permissao: 'aprovacao' },
