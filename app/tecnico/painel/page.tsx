@@ -158,7 +158,7 @@ export default function PainelTecnicoPage() {
   }, [agendaDatas, tecnicoId])
 
   const tecnicoNome = tecnicoLogado?.nome || getNomeTecnico(ordens[0])
-  const ordensAbertas = ordens.filter((os) => os.status !== 'FINALIZADA')
+  const ordensAbertas = ordens.filter((os) => !['FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(os.status)))
   const ordensFinalizadas = ordens.filter((os) => os.status === 'FINALIZADA')
   const ordensAReceber = ordensFinalizadas.filter((os) => !tecnicoPago(os))
   const agendaItens = useMemo(

@@ -54,9 +54,9 @@ export async function GET(request: NextRequest) {
     const recebimentosEscopo = recebimentos.filter((item) => ordemPorId.has(numero(item.os_id)))
     const pagamentosTecnicosEscopo = pagamentosTecnicos.filter((item) => ordemPorId.has(numero(item.os_id)))
 
-    const receitaServicosCompetencia = soma(ordens, (item) => valorPreferencial(item.cliente_valor_mao_obra, item.valor_mao_obra))
-    const receitaPecasOsCompetencia = soma(ordens, (item) => valorPreferencial(item.cliente_valor_pecas, item.valor_pecas))
-    const descontosOsCompetencia = soma(ordens, (item) => valorPreferencial(item.cliente_desconto, item.desconto))
+    const receitaServicosCompetencia = soma(ordens, receitaServicoOrdem)
+    const receitaPecasOsCompetencia = soma(ordens, receitaPecasOrdem)
+    const descontosOsCompetencia = soma(ordens, descontoOrdem)
     const receitaVendasBruta = soma(vendas, (item) => numero(item.subtotal))
     const descontosVendas = soma(vendas, (item) => numero(item.desconto))
     const recebimentosOs = soma(recebimentosEscopo, (item) => numero(item.valor)) || soma(ordens, recebimentoFallbackNoPeriodo(inicio, fim))
@@ -78,6 +78,7 @@ export async function GET(request: NextRequest) {
     const custoPecaOsReconhecido = (item: Registro) => {
       const ordem = ordemPorId.get(numero(item.os_id))
       if (!ordem) return 0
+      if (ordemEncerradaSemReparo(ordem)) return 0
       const parceiroRaw = Array.isArray(ordem.parceiros) ? ordem.parceiros[0] : ordem.parceiros
       const parceiro = (parceiroRaw ?? {}) as Registro
       const terceirizadoComCustoCompleto = String(parceiro.tipo_vinculo ?? '').toUpperCase() !== 'PROPRIO' && numero(ordem.tecnico_total) > 0
@@ -126,7 +127,7 @@ export async function GET(request: NextRequest) {
     if (base === 'COMPETENCIA') {
       for (const ordem of ordens) {
         adicionarMes(meses, ordem.finalizada_em, {
-          receita: valorPreferencial(ordem.cliente_total, ordem.total),
+          receita: receitaTotalOrdem(ordem),
           custos: custoTecnicoCompetencia(ordem),
         })
       }
@@ -184,15 +185,17 @@ export async function GET(request: NextRequest) {
 }
 
 async function carregarOrdens(supabase: ReturnType<typeof db>, unidades: number[], inicio: string, fim: string, base: BaseCalculo) {
+  const temTaxaDiagnostico = await colunaExiste(supabase, 'ordens_servico', 'encerramento_taxa_diagnostico')
   let query = supabase.from('ordens_servico').select(`
     id, unidade_id, numero_os, status, finalizada_em, data_pagamento, data_ultimo_recebimento,
     valor_pecas, valor_mao_obra, desconto, total,
     cliente_valor_pecas, cliente_valor_mao_obra, cliente_desconto, cliente_total,
+    ${temTaxaDiagnostico ? 'encerramento_taxa_diagnostico,' : ''}
     valor_recebido_cliente, tecnico_total, tecnico_pago_em,
     parceiros:parceiro_id ( tipo_vinculo, comissao_pecas_percentual, comissao_mao_obra_percentual )
   `).in('unidade_id', unidades)
 
-  if (base === 'COMPETENCIA') query = query.eq('status', 'FINALIZADA').gte('finalizada_em', inicio).lte('finalizada_em', fim)
+  if (base === 'COMPETENCIA') query = query.in('status', ['FINALIZADA', 'ENCERRADA_SEM_REPARO']).gte('finalizada_em', inicio).lte('finalizada_em', fim)
   const { data, error } = await query
   if (error) throw error
   return (data ?? []) as unknown as Registro[]
@@ -252,6 +255,7 @@ async function carregarComissoesPagas(supabase: ReturnType<typeof db>, inicio: s
 }
 
 function custoTecnicoCompetencia(ordem: Registro) {
+  if (ordemEncerradaSemReparo(ordem)) return 0
   const parceiroRaw = Array.isArray(ordem.parceiros) ? ordem.parceiros[0] : ordem.parceiros
   const parceiro = (parceiroRaw ?? {}) as Registro
   if (String(parceiro.tipo_vinculo ?? '').toUpperCase() === 'PROPRIO') {
@@ -299,9 +303,9 @@ function montarDetalhes(params: {
   if (base === 'COMPETENCIA') {
     for (const ordem of ordens) {
       const comum = { id: `os-${ordem.id}`, origem: 'OS', documento: String(ordem.numero_os ?? `OS #${ordem.id}`), descricao: 'Ordem de serviço finalizada', data: dataOrdem(ordem) }
-      adicionar('receitaServicos', { ...comum, valor: valorPreferencial(ordem.cliente_valor_mao_obra, ordem.valor_mao_obra) })
-      adicionar('receitaPecasOs', { ...comum, valor: valorPreferencial(ordem.cliente_valor_pecas, ordem.valor_pecas) })
-      adicionar('descontos', { ...comum, descricao: 'Desconto concedido na OS', valor: valorPreferencial(ordem.cliente_desconto, ordem.desconto) })
+      adicionar('receitaServicos', { ...comum, descricao: ordemEncerradaSemReparo(ordem) ? 'Taxa de diagnóstico/visita' : comum.descricao, valor: receitaServicoOrdem(ordem) })
+      adicionar('receitaPecasOs', { ...comum, valor: receitaPecasOrdem(ordem) })
+      adicionar('descontos', { ...comum, descricao: 'Desconto concedido na OS', valor: descontoOrdem(ordem) })
       adicionar('custoTecnicos', { ...comum, descricao: 'Custo técnico/comissão', valor: custoTecnicoCompetencia(ordem) })
     }
   } else {
@@ -442,6 +446,30 @@ function numero(value: unknown) {
 
 function valorPreferencial(principal: unknown, fallback: unknown) {
   return principal === null || principal === undefined || principal === '' ? numero(fallback) : numero(principal)
+}
+
+function ordemEncerradaSemReparo(ordem: Registro) {
+  return String(ordem.status ?? '').toUpperCase() === 'ENCERRADA_SEM_REPARO'
+}
+
+function receitaServicoOrdem(ordem: Registro) {
+  return ordemEncerradaSemReparo(ordem)
+    ? numero(ordem.encerramento_taxa_diagnostico)
+    : valorPreferencial(ordem.cliente_valor_mao_obra, ordem.valor_mao_obra)
+}
+
+function receitaPecasOrdem(ordem: Registro) {
+  return ordemEncerradaSemReparo(ordem) ? 0 : valorPreferencial(ordem.cliente_valor_pecas, ordem.valor_pecas)
+}
+
+function descontoOrdem(ordem: Registro) {
+  return ordemEncerradaSemReparo(ordem) ? 0 : valorPreferencial(ordem.cliente_desconto, ordem.desconto)
+}
+
+function receitaTotalOrdem(ordem: Registro) {
+  return ordemEncerradaSemReparo(ordem)
+    ? numero(ordem.encerramento_taxa_diagnostico)
+    : valorPreferencial(ordem.cliente_total, ordem.total)
 }
 
 function percentual(valor: number, base: number) {

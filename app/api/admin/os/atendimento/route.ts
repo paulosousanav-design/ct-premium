@@ -170,6 +170,7 @@ export async function GET(request: NextRequest) {
     const colunaValorRecebidoClienteExiste = await colunaExiste(supabase, 'ordens_servico', 'valor_recebido_cliente')
     const colunaDataUltimoRecebimentoExiste = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
     const colunaFormaRecebimentoExiste = await colunaExiste(supabase, 'ordens_servico', 'forma_recebimento')
+    const colunaEncerramentoExiste = await colunaExiste(supabase, 'ordens_servico', 'encerramento_motivo')
 
     const selectBase = `
         id,
@@ -181,6 +182,12 @@ export async function GET(request: NextRequest) {
         ${colunaReferenciaGarantidorExiste ? 'referencia_garantidor,' : ''}
         bloqueada,
         finalizada_em,
+        ${colunaEncerramentoExiste ? `
+        encerrada_sem_reparo_em,
+        encerramento_motivo,
+        encerramento_observacao,
+        encerramento_taxa_diagnostico,
+        encerrada_sem_reparo_por,` : ''}
         modelo,
         numero_serie,
         defeito,
@@ -456,17 +463,20 @@ export async function PATCH(request: NextRequest) {
     if (!osId || !statusFinal) {
       return NextResponse.json({ error: 'Dados invalidos para salvar a OS.' }, { status: 400 })
     }
+    if (statusFinal === 'ENCERRADA_SEM_REPARO') {
+      return NextResponse.json({ error: 'Use a opcao Encerrar sem reparo para registrar motivo e cobranca.' }, { status: 400 })
+    }
 
     const temUnidade = await colunaExiste(supabase, 'ordens_servico', 'unidade_id')
     const osAtualSelect: string = temUnidade
-      ? 'id, status, prioridade, bloqueada, unidade_id'
-      : 'id, status, prioridade, bloqueada'
+      ? 'id, status, prioridade, bloqueada, valor_recebido_cliente, unidade_id'
+      : 'id, status, prioridade, bloqueada, valor_recebido_cliente'
     const { data: osAtualData, error: osAtualError } = await supabase
       .from('ordens_servico')
       .select(osAtualSelect)
       .eq('id', osId)
       .maybeSingle()
-    const osAtual = osAtualData as unknown as { id: number; status: string | null; prioridade: string | null; bloqueada: boolean | null; unidade_id?: number | null } | null
+    const osAtual = osAtualData as unknown as { id: number; status: string | null; prioridade: string | null; bloqueada: boolean | null; valor_recebido_cliente?: number | string | null; unidade_id?: number | null } | null
 
     if (osAtualError) throw osAtualError
     if (!osAtual?.id) {
@@ -474,6 +484,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (temUnidade && Number(osAtual.unidade_id) !== auth.unidadeId) {
       return NextResponse.json({ error: 'OS nao encontrada nesta unidade.' }, { status: 404 })
+    }
+    if (osAtual.status === 'ENCERRADA_SEM_REPARO' && toNumber(osAtual.valor_recebido_cliente) > 0) {
+      return NextResponse.json({ error: 'Regularize a taxa de diagnostico recebida no Financeiro antes de reabrir esta OS.' }, { status: 400 })
     }
 
     const pecas = Array.isArray(body?.pecas) ? (body.pecas as PecaInput[]) : []
@@ -514,6 +527,16 @@ export async function PATCH(request: NextRequest) {
       desconto,
       total,
       observacao_tecnica: String(body?.observacaoTecnica ?? '').trim() || null,
+    }
+
+    const colunaEncerramentoExiste = await colunaExiste(supabase, 'ordens_servico', 'encerramento_motivo')
+    if (colunaEncerramentoExiste && osAtual.status === 'ENCERRADA_SEM_REPARO') {
+      updatePayload.encerramento_motivo = null
+      updatePayload.encerramento_observacao = null
+      updatePayload.encerramento_taxa_diagnostico = 0
+      updatePayload.encerrada_sem_reparo_em = null
+      updatePayload.encerrada_sem_reparo_por = null
+      updatePayload.status_financeiro = 'PENDENTE'
     }
 
     const colunasOrcamentoSeparadoExistem = await colunaExiste(supabase, 'ordens_servico', 'cliente_total')

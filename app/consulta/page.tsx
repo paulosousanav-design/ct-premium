@@ -459,6 +459,7 @@ function formatarStatusOs(status?: string | null) {
     PRONTO_AGUARDANDO_ENTREGA: 'Pronto aguardando entrega',
     CRITICA: 'Critica',
     FINALIZADA: 'Finalizada',
+    ENCERRADA_SEM_REPARO: 'Encerrada sem reparo',
   }
 
   return labels[String(status ?? '')] ?? String(status ?? '-')

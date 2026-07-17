@@ -426,7 +426,7 @@ function calcularResumo(
   }>
 ) {
   const executados = ordens.filter((os) => os.status === 'FINALIZADA').length
-  const abertas = ordens.filter((os) => os.status !== 'FINALIZADA').length
+  const abertas = ordens.filter((os) => !['FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(os.status))).length
   const emRevisao = ordens.filter((os) => os.status === 'AGUARDANDO_REVISAO').length
   const recebido = ordens
     .filter(tecnicoRecebido)

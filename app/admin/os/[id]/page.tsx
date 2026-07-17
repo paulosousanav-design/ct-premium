@@ -102,6 +102,11 @@ type OrdemServico = {
   referencia_garantidor?: string | null
   bloqueada: boolean | null
   finalizada_em: string | null
+  encerrada_sem_reparo_em?: string | null
+  encerramento_motivo?: string | null
+  encerramento_observacao?: string | null
+  encerramento_taxa_diagnostico?: number | string | null
+  encerrada_sem_reparo_por?: string | null
   modelo: string | null
   numero_serie: string | null
   defeito: string | null
@@ -201,6 +206,15 @@ const STATUS_OPTIONS = [
   { value: 'FINALIZADA', label: 'Finalizada' },
 ]
 
+const MOTIVOS_ENCERRAMENTO = [
+  { value: 'ORCAMENTO_NAO_APROVADO', label: 'Orçamento não aprovado pelo cliente' },
+  { value: 'CLIENTE_DESISTIU', label: 'Cliente desistiu do reparo' },
+  { value: 'SEM_POSSIBILIDADE_REPARO', label: 'Equipamento sem possibilidade de reparo' },
+  { value: 'CLIENTE_NAO_RESPONDEU', label: 'Cliente não respondeu' },
+  { value: 'EQUIPAMENTO_NAO_ENTREGUE', label: 'Equipamento não entregue ou não localizado' },
+  { value: 'OUTRO', label: 'Outro motivo' },
+] as const
+
 const PRIORIDADE_OPTIONS = [
   { value: 'NORMAL', label: 'Normal' },
   { value: 'URGENTE', label: 'Urgente' },
@@ -257,6 +271,10 @@ export default function OrdemServicoAtendimentoPage() {
   const [masterUnlocked, setMasterUnlocked] = useState(false)
   const [adiantamentoValor, setAdiantamentoValor] = useState('')
   const [adiantamentoForma, setAdiantamentoForma] = useState('PIX')
+  const [encerramentoAberto, setEncerramentoAberto] = useState(false)
+  const [encerramentoMotivo, setEncerramentoMotivo] = useState('ORCAMENTO_NAO_APROVADO')
+  const [encerramentoObservacao, setEncerramentoObservacao] = useState('')
+  const [encerramentoTaxa, setEncerramentoTaxa] = useState('0')
 
   const [form, setForm] = useState<FormState>({
     status: 'NOVA',
@@ -344,7 +362,9 @@ export default function OrdemServicoAtendimentoPage() {
   }, [buscaTecnico, tecnicosDisponiveis, tecnicosSugeridos])
 
   const isLocked =
-    os?.status === 'FINALIZADA' ? !masterUnlocked : os?.bloqueada === true
+    os?.status === 'FINALIZADA' || os?.status === 'ENCERRADA_SEM_REPARO'
+      ? !masterUnlocked
+      : os?.bloqueada === true
 
   async function carregarOS() {
     setLoading(true)
@@ -908,6 +928,46 @@ export default function OrdemServicoAtendimentoPage() {
     }
   }
 
+  async function encerrarSemReparo() {
+    if (!os || isLocked) return
+
+    const taxaDiagnostico = Number(String(encerramentoTaxa).replace(',', '.'))
+    if (!Number.isFinite(taxaDiagnostico) || taxaDiagnostico < 0) {
+      setErro('Informe uma taxa de diagnóstico válida.')
+      return
+    }
+    if (encerramentoMotivo === 'OUTRO' && !encerramentoObservacao.trim()) {
+      setErro('Descreva o motivo do encerramento.')
+      return
+    }
+
+    setSalvando(true)
+    setErro('')
+    setMensagem('')
+    try {
+      const response = await adminFetch('/api/admin/os/encerrar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          osId: os.id,
+          motivo: encerramentoMotivo,
+          observacao: encerramentoObservacao,
+          taxaDiagnostico,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Erro ao encerrar a OS sem reparo.')
+
+      setEncerramentoAberto(false)
+      await carregarOS()
+      setMensagem('OS encerrada sem reparo. O orçamento foi preservado apenas no histórico.')
+    } catch (error) {
+      setErro(formatarErro(error, 'Erro ao encerrar a OS sem reparo.'))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
   async function registrarAdiantamento() {
     if (!os || isLocked) return
 
@@ -1324,6 +1384,15 @@ export default function OrdemServicoAtendimentoPage() {
             >
               {salvando ? 'Salvando...' : 'Salvar e finalizar'}
             </button>
+
+            <button
+              type="button"
+              onClick={() => setEncerramentoAberto(true)}
+              disabled={salvando || isLocked}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Encerrar sem reparo
+            </button>
           </div>
         </header>
 
@@ -1348,6 +1417,19 @@ export default function OrdemServicoAtendimentoPage() {
           </div>
         )}
 
+        {os.status === 'ENCERRADA_SEM_REPARO' && (
+          <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+            <p className="font-bold text-slate-950">OS encerrada sem reparo</p>
+            <p className="mt-1">
+              Motivo: {rotuloMotivoEncerramento(os.encerramento_motivo)}.
+              {os.encerrada_sem_reparo_em ? ` Encerrada em ${formatDate(os.encerrada_sem_reparo_em)}.` : ''}
+            </p>
+            <p className="mt-1">Taxa de diagnóstico: {formatCurrency(toNumber(os.encerramento_taxa_diagnostico))}</p>
+            {os.encerramento_observacao && <p className="mt-1">Observação: {os.encerramento_observacao}</p>}
+            {os.encerrada_sem_reparo_por && <p className="mt-1 text-xs text-slate-500">Responsável: {os.encerrada_sem_reparo_por}</p>}
+          </div>
+        )}
+
         {erro && (
           <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600 whitespace-pre-wrap">
             {erro}
@@ -1366,7 +1448,7 @@ export default function OrdemServicoAtendimentoPage() {
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">Desbloqueio com senha master</h2>
                 <p className="text-sm text-slate-500">
-                  A OS finalizada fica bloqueada até usar a senha master.
+                  A OS encerrada fica bloqueada até usar a senha master.
                 </p>
               </div>
 
@@ -2204,11 +2286,55 @@ export default function OrdemServicoAtendimentoPage() {
           </div>
         </section>
       </div>
+
+      {encerramentoAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="titulo-encerramento" className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="titulo-encerramento" className="text-xl font-black text-slate-950">Encerrar OS sem reparo</h2>
+                <p className="mt-1 text-sm text-slate-500">O orçamento ficará preservado no histórico e não será contabilizado como serviço executado.</p>
+              </div>
+              <button type="button" onClick={() => setEncerramentoAberto(false)} disabled={salvando} className="rounded-lg px-3 py-1 text-xl text-slate-500 hover:bg-slate-100">×</button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <label className="block text-sm font-bold text-slate-700">
+                Motivo
+                <select value={encerramentoMotivo} onChange={(event) => setEncerramentoMotivo(event.target.value)} disabled={salvando} className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-orange-500">
+                  {MOTIVOS_ENCERRAMENTO.map((motivo) => <option key={motivo.value} value={motivo.value}>{motivo.label}</option>)}
+                </select>
+              </label>
+
+              <label className="block text-sm font-bold text-slate-700">
+                Taxa de diagnóstico ou visita
+                <input type="number" min="0" step="0.01" value={encerramentoTaxa} onChange={(event) => setEncerramentoTaxa(event.target.value)} disabled={salvando} className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-orange-500" />
+                <span className="mt-1 block text-xs font-normal text-slate-500">Deixe R$ 0,00 quando não houver cobrança.</span>
+              </label>
+
+              <label className="block text-sm font-bold text-slate-700">
+                Observação
+                <textarea rows={4} value={encerramentoObservacao} onChange={(event) => setEncerramentoObservacao(event.target.value)} disabled={salvando} placeholder="Ex.: cliente recusou o orçamento pelo WhatsApp em..." className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-orange-500" />
+              </label>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              Peças não serão baixadas do estoque e não será gerada comissão. Se houver recebimento antecipado, o Financeiro deverá ser regularizado antes do encerramento.
+            </div>
+
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => setEncerramentoAberto(false)} disabled={salvando} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-60">Voltar</button>
+              <button type="button" onClick={encerrarSemReparo} disabled={salvando} className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60">{salvando ? 'Encerrando...' : 'Confirmar encerramento'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
 
 function getHistoricoCardClass(acao?: string | null) {
+  if (acao === 'OS_ENCERRADA_SEM_REPARO') return 'border-slate-400 bg-slate-50'
   if (acao === 'ACEITE_TECNICO') return 'border-emerald-300 bg-emerald-50'
   if (acao === 'RECUSA_TECNICO') return 'border-red-300 bg-red-50'
   if (acao === 'ATRIBUICAO_TECNICO') return 'border-orange-200 bg-orange-50'
@@ -2221,8 +2347,13 @@ function formatarAcaoHistorico(acao?: string | null) {
   if (acao === 'ATRIBUICAO_TECNICO') return 'Técnico atribuído'
   if (acao === 'ALTERACAO_STATUS') return 'Status alterado'
   if (acao === 'OS_FINALIZADA') return 'OS finalizada'
+  if (acao === 'OS_ENCERRADA_SEM_REPARO') return 'OS encerrada sem reparo'
   if (acao === 'ATENDIMENTO_TECNICO') return 'Atendimento técnico'
   return acao ?? 'Evento'
+}
+
+function rotuloMotivoEncerramento(motivo?: string | null) {
+  return MOTIVOS_ENCERRAMENTO.find((item) => item.value === motivo)?.label ?? motivo ?? '-'
 }
 
 function Field({

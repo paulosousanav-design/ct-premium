@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
     const temValorRecebidoCliente = await colunaExiste(supabase, 'ordens_servico', 'valor_recebido_cliente')
     const temDataUltimoRecebimento = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
     const temDescontoRecebimentoCliente = await colunaExiste(supabase, 'ordens_servico', 'desconto_recebimento_cliente')
+    const temTaxaDiagnostico = await colunaExiste(supabase, 'ordens_servico', 'encerramento_taxa_diagnostico')
     const selectPagamentoTecnico = temPagamentoTecnico
       ? `
         tecnico_status_pagamento,
@@ -67,6 +68,7 @@ export async function GET(request: NextRequest) {
     const selectValorRecebidoCliente = temValorRecebidoCliente ? 'valor_recebido_cliente,' : ''
     const selectDataUltimoRecebimento = temDataUltimoRecebimento ? 'data_ultimo_recebimento,' : ''
     const selectDescontoRecebimentoCliente = temDescontoRecebimentoCliente ? 'desconto_recebimento_cliente,' : ''
+    const selectTaxaDiagnostico = temTaxaDiagnostico ? 'encerramento_taxa_diagnostico,' : ''
 
     const selectOrdens = `
         id,
@@ -79,6 +81,7 @@ export async function GET(request: NextRequest) {
         ${selectFormaRecebimento}
         total,
         cliente_total,
+        ${selectTaxaDiagnostico}
         ${selectValorRecebidoCliente}
         ${selectDescontoRecebimentoCliente}
         tecnico_total,
@@ -293,8 +296,10 @@ export async function PATCH(request: NextRequest) {
       const temValorRecebidoCliente = await colunaExiste(supabase, 'ordens_servico', 'valor_recebido_cliente')
       const temDataUltimoRecebimento = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
       const temDescontoRecebimentoCliente = await colunaExiste(supabase, 'ordens_servico', 'desconto_recebimento_cliente')
+      const temTaxaDiagnostico = await colunaExiste(supabase, 'ordens_servico', 'encerramento_taxa_diagnostico')
       const selectValorRecebido = temValorRecebidoCliente ? ', valor_recebido_cliente' : ''
       const selectDescontoRecebimento = temDescontoRecebimentoCliente ? ', desconto_recebimento_cliente' : ''
+      const selectTaxaDiagnostico = temTaxaDiagnostico ? ', encerramento_taxa_diagnostico' : ''
       const ordemAtualQuery = supabase.from('ordens_servico') as unknown as {
         select: (columns: string) => {
           eq: (column: string, value: number) => {
@@ -307,26 +312,30 @@ export async function PATCH(request: NextRequest) {
               cliente_total?: number | string | null
               valor_recebido_cliente?: number | string | null
               desconto_recebimento_cliente?: number | string | null
+              encerramento_taxa_diagnostico?: number | string | null
             }) | null; error: unknown }>
           }
         }
       }
       const { data: ordemAtual, error: ordemAtualError } = await ordemAtualQuery
-        .select(`id, numero_os, status, status_financeiro, total, cliente_total${selectValorRecebido}${selectDescontoRecebimento}`)
+        .select(`id, numero_os, status, status_financeiro, total, cliente_total${selectTaxaDiagnostico}${selectValorRecebido}${selectDescontoRecebimento}`)
         .eq('id', id)
         .maybeSingle()
 
       if (ordemAtualError) throw ordemAtualError
 
       const pagamento = status === 'PARCIAL' || status === 'RECEBIDO'
-      if (ordemAtual?.status !== 'FINALIZADA' && !(pagamento && status === 'PARCIAL')) {
+      const encerradaComTaxa = ordemAtual?.status === 'ENCERRADA_SEM_REPARO' && toNumber(ordemAtual.encerramento_taxa_diagnostico) > 0
+      if (ordemAtual?.status !== 'FINALIZADA' && !encerradaComTaxa && !(pagamento && status === 'PARCIAL')) {
         return NextResponse.json(
           { error: 'Somente OS finalizadas podem ser baixadas no recebimento. Para OS em andamento, lance como adiantamento parcial.' },
           { status: 400 }
         )
       }
 
-      const totalCliente = valorPreferencial(ordemAtual?.cliente_total, ordemAtual?.total)
+      const totalCliente = encerradaComTaxa
+        ? toNumber(ordemAtual?.encerramento_taxa_diagnostico)
+        : valorPreferencial(ordemAtual?.cliente_total, ordemAtual?.total)
       const recebidoAtual = valorRecebidoCliente(ordemAtual)
       const descontoAtual = descontoRecebimentoCliente(ordemAtual)
       const valorLancado = toNumber(body?.valor)
@@ -596,7 +605,9 @@ function valorRecebidoCliente(ordem: Record<string, unknown> | null | undefined)
   const recebido = toNumber(ordem.valor_recebido_cliente as never)
   if (recebido > 0) return recebido
   return String(ordem.status_financeiro ?? '').toUpperCase() === 'RECEBIDO'
-    ? valorPreferencial(ordem.cliente_total, ordem.total)
+    ? String(ordem.status ?? '').toUpperCase() === 'ENCERRADA_SEM_REPARO'
+      ? toNumber(ordem.encerramento_taxa_diagnostico as never)
+      : valorPreferencial(ordem.cliente_total, ordem.total)
     : 0
 }
 

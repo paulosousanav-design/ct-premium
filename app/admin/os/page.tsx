@@ -1742,6 +1742,8 @@ function StatusBadge({ status }: { status: string }) {
       ? 'animate-pulse bg-emerald-500 text-white shadow-sm shadow-emerald-300'
       : status === 'FINALIZADA'
       ? 'bg-emerald-100 text-emerald-700'
+      : status === 'ENCERRADA_SEM_REPARO'
+        ? 'bg-slate-200 text-slate-700'
       : status === 'EM_ATENDIMENTO'
         ? 'bg-blue-100 text-blue-700'
         : status === 'EM_TRIAGEM'
@@ -1770,6 +1772,7 @@ function formatarStatusOs(status?: string | null) {
     PRONTO_AGUARDANDO_ENTREGA: 'Pronto/entrega',
     CRITICA: 'Critica',
     FINALIZADA: 'Finalizada',
+    ENCERRADA_SEM_REPARO: 'Encerrada sem reparo',
   }
 
   return labels[String(status ?? '')] ?? String(status ?? '-')

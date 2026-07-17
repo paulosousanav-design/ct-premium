@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
     let ordensQuery = supabase
       .from('ordens_servico')
       .select('id, numero_os, parceiro_id, data_pagamento, cliente_valor_pecas, valor_pecas, cliente_valor_mao_obra, valor_mao_obra, cliente_total, total')
+      .eq('status', 'FINALIZADA')
       .eq('status_financeiro', 'RECEBIDO')
       .gte('data_pagamento', `${inicio}T00:00:00.000Z`)
       .lte('data_pagamento', `${fim}T23:59:59.999Z`)
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
 
     const { data: ordens, error: ordensError } = await supabase.from('ordens_servico')
       .select('id, numero_os, parceiro_id, data_pagamento, cliente_valor_pecas, valor_pecas, cliente_valor_mao_obra, valor_mao_obra, cliente_total, total')
-      .eq('parceiro_id', parceiroId).eq('status_financeiro', 'RECEBIDO')
+      .eq('parceiro_id', parceiroId).eq('status', 'FINALIZADA').eq('status_financeiro', 'RECEBIDO')
       .gte('data_pagamento', `${inicio}T00:00:00.000Z`).lte('data_pagamento', `${fim}T23:59:59.999Z`)
     if (ordensError) throw ordensError
     const ids = (ordens ?? []).map((item) => Number(item.id))

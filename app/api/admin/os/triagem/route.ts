@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
     let ordensQuery = supabase
       .from('ordens_servico')
       .select(ordensSelect)
-      .neq('status', 'FINALIZADA')
+      .not('status', 'in', '("FINALIZADA","ENCERRADA_SEM_REPARO")')
       .order('created_at', { ascending: false })
     if (await colunaExiste(supabase, 'ordens_servico', 'unidade_id')) {
       ordensQuery = ordensQuery.eq('unidade_id', auth.unidadeId)
@@ -250,6 +250,9 @@ export async function PATCH(request: NextRequest) {
     if (osAtualError) throw osAtualError
     if (!osAtual) {
       return NextResponse.json({ error: 'OS nao encontrada.' }, { status: 404 })
+    }
+    if (osAtual.status === 'FINALIZADA' || osAtual.status === 'ENCERRADA_SEM_REPARO') {
+      return NextResponse.json({ error: 'A OS encerrada precisa ser reaberta com a senha master antes de ser alterada.' }, { status: 400 })
     }
 
     let parceiro:

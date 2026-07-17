@@ -17,6 +17,7 @@ type OrdemRelatorio = {
   garantia?: boolean | null
   total?: number | string | null
   cliente_total?: number | string | null
+  encerramento_taxa_diagnostico?: number | string | null
   valor_recebido_cliente?: number | string | null
   desconto_recebimento_cliente?: number | string | null
   tecnico_total?: number | string | null
@@ -96,6 +97,7 @@ export async function GET(request: NextRequest) {
     const temDataUltimoRecebimento = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
     const temTecnicoPagoEm = await colunaExiste(supabase, 'ordens_servico', 'tecnico_pago_em')
     const temGarantidor = await colunaExiste(supabase, 'ordens_servico', 'garantidor_id')
+    const temTaxaDiagnostico = await colunaExiste(supabase, 'ordens_servico', 'encerramento_taxa_diagnostico')
 
     const selectOrdens = `
       id,
@@ -106,6 +108,7 @@ export async function GET(request: NextRequest) {
       garantia,
       total,
       ${temClienteTotal ? 'cliente_total,' : ''}
+      ${temTaxaDiagnostico ? 'encerramento_taxa_diagnostico,' : ''}
       ${temTecnicoTotal ? 'tecnico_total,' : ''}
       ${temFinanceiro ? 'status_financeiro,' : ''}
       ${temDataPagamento ? 'data_pagamento,' : ''}
@@ -178,7 +181,7 @@ export async function GET(request: NextRequest) {
 
     const financeiro = ordensPeriodo.reduce(
       (acc, ordem) => {
-        const valorCliente = valorPreferencial(ordem.cliente_total, ordem.total)
+        const valorCliente = valorClienteOrdem(ordem)
         const valorTecnico = valorPreferencial(ordem.tecnico_total, 0)
         const recebidoCliente = valorRecebidoCliente(ordem)
         const descontoRecebimento = descontoRecebimentoCliente(ordem)
@@ -302,7 +305,7 @@ export async function GET(request: NextRequest) {
         status: ordem.status,
         garantia: Boolean(ordem.garantia),
         origemFinanceira: ehGarantidorOuSeguradora(ordem) ? 'GARANTIDOR/SEGURADORA' : 'CLIENTE',
-        valor: valorPreferencial(ordem.cliente_total, ordem.total),
+        valor: valorClienteOrdem(ordem),
         criada_em: ordem.created_at,
       })),
     })
@@ -555,7 +558,7 @@ function agruparPorNome(ordens: OrdemRelatorio[], getNome: (ordem: OrdemRelatori
     const nome = getNome(ordem)
     const atual = mapa.get(nome) ?? { nome, total: 0, valor: 0 }
     atual.total += 1
-    atual.valor += valorPreferencial(ordem.cliente_total, ordem.total)
+    atual.valor += valorClienteOrdem(ordem)
     mapa.set(nome, atual)
   }
 
@@ -611,7 +614,8 @@ function calcularSla(ordens: OrdemRelatorio[], dataReferencia: Date, limiteDias:
     .filter((item): item is { ordem: OrdemRelatorio; dias: number } => Boolean(item))
   const total = itens.length
   const finalizadas = itens.filter((item) => item.ordem.status === 'FINALIZADA').length
-  const abertas = total - finalizadas
+  const encerradasSemReparo = itens.filter((item) => item.ordem.status === 'ENCERRADA_SEM_REPARO').length
+  const abertas = total - finalizadas - encerradasSemReparo
   const foraPrazo = itens.filter((item) => item.dias > limiteDias).length
   const dentroPrazo = total - foraPrazo
   const somaDias = itens.reduce((acc, item) => acc + item.dias, 0)
@@ -635,7 +639,7 @@ function diasCiclo(ordem: OrdemRelatorio, dataReferencia: Date) {
   if (!Number.isFinite(inicio.getTime())) return null
 
   const fim =
-    ordem.status === 'FINALIZADA' && ordem.finalizada_em
+    ['FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(ordem.status)) && ordem.finalizada_em
       ? new Date(ordem.finalizada_em)
       : dataReferencia
 
@@ -675,8 +679,8 @@ function montarTicketPorCategoria(ordens: OrdemRelatorio[]) {
       menorMttrHoras: null,
       maiorMttrHoras: null,
     }
-    const faturamento = valorPreferencial(ordem.cliente_total, ordem.total)
-    const tecnico = valorPreferencial(ordem.tecnico_total, 0)
+    const faturamento = valorClienteOrdem(ordem)
+    const tecnico = ordem.status === 'ENCERRADA_SEM_REPARO' ? 0 : valorPreferencial(ordem.tecnico_total, 0)
     const mttrHoras = horasAteFinalizacao(ordem)
 
     atual.totalOs += 1
@@ -725,7 +729,7 @@ function arredondarHoras(value: number) {
 }
 
 function ordensComValor(ordens: OrdemRelatorio[]) {
-  return ordens.filter((ordem) => valorPreferencial(ordem.cliente_total, ordem.total) > 0)
+  return ordens.filter((ordem) => valorClienteOrdem(ordem) > 0)
 }
 
 function mediaValor(total: number, quantidade: number) {
@@ -775,8 +779,8 @@ function montarResumoMensal(
     const mes = mapa.get(chave)
     if (!mes) continue
 
-    const valor = valorPreferencial(ordem.cliente_total, ordem.total)
-    const valorTecnico = valorPreferencial(ordem.tecnico_total, 0)
+    const valor = valorClienteOrdem(ordem)
+    const valorTecnico = ordem.status === 'ENCERRADA_SEM_REPARO' ? 0 : valorPreferencial(ordem.tecnico_total, 0)
     mes.totalOs += 1
     mes.valor += valor
     const recebido = valorRecebidoCliente(ordem)
@@ -837,10 +841,16 @@ function valorPreferencial(principal: unknown, fallback: unknown) {
 }
 
 function valorRecebidoCliente(ordem: OrdemRelatorio) {
-  const total = valorPreferencial(ordem.cliente_total, ordem.total)
+  const total = valorClienteOrdem(ordem)
   const recebido = toNumber(ordem.valor_recebido_cliente)
   if (recebido > 0) return Math.min(recebido, total)
   return String(ordem.status_financeiro ?? '').toUpperCase() === 'RECEBIDO' ? total : 0
+}
+
+function valorClienteOrdem(ordem: OrdemRelatorio) {
+  return ordem.status === 'ENCERRADA_SEM_REPARO'
+    ? toNumber(ordem.encerramento_taxa_diagnostico)
+    : valorPreferencial(ordem.cliente_total, ordem.total)
 }
 
 function descontoRecebimentoCliente(ordem: OrdemRelatorio) {

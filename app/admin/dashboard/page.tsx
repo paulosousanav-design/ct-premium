@@ -20,6 +20,7 @@ type DashboardStats = {
   notificacoes: number
   ordensTotal: number
   finalizadas: number
+  encerradasSemReparo: number
   osSemTecnico3Dias: number
   orcamentosPendentes: number
   aReceberCliente: number
@@ -138,6 +139,7 @@ export default function DashboardPage() {
     notificacoes: 0,
     ordensTotal: 0,
     finalizadas: 0,
+    encerradasSemReparo: 0,
     osSemTecnico3Dias: 0,
     orcamentosPendentes: 0,
     aReceberCliente: 0,
@@ -179,7 +181,7 @@ export default function DashboardPage() {
             .select('*', { count: 'exact', head: true })
             .is('parceiro_id', null)
             .lte('created_at', limiteSemTecnico.toISOString())
-            .not('status', 'in', '("FINALIZADA","CANCELADA")')
+            .not('status', 'in', '("FINALIZADA","CANCELADA","ENCERRADA_SEM_REPARO")')
 
           query = aplicarFiltroOrigemQuery(query, filtroOrigem)
           query = aplicarFiltroGarantidorQuery(query, filtroGarantidor)
@@ -352,6 +354,7 @@ export default function DashboardPage() {
         notificacoes,
         ordensTotal: relatoriosResumo.ordensTotal,
         finalizadas: relatoriosResumo.finalizadas,
+        encerradasSemReparo: relatoriosResumo.encerradasSemReparo,
         osSemTecnico3Dias,
         orcamentosPendentes,
         aReceberCliente: relatoriosResumo.aReceberCliente,
@@ -679,7 +682,7 @@ export default function DashboardPage() {
             <div className="mt-4 grid gap-3 text-sm text-slate-600 md:grid-cols-3">
               <InfoItem
                 label="OS Abertas"
-                value={String(Math.max(stats.ordensTotal - stats.finalizadas, 0))}
+                value={String(Math.max(stats.ordensTotal - stats.finalizadas - stats.encerradasSemReparo, 0))}
               />
               <InfoItem label="OS Finalizadas" value={String(stats.finalizadas)} />
               <InfoItem label="OS Críticas" value={String(stats.criticas)} tone="critical" />
@@ -1021,6 +1024,7 @@ async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard, gar
       criticas: countStatus('CRITICA'),
       ordensTotal: Number(cards.totalOs ?? 0) || 0,
       finalizadas: Number(cards.finalizadas ?? 0) || 0,
+      encerradasSemReparo: countStatus('ENCERRADA_SEM_REPARO'),
       aReceberCliente: Number(cards.aReceberCliente ?? 0) || 0,
       recebidoCliente: Number(cards.recebidoCliente ?? 0) || 0,
       aReceberGarantidor: Number(cards.aReceberGarantidor ?? 0) || 0,
@@ -1044,6 +1048,7 @@ async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard, gar
       criticas: 0,
       ordensTotal: 0,
       finalizadas: 0,
+      encerradasSemReparo: 0,
       aReceberCliente: 0,
       recebidoCliente: 0,
       aReceberGarantidor: 0,

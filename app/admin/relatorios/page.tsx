@@ -1057,6 +1057,7 @@ function formatStatus(status?: string | null) {
     AGUARDANDO_PECA: 'Aguard. peca',
     CRITICA: 'Critica',
     FINALIZADA: 'Finalizada',
+    ENCERRADA_SEM_REPARO: 'Encerrada sem reparo',
   }
 
   return map[String(status ?? '')] ?? String(status ?? '-')

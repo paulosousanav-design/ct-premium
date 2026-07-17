@@ -27,6 +27,7 @@ type OrdemFinanceira = {
   tecnico_pago_em?: string | null
   forma_pagamento_tecnico?: string | null
   cliente_total?: number | string | null
+  encerramento_taxa_diagnostico?: number | string | null
   parceiro_id?: number | null
   garantidor_id?: number | null
   garantia?: boolean | null
@@ -185,7 +186,7 @@ export default function FinanceiroPage() {
       const atendeOrigem = filtroOrigemRecebimento === 'GERAL' || (filtroOrigemRecebimento === 'GARANTIDOR' ? origemGarantidor : !origemGarantidor)
       const atendeGarantidor = filtroOrigemRecebimento !== 'GARANTIDOR' || filtroGarantidor === 'TODOS' || String(os.garantidor_id ?? '') === filtroGarantidor
       const atendeBusca = !busca.trim() || texto.includes(busca.trim().toLowerCase())
-      return os.status === 'FINALIZADA' && valorCliente(os) > 0 && atendeFiltro && atendeOrigem && atendeGarantidor && atendeBusca
+      return osRecebivel(os) && atendeFiltro && atendeOrigem && atendeGarantidor && atendeBusca
     })
   }, [busca, filtro, filtroGarantidor, filtroOrigemRecebimento, ordens])
 
@@ -200,7 +201,7 @@ export default function FinanceiroPage() {
       const origemGarantidor = ehGarantidorOuSeguradora(os)
       const atendeOrigem = filtroOrigemRecebimento === 'GERAL' || (filtroOrigemRecebimento === 'GARANTIDOR' ? origemGarantidor : !origemGarantidor)
       const atendeGarantidor = filtroOrigemRecebimento !== 'GARANTIDOR' || filtroGarantidor === 'TODOS' || String(os.garantidor_id ?? '') === filtroGarantidor
-      return os.status === 'FINALIZADA' && valorCliente(os) > 0 && atendeOrigem && atendeGarantidor
+      return osRecebivel(os) && atendeOrigem && atendeGarantidor
     })
     return {
       total: base.reduce((acc, os) => acc + valorCliente(os), 0),
@@ -234,14 +235,15 @@ export default function FinanceiroPage() {
 
   const resumo = useMemo(() => {
     const ordensFinalizadas = ordens.filter((os) => os.status === 'FINALIZADA')
+    const ordensRecebiveis = ordens.filter(osRecebivel)
     const ordensComRecebimento = ordens.filter((os) => valorRecebidoCliente(os) > 0)
-    const receberCliente = ordensFinalizadas
+    const receberCliente = ordensRecebiveis
       .filter((os) => !ehGarantidorOuSeguradora(os) && saldoCliente(os) > 0)
       .reduce((acc, os) => acc + saldoCliente(os), 0)
     const recebidoCliente = ordensComRecebimento
       .filter((os) => !ehGarantidorOuSeguradora(os) && valorRecebidoCliente(os) > 0)
       .reduce((acc, os) => acc + valorRecebidoCliente(os), 0)
-    const receberGarantidor = ordensFinalizadas
+    const receberGarantidor = ordensRecebiveis
       .filter((os) => ehGarantidorOuSeguradora(os) && saldoCliente(os) > 0)
       .reduce((acc, os) => acc + saldoCliente(os), 0)
     const recebidoGarantidor = ordensComRecebimento
@@ -1339,7 +1341,12 @@ function tecnicoProprio(os: OrdemFinanceira) {
 }
 
 function valorCliente(os: OrdemFinanceira) {
+  if (os.status === 'ENCERRADA_SEM_REPARO') return toNumber(os.encerramento_taxa_diagnostico)
   return valorPreferencial(os.cliente_total, os.total)
+}
+
+function osRecebivel(os: OrdemFinanceira) {
+  return (os.status === 'FINALIZADA' || os.status === 'ENCERRADA_SEM_REPARO') && valorCliente(os) > 0
 }
 
 function valorRecebidoCliente(os: OrdemFinanceira) {
