@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
 import { adminFetch } from '@/lib/admin-fetch'
 
@@ -253,9 +254,14 @@ export default function PecasPage() {
           <h1 className="text-2xl font-black text-slate-950">Cadastro de Pecas</h1>
           <p className="text-sm text-slate-500">Pecas cadastradas ficam disponiveis para uso nas ordens de servico pelo admin.</p>
         </div>
-        <button type="button" onClick={carregarPecas} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white">
-          Atualizar
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Link href="/admin/pecas/importar-xml" className="rounded-lg bg-orange-600 px-4 py-2 text-center text-sm font-bold text-white">
+            Importar XML da NF-e
+          </Link>
+          <button type="button" onClick={carregarPecas} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white">
+            Atualizar
+          </button>
+        </div>
       </header>
 
       {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{erro}</div>}

@@ -27,6 +27,8 @@ const tabelasBackup = [
   'garantidores',
   'pecas',
   'pecas_movimentacoes',
+  'nfe_importacoes',
+  'nfe_importacao_itens',
   'contas_pagar',
   'financeiro_historico',
   'tecnico_documentos',
