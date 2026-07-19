@@ -291,6 +291,10 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (status === 'AGUARDANDO_REVISAO') updatePayload.orcamento_status = 'PENDENTE'
+    if (status === 'PRONTO_AGUARDANDO_ENTREGA') {
+      updatePayload.orcamento_status = 'APROVADO'
+      updatePayload.orcamento_resposta_em = new Date().toISOString()
+    }
 
     const { error: updateError } = await supabase
       .from('ordens_servico')
@@ -311,6 +315,7 @@ export async function PATCH(request: NextRequest) {
 
     const resumo = [
       `Status: ${osAtual.status ?? '-'} -> ${status}`,
+      status === 'PRONTO_AGUARDANDO_ENTREGA' ? 'Orcamento aprovado automaticamente.' : '',
       status === 'AGUARDANDO_REVISAO' ? 'Orcamento enviado para revisao administrativa.' : '',
       String(body?.diagnosticoTecnico ?? '').trim() ? `Diagnostico: ${String(body.diagnosticoTecnico).trim()}` : '',
       String(body?.servicoExecutado ?? '').trim() ? `Servico: ${String(body.servicoExecutado).trim()}` : '',

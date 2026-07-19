@@ -4,6 +4,10 @@ import { requireAdminUnidade } from '@/lib/admin-unidade'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const STATUS_EXIGEM_TECNICO = new Set([
+  'EM_ATENDIMENTO', 'AGUARDANDO_REVISAO', 'AGUARDANDO_APROVACAO',
+  'AGUARDANDO_PECA', 'PRONTO_AGUARDANDO_ENTREGA', 'FINALIZADA',
+])
 
 type Cliente = {
   id: number
@@ -240,7 +244,7 @@ export async function PATCH(request: NextRequest) {
 
     let osAtualQuery = supabase
       .from('ordens_servico')
-      .select('id, status, prioridade, parceiro_id')
+      .select('id, status, prioridade, parceiro_id, tecnico_avulso_nome')
       .eq('id', osId)
     if (await colunaExiste(supabase, 'ordens_servico', 'unidade_id')) {
       osAtualQuery = osAtualQuery.eq('unidade_id', auth.unidadeId)
@@ -253,6 +257,15 @@ export async function PATCH(request: NextRequest) {
     }
     if (osAtual.status === 'FINALIZADA' || osAtual.status === 'ENCERRADA_SEM_REPARO') {
       return NextResponse.json({ error: 'A OS encerrada precisa ser reaberta com a senha master antes de ser alterada.' }, { status: 400 })
+    }
+    if (
+      statusSolicitado && STATUS_EXIGEM_TECNICO.has(statusSolicitado) &&
+      !parceiroId && !osAtual.parceiro_id && !String(osAtual.tecnico_avulso_nome ?? '').trim()
+    ) {
+      return NextResponse.json(
+        { error: 'Selecione um tecnico antes de iniciar o tratamento da OS.' },
+        { status: 400 }
+      )
     }
 
     let parceiro:
@@ -278,11 +291,15 @@ export async function PATCH(request: NextRequest) {
       statusSolicitado ??
       (parceiroId && osAtual.status === 'NOVA' ? 'EM_TRIAGEM' : osAtual.status)
 
-    const updatePayload: { status: string | null; parceiro_id?: number } = {
+    const updatePayload: Record<string, unknown> = {
       status: novoStatus,
     }
 
     if (parceiroId) updatePayload.parceiro_id = parceiroId
+    if (novoStatus === 'PRONTO_AGUARDANDO_ENTREGA') {
+      updatePayload.orcamento_status = 'APROVADO'
+      updatePayload.orcamento_resposta_em = new Date().toISOString()
+    }
 
     const { error: updateError } = await supabase
       .from('ordens_servico')
@@ -304,7 +321,7 @@ export async function PATCH(request: NextRequest) {
       prioridade_nova: osAtual.prioridade,
       descricao: parceiroId
         ? `Tecnico externo atribuido: ${nomeTecnico}`
-        : `Status alterado para ${novoStatus}`,
+        : `Status alterado para ${novoStatus}${novoStatus === 'PRONTO_AGUARDANDO_ENTREGA' ? '. Orcamento aprovado automaticamente.' : ''}`,
       responsavel: `${auth.nome} (${auth.email})`,
     })
 

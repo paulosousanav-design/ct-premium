@@ -4,6 +4,10 @@ import { requireAdminUnidade } from '@/lib/admin-unidade'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const STATUS_EXIGEM_TECNICO = new Set([
+  'EM_ATENDIMENTO', 'AGUARDANDO_REVISAO', 'AGUARDANDO_APROVACAO',
+  'AGUARDANDO_PECA', 'PRONTO_AGUARDANDO_ENTREGA', 'FINALIZADA',
+])
 
 type PecaInput = {
   origem?: string | null
@@ -463,7 +467,7 @@ export async function PATCH(request: NextRequest) {
 
     const body = await request.json().catch(() => null)
     const osId = Number(body?.osId)
-    const statusFinal = String(body?.status ?? '').trim()
+    const statusFinal = String(body?.status ?? '').trim().toUpperCase()
     const prioridade = String(body?.prioridade ?? 'NORMAL').trim()
     const supabase = getSupabaseAdmin()
 
@@ -480,14 +484,14 @@ export async function PATCH(request: NextRequest) {
 
     const temUnidade = await colunaExiste(supabase, 'ordens_servico', 'unidade_id')
     const osAtualSelect: string = temUnidade
-      ? 'id, status, prioridade, bloqueada, valor_recebido_cliente, unidade_id'
-      : 'id, status, prioridade, bloqueada, valor_recebido_cliente'
+      ? 'id, status, prioridade, bloqueada, valor_recebido_cliente, parceiro_id, tecnico_avulso_nome, unidade_id'
+      : 'id, status, prioridade, bloqueada, valor_recebido_cliente, parceiro_id, tecnico_avulso_nome'
     const { data: osAtualData, error: osAtualError } = await supabase
       .from('ordens_servico')
       .select(osAtualSelect)
       .eq('id', osId)
       .maybeSingle()
-    const osAtual = osAtualData as unknown as { id: number; status: string | null; prioridade: string | null; bloqueada: boolean | null; valor_recebido_cliente?: number | string | null; unidade_id?: number | null } | null
+    const osAtual = osAtualData as unknown as { id: number; status: string | null; prioridade: string | null; bloqueada: boolean | null; valor_recebido_cliente?: number | string | null; parceiro_id?: number | null; tecnico_avulso_nome?: string | null; unidade_id?: number | null } | null
 
     if (osAtualError) throw osAtualError
     if (!osAtual?.id) {
@@ -495,6 +499,15 @@ export async function PATCH(request: NextRequest) {
     }
     if (temUnidade && Number(osAtual.unidade_id) !== auth.unidadeId) {
       return NextResponse.json({ error: 'OS nao encontrada nesta unidade.' }, { status: 404 })
+    }
+    if (
+      STATUS_EXIGEM_TECNICO.has(statusFinal) &&
+      !osAtual.parceiro_id && !String(osAtual.tecnico_avulso_nome ?? '').trim()
+    ) {
+      return NextResponse.json(
+        { error: 'Selecione um tecnico antes de iniciar o tratamento da OS.' },
+        { status: 400 }
+      )
     }
     if (osAtual.status === 'ENCERRADA_SEM_REPARO' && toNumber(osAtual.valor_recebido_cliente) > 0) {
       return NextResponse.json({ error: 'Regularize a taxa de diagnostico recebida no Financeiro antes de reabrir esta OS.' }, { status: 400 })
@@ -538,6 +551,10 @@ export async function PATCH(request: NextRequest) {
       desconto,
       total,
       observacao_tecnica: String(body?.observacaoTecnica ?? '').trim() || null,
+    }
+    if (statusFinal === 'PRONTO_AGUARDANDO_ENTREGA') {
+      updatePayload.orcamento_status = 'APROVADO'
+      updatePayload.orcamento_resposta_em = new Date().toISOString()
     }
 
     const colunaEntregaExiste = await colunaExiste(supabase, 'ordens_servico', 'equipamento_entrega_status')
@@ -634,6 +651,7 @@ export async function PATCH(request: NextRequest) {
 
     const resumo = [
       `Status: ${osAtual.status ?? 'NOVA'} -> ${statusFinal}`,
+      statusFinal === 'PRONTO_AGUARDANDO_ENTREGA' ? 'Orcamento aprovado automaticamente.' : '',
       `Prioridade: ${osAtual.prioridade ?? 'NORMAL'} -> ${prioridade}`,
       `Garantia: ${body?.garantia === 'SIM' ? 'SIM' : 'NAO'}`,
       body?.garantia === 'SIM' && String(body?.referenciaGarantidor ?? '').trim()

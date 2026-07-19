@@ -163,6 +163,7 @@ export default function DashboardPage() {
       const notificacoes = Number(dashboardData?.notificacoes ?? 0)
       const osSemTecnico3Dias = Number(dashboardData?.osSemTecnico3Dias ?? 0)
       const orcamentosPendentes = Number(dashboardData?.orcamentosPendentes ?? 0)
+      const criticasAtivas = Number(dashboardData?.criticas ?? 0)
       const ultimasOsData = (dashboardData?.ultimasOs ?? []) as OrdemResumo[]
       const volumeData = (dashboardData?.volume ?? []) as Array<{ id: number; created_at: string }>
       const historicoData = (dashboardData?.historico ?? []) as HistoricoResumo[]
@@ -202,7 +203,7 @@ export default function DashboardPage() {
         emAtendimento: relatoriosResumo.emAtendimento,
         aguardandoRevisao: relatoriosResumo.aguardandoRevisao,
         aguardandoPeca: relatoriosResumo.aguardandoPeca,
-        criticas: relatoriosResumo.criticas,
+        criticas: criticasAtivas,
         parceirosAtivos: resumoEscopo.tecnicos,
         parceirosPendentes: parceirosResumo.pendentes,
         clientes: resumoEscopo.clientes,

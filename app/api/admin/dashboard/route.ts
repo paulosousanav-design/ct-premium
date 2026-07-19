@@ -4,6 +4,10 @@ import { requireAdminEscopoGerencial } from '@/lib/admin-unidade'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const STATUS_EXIGEM_TECNICO = new Set([
+  'EM_ATENDIMENTO', 'AGUARDANDO_REVISAO', 'AGUARDANDO_APROVACAO',
+  'AGUARDANDO_PECA', 'PRONTO_AGUARDANDO_ENTREGA', 'FINALIZADA',
+])
 
 function db() {
   if (!supabaseUrl || !serviceRoleKey) throw new Error('Configuracao do Supabase ausente no servidor.')
@@ -44,6 +48,13 @@ export async function GET(request: NextRequest) {
     let pendentesQuery = supabase.from('ordens_servico').select('*', { count: 'exact', head: true }).eq('status', 'AGUARDANDO_APROVACAO')
     pendentesQuery = filtros(pendentesQuery, origem, garantidorId)
     pendentesQuery = escopo(pendentesQuery, auth.unidadeId, auth.unidadesPermitidas)
+    let criticasQuery = supabase.from('ordens_servico').select('*', { count: 'exact', head: true }).eq('status', 'CRITICA')
+    criticasQuery = filtros(criticasQuery, origem, garantidorId)
+    criticasQuery = escopo(criticasQuery, auth.unidadeId, auth.unidadesPermitidas)
+    let criticasRecentesQuery = supabase.from('ordens_servico').select('id, numero_os, status, prioridade, created_at')
+      .eq('status', 'CRITICA').order('created_at', { ascending: false }).limit(8)
+    criticasRecentesQuery = filtros(criticasRecentesQuery, origem, garantidorId)
+    criticasRecentesQuery = escopo(criticasRecentesQuery, auth.unidadeId, auth.unidadesPermitidas)
     let ultimasQuery = supabase.from('ordens_servico').select('id, numero_os, status, prioridade, created_at')
       .order('created_at', { ascending: false }).limit(8)
     ultimasQuery = filtros(ultimasQuery, origem, garantidorId)
@@ -52,21 +63,26 @@ export async function GET(request: NextRequest) {
     volumeQuery = filtros(volumeQuery, origem, garantidorId)
     volumeQuery = escopo(volumeQuery, auth.unidadeId, auth.unidadesPermitidas)
 
-    const [resumo, notificacoes, semTecnico, pendentes, ultimas, volume, historico, garantidores] = await Promise.all([
+    const [resumo, notificacoes, semTecnico, pendentes, criticas, criticasRecentes, ultimas, volume, historico, garantidores] = await Promise.all([
       resumoQuery,
       supabase.from('notificacoes').select('*', { count: 'exact', head: true }),
       semTecnicoQuery,
       pendentesQuery,
+      criticasQuery,
+      criticasRecentesQuery,
       ultimasQuery,
       volumeQuery,
       supabase.from('os_historico').select('id, os_id, acao, status_anterior, status_novo, prioridade_anterior, prioridade_nova, descricao, responsavel, criado_em')
         .order('criado_em', { ascending: false }).limit(100),
       supabase.from('garantidores').select('id, nome').order('nome'),
     ])
-    for (const resultado of [resumo, notificacoes, semTecnico, pendentes, ultimas, volume, historico, garantidores]) {
+    for (const resultado of [resumo, notificacoes, semTecnico, pendentes, criticas, criticasRecentes, ultimas, volume, historico, garantidores]) {
       if (resultado.error) throw resultado.error
     }
     const idsEscopo = new Set((volume.data ?? []).map((item) => Number(item.id)))
+    const osDestacadas = [...(criticasRecentes.data ?? []), ...(ultimas.data ?? [])]
+      .filter((item, index, itens) => itens.findIndex((candidato) => candidato.id === item.id) === index)
+      .slice(0, 8)
     return NextResponse.json({
       resumoEscopo: {
         clientes: new Set((resumo.data ?? []).map((item) => Number(item.cliente_id)).filter(Boolean)).size,
@@ -75,7 +91,8 @@ export async function GET(request: NextRequest) {
       notificacoes: notificacoes.count ?? 0,
       osSemTecnico3Dias: semTecnico.count ?? 0,
       orcamentosPendentes: pendentes.count ?? 0,
-      ultimasOs: ultimas.data ?? [],
+      criticas: criticas.count ?? 0,
+      ultimasOs: osDestacadas,
       volume: volume.data ?? [],
       historico: (historico.data ?? []).filter((item) => item.os_id && idsEscopo.has(Number(item.os_id))).slice(0, 6),
       garantidores: garantidores.data ?? [],
@@ -94,20 +111,34 @@ export async function PATCH(request: NextRequest) {
     const statusNovo = String(body?.status ?? '').trim().toUpperCase()
     if (!id || !statusNovo) return NextResponse.json({ error: 'OS ou status invalido.' }, { status: 400 })
     const supabase = db()
-    let ordemQuery = supabase.from('ordens_servico').select('id, numero_os, status, prioridade, unidade_id').eq('id', id)
+    let ordemQuery = supabase.from('ordens_servico').select('id, numero_os, status, prioridade, unidade_id, parceiro_id, tecnico_avulso_nome').eq('id', id)
     ordemQuery = escopo(ordemQuery, auth.unidadeId, auth.unidadesPermitidas)
     const { data: ordem, error } = await ordemQuery.maybeSingle()
     if (error) throw error
     if (!ordem) return NextResponse.json({ error: 'OS nao encontrada no escopo autorizado.' }, { status: 404 })
+    if (
+      STATUS_EXIGEM_TECNICO.has(statusNovo) &&
+      !ordem.parceiro_id && !String(ordem.tecnico_avulso_nome ?? '').trim()
+    ) {
+      return NextResponse.json(
+        { error: 'Selecione um tecnico antes de iniciar o tratamento da OS.' },
+        { status: 400 }
+      )
+    }
     const statusAnterior = String(ordem.status ?? 'NOVA')
     if (statusAnterior === statusNovo) return NextResponse.json({ ok: true })
-    const { error: updateError } = await supabase.from('ordens_servico').update({ status: statusNovo }).eq('id', id).eq('unidade_id', ordem.unidade_id)
+    const update: Record<string, unknown> = { status: statusNovo }
+    if (statusNovo === 'PRONTO_AGUARDANDO_ENTREGA') {
+      update.orcamento_status = 'APROVADO'
+      update.orcamento_resposta_em = new Date().toISOString()
+    }
+    const { error: updateError } = await supabase.from('ordens_servico').update(update).eq('id', id).eq('unidade_id', ordem.unidade_id)
     if (updateError) throw updateError
     const prioridade = String(ordem.prioridade ?? 'NORMAL')
     const { error: historicoError } = await supabase.from('os_historico').insert({
       os_id: id, acao: 'ALTERACAO_STATUS', status_anterior: statusAnterior, status_novo: statusNovo,
       prioridade_anterior: prioridade, prioridade_nova: prioridade,
-      descricao: `Status alterado de ${statusAnterior} para ${statusNovo}`,
+      descricao: `Status alterado de ${statusAnterior} para ${statusNovo}${statusNovo === 'PRONTO_AGUARDANDO_ENTREGA' ? '. Orcamento aprovado automaticamente.' : ''}`,
       responsavel: `${auth.nome} (${auth.email})`,
     })
     if (historicoError) throw historicoError

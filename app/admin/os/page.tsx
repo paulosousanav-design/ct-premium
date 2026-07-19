@@ -309,6 +309,7 @@ export default function OrdensServicoPage() {
   }, [ordens])
 
   const totalNotificacoes = notificacoesOperacionais.reduce((acc, item) => acc + item.total, 0)
+  const totalCriticas = ordens.filter((os) => os.status === 'CRITICA').length
 
   async function carregarDados() {
     setLoading(true)
@@ -682,6 +683,20 @@ export default function OrdensServicoPage() {
           <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
             {mensagem}
           </div>
+        )}
+
+        {totalCriticas > 0 && (
+          <button
+            type="button"
+            onClick={() => setStatusFiltro('CRITICA')}
+            className="flex w-full items-center justify-between gap-4 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-left shadow-sm"
+          >
+            <span>
+              <strong className="block text-sm text-red-800">Atenção: existem OS críticas</strong>
+              <span className="text-xs font-medium text-red-600">Clique para visualizar e priorizar o atendimento.</span>
+            </span>
+            <span className="rounded-full bg-red-600 px-3 py-1 text-sm font-black text-white">{totalCriticas}</span>
+          </button>
         )}
 
         <section className="rounded-2xl bg-[#e8efec] p-4 shadow-sm">

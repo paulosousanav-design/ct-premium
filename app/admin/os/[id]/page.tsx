@@ -374,6 +374,7 @@ export default function OrdemServicoAtendimentoPage() {
     os?.status === 'FINALIZADA' || os?.status === 'ENCERRADA_SEM_REPARO'
       ? !masterUnlocked
       : os?.bloqueada === true
+  const tecnicoAtribuido = Boolean(os?.parceiro_id || os?.tecnico_avulso_nome)
 
   async function carregarOS() {
     setLoading(true)
@@ -815,6 +816,15 @@ export default function OrdemServicoAtendimentoPage() {
   async function salvarAtendimento(statusForcado?: string) {
     if (!os || isLocked) return
 
+    const statusFinal = statusForcado ?? form.status
+    if (
+      ['EM_ATENDIMENTO', 'AGUARDANDO_REVISAO', 'AGUARDANDO_APROVACAO', 'AGUARDANDO_PECA', 'PRONTO_AGUARDANDO_ENTREGA', 'FINALIZADA'].includes(statusFinal) &&
+      !tecnicoAtribuido
+    ) {
+      setErro('Selecione um técnico antes de iniciar o tratamento da OS.')
+      return
+    }
+
     if (form.garantia === 'SIM' && !form.garantidorId) {
       setErro('Selecione o garantidor responsável pelo pagamento da OS em garantia.')
       return
@@ -825,7 +835,6 @@ export default function OrdemServicoAtendimentoPage() {
     setMensagem('')
 
     try {
-      const statusFinal = statusForcado ?? form.status
       const response = await adminFetch('/api/admin/os/atendimento', {
         method: 'PATCH',
         headers: {

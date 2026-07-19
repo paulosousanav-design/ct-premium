@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
     const { data: os, error: osError } = await supabase
       .from('ordens_servico')
-      .select('id, cliente_id, status, prioridade, orcamento_status')
+      .select('id, cliente_id, status, prioridade, orcamento_status, parceiro_id, tecnico_avulso_nome')
       .eq('numero_os', numeroOs)
       .maybeSingle()
 
@@ -68,6 +68,12 @@ export async function POST(request: NextRequest) {
     if (os.orcamento_status && os.orcamento_status !== 'PENDENTE') {
       return NextResponse.json(
         { error: 'Este orçamento já foi respondido.' },
+        { status: 409 }
+      )
+    }
+    if (acao === 'APROVAR' && !os.parceiro_id && !String(os.tecnico_avulso_nome ?? '').trim()) {
+      return NextResponse.json(
+        { error: 'A empresa precisa atribuir um tecnico antes de iniciar este atendimento.' },
         { status: 409 }
       )
     }

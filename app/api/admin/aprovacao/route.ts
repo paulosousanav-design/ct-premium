@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = db()
     const { data: ordem, error: ordemError } = await supabase.from('ordens_servico')
-      .select('id, status, prioridade, orcamento_status').eq('id', id).eq('unidade_id', auth.unidadeId).maybeSingle()
+      .select('id, status, prioridade, orcamento_status, parceiro_id, tecnico_avulso_nome').eq('id', id).eq('unidade_id', auth.unidadeId).maybeSingle()
     if (ordemError) throw ordemError
     if (!ordem) return NextResponse.json({ error: 'OS nao encontrada nesta unidade.' }, { status: 404 })
 
@@ -106,6 +106,12 @@ export async function POST(request: NextRequest) {
       const novoStatus = String(body?.novoStatus ?? '').toUpperCase()
       if (!['APROVADO', 'REPROVADO'].includes(novoStatus)) {
         return NextResponse.json({ error: 'Status de orcamento invalido.' }, { status: 400 })
+      }
+      if (novoStatus === 'APROVADO' && !ordem.parceiro_id && !String(ordem.tecnico_avulso_nome ?? '').trim()) {
+        return NextResponse.json(
+          { error: 'Selecione um tecnico antes de aprovar e iniciar o tratamento da OS.' },
+          { status: 400 }
+        )
       }
       statusNovo = novoStatus === 'REPROVADO'
         ? 'FINALIZADA'
