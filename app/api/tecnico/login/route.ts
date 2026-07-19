@@ -7,6 +7,7 @@ import {
 } from '@/lib/tecnico-auth'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { limitarRotaPublica } from '@/lib/rate-limit'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -26,6 +27,8 @@ function getSupabaseAdmin() {
 
 export async function POST(request: NextRequest) {
   try {
+    const bloqueio = await limitarRotaPublica(request, 'login-tecnico', 8, 900)
+    if (bloqueio) return bloqueio
     const body = await request.json().catch(() => null)
     const whatsapp = normalizarTelefone(body?.whatsapp)
     const pin = String(body?.pin ?? '').replace(/\D/g, '')

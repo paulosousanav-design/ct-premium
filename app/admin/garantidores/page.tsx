@@ -1,7 +1,7 @@
 'use client'
 
 import { type ChangeEvent, useEffect, useMemo, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { adminFetch } from '@/lib/admin-fetch'
 
 type Garantidor = {
   id?: number
@@ -70,13 +70,10 @@ export default function GarantidoresPage() {
     setLoading(true)
     setErro('')
 
-    const { data, error } = await supabase
-      .from('garantidores')
-      .select('*')
-      .order('nome')
-
-    if (error) setErro(error.message)
-    setGarantidores((data || []) as Garantidor[])
+    const response = await adminFetch('/api/admin/garantidores')
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) setErro(payload?.error ?? 'Erro ao carregar os garantidores.')
+    setGarantidores((payload?.data || []) as Garantidor[])
     setLoading(false)
   }
 
@@ -113,14 +110,17 @@ export default function GarantidoresPage() {
       ativo: form.ativo,
     }
 
-    const { error } = editandoId
-      ? await supabase.from('garantidores').update(payload).eq('id', editandoId)
-      : await supabase.from('garantidores').insert(payload)
+    const response = await adminFetch('/api/admin/garantidores', {
+      method: editandoId ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editandoId ? { ...payload, id: editandoId } : payload),
+    })
+    const result = await response.json().catch(() => null)
 
     setSalvando(false)
 
-    if (error) {
-      setErro(error.message)
+    if (!response.ok) {
+      setErro(result?.error ?? 'Erro ao salvar o garantidor.')
       return
     }
 
@@ -159,13 +159,15 @@ export default function GarantidoresPage() {
   }
 
   async function alternarStatus(item: Garantidor) {
-    const { error } = await supabase
-      .from('garantidores')
-      .update({ ativo: !item.ativo })
-      .eq('id', item.id)
+    const response = await adminFetch('/api/admin/garantidores', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id, ativo: !item.ativo, somenteStatus: true }),
+    })
+    const result = await response.json().catch(() => null)
 
-    if (error) {
-      setErro(error.message)
+    if (!response.ok) {
+      setErro(result?.error ?? 'Erro ao alterar o status do garantidor.')
       return
     }
 

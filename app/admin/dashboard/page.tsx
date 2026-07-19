@@ -2,10 +2,7 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { adminFetch } from '@/lib/admin-fetch'
-import { getAdminActorLabel } from '@/lib/admin-actor'
-import { getUnidadeGerencialId, getUnidadesPermitidasIds } from '@/lib/unidade-client'
 
 type DashboardStats = {
   osNovas: number
@@ -86,43 +83,6 @@ const STATUS_RAPIDOS = [
 
 const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
 
-async function contarTabela(table: string) {
-  const { count, error } = await supabase.from(table).select('*', { count: 'exact', head: true })
-  if (error) throw error
-  return count ?? 0
-}
-
-function aplicarFiltroOrigemQuery<T>(query: T, filtro: FiltroOrigemDashboard): T {
-  const builder = query as T & {
-    eq: (column: string, value: unknown) => T
-    or: (filters: string) => T
-  }
-
-  if (filtro === 'CLIENTE') return builder.or('garantia.is.false,garantia.is.null')
-  if (filtro === 'GARANTIDOR') return builder.eq('garantia', true)
-  return query
-}
-
-function aplicarFiltroGarantidorQuery<T>(query: T, garantidorId: string): T {
-  if (garantidorId === 'TODOS') return query
-
-  const builder = query as T & {
-    eq: (column: string, value: unknown) => T
-  }
-
-  return builder.eq('garantidor_id', Number(garantidorId))
-}
-
-function aplicarEscopoUnidadeQuery<T>(query: T, unidadeId: number | null, unidadesPermitidas: number[]): T {
-  const builder = query as T & {
-    eq: (column: string, value: unknown) => T
-    in: (column: string, values: number[]) => T
-  }
-  return unidadeId
-    ? builder.eq('unidade_id', unidadeId)
-    : builder.in('unidade_id', unidadesPermitidas)
-}
-
 export default function DashboardPage() {
   const router = useRouter()
 
@@ -172,44 +132,6 @@ export default function DashboardPage() {
     setErro('')
 
     try {
-      const unidadeId = getUnidadeGerencialId()
-      const unidadesPermitidas = getUnidadesPermitidasIds()
-      const countOsSemTecnico3Dias = async () => {
-        try {
-          let query = supabase
-            .from('ordens_servico')
-            .select('*', { count: 'exact', head: true })
-            .is('parceiro_id', null)
-            .lte('created_at', limiteSemTecnico.toISOString())
-            .not('status', 'in', '("FINALIZADA","CANCELADA","ENCERRADA_SEM_REPARO")')
-
-          query = aplicarFiltroOrigemQuery(query, filtroOrigem)
-          query = aplicarFiltroGarantidorQuery(query, filtroGarantidor)
-          query = aplicarEscopoUnidadeQuery(query, unidadeId, unidadesPermitidas)
-
-          const { count } = await query
-          return count ?? 0
-        } catch {
-          return 0
-        }
-      }
-      const countOrcamentosPendentes = async () => {
-        try {
-          let query = supabase
-            .from('ordens_servico')
-            .select('*', { count: 'exact', head: true })
-            .eq('status', 'AGUARDANDO_APROVACAO')
-
-          query = aplicarFiltroOrigemQuery(query, filtroOrigem)
-          query = aplicarFiltroGarantidorQuery(query, filtroGarantidor)
-          query = aplicarEscopoUnidadeQuery(query, unidadeId, unidadesPermitidas)
-
-          const { count } = await query
-          return count ?? 0
-        } catch {
-          return 0
-        }
-      }
       const carregarResumoParceiros = async () => {
         try {
           const response = await adminFetch('/api/admin/parceiros')
@@ -228,90 +150,23 @@ export default function DashboardPage() {
           return { total: 0, pendentes: 0 }
         }
       }
-      const carregarResumoEscopo = async () => {
-        try {
-          let query = supabase
-            .from('ordens_servico')
-            .select('cliente_id, parceiro_id')
-            .limit(5000)
-          query = aplicarEscopoUnidadeQuery(query, unidadeId, unidadesPermitidas)
-          const { data, error } = await query
-          if (error) throw error
-          return {
-            clientes: new Set((data ?? []).map((item) => Number(item.cliente_id)).filter(Boolean)).size,
-            tecnicos: new Set((data ?? []).map((item) => Number(item.parceiro_id)).filter(Boolean)).size,
-          }
-        } catch {
-          return { clientes: 0, tecnicos: 0 }
-        }
-      }
-      const limiteSemTecnico = new Date()
-      limiteSemTecnico.setDate(limiteSemTecnico.getDate() - 3)
-
-      const [
-        resumoEscopo,
-        notificacoes,
-        osSemTecnico3Dias,
-        orcamentosPendentes,
-        parceirosResumo,
-        relatoriosResumo,
-        garantidoresResumo,
-      ] = await Promise.all([
-        carregarResumoEscopo(),
-        contarTabela('notificacoes').catch(() => 0),
-        countOsSemTecnico3Dias(),
-        countOrcamentosPendentes(),
+      const params = new URLSearchParams({ origem: filtroOrigem })
+      if (filtroGarantidor !== 'TODOS') params.set('garantidor', filtroGarantidor)
+      const [dashboardResponse, parceirosResumo, relatoriosResumo] = await Promise.all([
+        adminFetch(`/api/admin/dashboard?${params.toString()}`),
         carregarResumoParceiros(),
         carregarResumoRelatorios(filtroOrigem, filtroGarantidor),
-        carregarGarantidoresFiltro(),
       ])
-
-      let ultimasOsQuery = supabase
-        .from('ordens_servico')
-        .select('id, numero_os, status, prioridade, created_at')
-        .order('created_at', { ascending: false })
-        .limit(8)
-
-      ultimasOsQuery = aplicarFiltroOrigemQuery(ultimasOsQuery, filtroOrigem)
-      ultimasOsQuery = aplicarFiltroGarantidorQuery(ultimasOsQuery, filtroGarantidor)
-      ultimasOsQuery = aplicarEscopoUnidadeQuery(ultimasOsQuery, unidadeId, unidadesPermitidas)
-
-      const { data: ultimasOsData, error: ultimasOsError } = await ultimasOsQuery
-
-      if (ultimasOsError) throw ultimasOsError
-
-      const { data: historicoData, error: historicoError } = await supabase
-        .from('os_historico')
-        .select(`
-          id,
-          os_id,
-          acao,
-          status_anterior,
-          status_novo,
-          prioridade_anterior,
-          prioridade_nova,
-          descricao,
-          responsavel,
-          criado_em
-        `)
-        .order('criado_em', { ascending: false })
-        .limit(100)
-
-      if (historicoError) throw historicoError
-
-      let volumeQuery = supabase
-        .from('ordens_servico')
-        .select('id, created_at')
-        .order('created_at', { ascending: false })
-        .limit(500)
-
-      volumeQuery = aplicarFiltroOrigemQuery(volumeQuery, filtroOrigem)
-      volumeQuery = aplicarFiltroGarantidorQuery(volumeQuery, filtroGarantidor)
-      volumeQuery = aplicarEscopoUnidadeQuery(volumeQuery, unidadeId, unidadesPermitidas)
-
-      const { data: volumeData, error: volumeError } = await volumeQuery
-
-      if (volumeError) throw volumeError
+      const dashboardData = await dashboardResponse.json().catch(() => null)
+      if (!dashboardResponse.ok) throw new Error(dashboardData?.error ?? 'Erro ao carregar o dashboard.')
+      const resumoEscopo = dashboardData?.resumoEscopo ?? { clientes: 0, tecnicos: 0 }
+      const notificacoes = Number(dashboardData?.notificacoes ?? 0)
+      const osSemTecnico3Dias = Number(dashboardData?.osSemTecnico3Dias ?? 0)
+      const orcamentosPendentes = Number(dashboardData?.orcamentosPendentes ?? 0)
+      const ultimasOsData = (dashboardData?.ultimasOs ?? []) as OrdemResumo[]
+      const volumeData = (dashboardData?.volume ?? []) as Array<{ id: number; created_at: string }>
+      const historicoData = (dashboardData?.historico ?? []) as HistoricoResumo[]
+      const garantidoresResumo = (dashboardData?.garantidores ?? []) as GarantidorFiltro[]
 
       const base = new Map<string, number>()
       const hoje = new Date()
@@ -371,9 +226,8 @@ export default function DashboardPage() {
         slaGarantiaForaPrazo: relatoriosResumo.slaGarantiaForaPrazo,
       })
       setVolume(volumeArray)
-      setUltimasOs((ultimasOsData ?? []) as OrdemResumo[])
-      const idsEscopo = new Set((volumeData ?? []).map((item) => Number(item.id)))
-      setHistorico(((historicoData ?? []) as HistoricoResumo[]).filter((item) => item.os_id && idsEscopo.has(Number(item.os_id))).slice(0, 6))
+      setUltimasOs(ultimasOsData)
+      setHistorico(historicoData)
       setGarantidoresFiltro(garantidoresResumo)
     } catch (err) {
       setErro(formatarErro(err, 'Erro ao carregar o dashboard.'))
@@ -417,45 +271,13 @@ export default function DashboardPage() {
     setErro('')
 
     try {
-      const unidadeId = getUnidadeGerencialId()
-      const unidadesPermitidas = getUnidadesPermitidasIds()
-      let osAtualQuery = supabase
-        .from('ordens_servico')
-        .select('id, numero_os, status, prioridade')
-        .eq('id', osId)
-      osAtualQuery = aplicarEscopoUnidadeQuery(osAtualQuery, unidadeId, unidadesPermitidas)
-      const { data: osAtual, error: osAtualError } = await osAtualQuery.maybeSingle()
-
-      if (osAtualError) throw osAtualError
-      if (!osAtual) throw new Error('OS não encontrada.')
-
-      const statusAnterior = osAtual.status ?? 'NOVA'
-      const prioridadeAnterior = osAtual.prioridade ?? 'NORMAL'
-
-      let updateQuery = supabase
-        .from('ordens_servico')
-        .update({ status: novoStatus })
-        .eq('id', osId)
-      updateQuery = aplicarEscopoUnidadeQuery(updateQuery, unidadeId, unidadesPermitidas)
-      const { error: updateError } = await updateQuery
-
-      if (updateError) throw updateError
-
-      if (statusAnterior !== novoStatus) {
-        const responsavel = await getAdminActorLabel()
-        const { error: historicoError } = await supabase.from('os_historico').insert({
-          os_id: osId,
-          acao: 'ALTERACAO_STATUS',
-          status_anterior: statusAnterior,
-          status_novo: novoStatus,
-          prioridade_anterior: prioridadeAnterior,
-          prioridade_nova: prioridadeAnterior,
-          descricao: `Status alterado de ${statusAnterior} para ${novoStatus}`,
-          responsavel,
-        })
-
-        if (historicoError) throw historicoError
-      }
+      const response = await adminFetch('/api/admin/dashboard', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: osId, status: novoStatus }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Erro ao atualizar status.')
 
       await carregarDashboard()
     } catch (err) {
@@ -976,20 +798,6 @@ function InfoItem({
       </p>
     </div>
   )
-}
-
-async function carregarGarantidoresFiltro() {
-  try {
-    const { data, error } = await supabase
-      .from('garantidores')
-      .select('id, nome')
-      .order('nome', { ascending: true })
-
-    if (error) return []
-    return (data ?? []) as GarantidorFiltro[]
-  } catch {
-    return []
-  }
 }
 
 async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard, garantidorId: string) {

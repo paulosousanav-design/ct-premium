@@ -1,9 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import { getAdminActorLabel } from '@/lib/admin-actor'
-import { getUnidadeSelecionadaId } from '@/lib/unidade-client'
+import { adminFetch } from '@/lib/admin-fetch'
 
 type OrcamentoFiltro = 'TODOS' | 'REVISAO' | 'PENDENTE' | 'APROVADO' | 'REPROVADO'
 
@@ -58,105 +56,10 @@ export default function AprovacaoPage() {
     setErro('')
 
     try {
-      const unidadeId = getUnidadeSelecionadaId()
-      let query = supabase
-        .from('ordens_servico')
-        .select(
-          'id, numero_os, status, orcamento_status, orcamento_resposta_em, total, valor_pecas, valor_mao_obra, desconto, tecnico_valor_pecas, tecnico_valor_mao_obra, tecnico_desconto, tecnico_total, cliente_valor_pecas, cliente_valor_mao_obra, cliente_desconto, cliente_total, garantia, created_at, modelo, diagnostico_tecnico, servico_executado, pecas_utilizadas, categoria_id, marca_id, cliente_id'
-        )
-        .order('created_at', { ascending: false })
-      if (unidadeId) query = query.eq('unidade_id', unidadeId)
-      const { data, error } = await query
-
-      if (error) throw error
-
-      const ordens = data ?? []
-      const clienteIds = Array.from(
-        new Set(ordens.map((item) => item.cliente_id).filter(Boolean))
-      ) as number[]
-      const categoriaIds = Array.from(
-        new Set(ordens.map((item) => item.categoria_id).filter(Boolean))
-      ) as number[]
-      const marcaIds = Array.from(
-        new Set(ordens.map((item) => item.marca_id).filter(Boolean))
-      ) as number[]
-      const osIds = ordens.map((item) => item.id).filter(Boolean) as number[]
-
-      let clientesMap = new Map<number, { nome: string | null; whatsapp: string | null }>()
-      let categoriasMap = new Map<number, string | null>()
-      let marcasMap = new Map<number, string | null>()
-      let fotosMap = new Map<number, number>()
-
-      if (clienteIds.length > 0) {
-        const { data: clientesData, error: clientesError } = await supabase
-          .from('clientes')
-          .select('id, nome, whatsapp')
-          .in('id', clienteIds)
-
-        if (clientesError) throw clientesError
-
-        clientesMap = new Map(
-          (clientesData ?? []).map((c) => [
-            c.id,
-            { nome: c.nome ?? null, whatsapp: c.whatsapp ?? null },
-          ])
-        )
-      }
-
-      if (categoriaIds.length > 0) {
-        const { data: categoriasData, error: categoriasError } = await supabase
-          .from('categorias')
-          .select('id, nome')
-          .in('id', categoriaIds)
-
-        if (categoriasError) throw categoriasError
-        categoriasMap = new Map((categoriasData ?? []).map((c) => [c.id, c.nome ?? null]))
-      }
-
-      if (marcaIds.length > 0) {
-        const { data: marcasData, error: marcasError } = await supabase
-          .from('marcas')
-          .select('id, nome')
-          .in('id', marcaIds)
-
-        if (marcasError) throw marcasError
-        marcasMap = new Map((marcasData ?? []).map((m) => [m.id, m.nome ?? null]))
-      }
-
-      if (osIds.length > 0) {
-        const { data: fotosData, error: fotosError } = await supabase
-          .from('os_fotos')
-          .select('os_id')
-          .in('os_id', osIds)
-
-        if (fotosError) throw fotosError
-
-        fotosMap = (fotosData ?? []).reduce((map, foto) => {
-          const osId = Number(foto.os_id)
-          map.set(osId, (map.get(osId) ?? 0) + 1)
-          return map
-        }, new Map<number, number>())
-      }
-
-      const formatado: OSItem[] = ordens.map((item) => {
-        const cliente = item.cliente_id ? clientesMap.get(item.cliente_id) : undefined
-
-        return {
-          ...item,
-          cliente_nome: cliente?.nome ?? '-',
-          cliente_whatsapp: cliente?.whatsapp ?? null,
-          categoria_nome: item.categoria_id ? categoriasMap.get(item.categoria_id) ?? null : null,
-          marca_nome: item.marca_id ? marcasMap.get(item.marca_id) ?? null : null,
-          fotos_count: fotosMap.get(item.id) ?? 0,
-        }
-      }).sort((a, b) => {
-        const pesoA = a.status === 'AGUARDANDO_REVISAO' ? 0 : 1
-        const pesoB = b.status === 'AGUARDANDO_REVISAO' ? 0 : 1
-        if (pesoA !== pesoB) return pesoA - pesoB
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      })
-
-      setLista(formatado)
+      const response = await adminFetch('/api/admin/aprovacao')
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Erro ao carregar aprovações.')
+      setLista((payload?.data ?? []) as OSItem[])
     } catch (err) {
       setErro(formatarErro(err, 'Erro ao carregar aprovações.'))
     } finally {
@@ -179,75 +82,13 @@ export default function AprovacaoPage() {
         return
       }
 
-      const { data: osAtual, error: atualError } = await supabase
-        .from('ordens_servico')
-        .select('id, status, prioridade, orcamento_status')
-        .eq('id', id)
-        .eq('unidade_id', getUnidadeSelecionadaId() ?? 0)
-        .maybeSingle()
-
-      if (atualError) throw atualError
-      if (!osAtual) throw new Error('OS não encontrada.')
-
-      const statusAnterior = osAtual.status ?? 'NOVA'
-      const prioridadeAnterior = osAtual.prioridade ?? 'NORMAL'
-
-      const statusNovo =
-        novoStatus === 'REPROVADO'
-          ? 'FINALIZADA'
-          : ['NOVA', 'EM_TRIAGEM', 'AGUARDANDO_REVISAO', 'AGUARDANDO_APROVACAO', 'AGUARDANDO_PECA'].includes(
-                osAtual.status ?? 'NOVA'
-              )
-            ? 'EM_ATENDIMENTO'
-            : osAtual.status ?? 'NOVA'
-
-      const updatePayload: Record<string, unknown> = {
-        orcamento_status: novoStatus,
-        orcamento_resposta_em: new Date().toISOString(),
-        status: statusNovo,
-      }
-
-      if (novoStatus === 'REPROVADO') {
-        updatePayload.valor_pecas = 0
-        updatePayload.valor_mao_obra = 0
-        updatePayload.desconto = 0
-        updatePayload.total = 0
-        updatePayload.cliente_valor_pecas = 0
-        updatePayload.cliente_valor_mao_obra = 0
-        updatePayload.cliente_desconto = 0
-        updatePayload.cliente_total = 0
-        updatePayload.tecnico_valor_pecas = 0
-        updatePayload.tecnico_valor_mao_obra = valorVisitaTecnico ?? 0
-        updatePayload.tecnico_desconto = 0
-        updatePayload.tecnico_total = valorVisitaTecnico ?? 0
-        updatePayload.bloqueada = true
-        updatePayload.finalizada_em = new Date().toISOString()
-      }
-
-      const { error: updateError } = await supabase
-        .from('ordens_servico')
-        .update(updatePayload)
-        .eq('id', id)
-        .eq('unidade_id', getUnidadeSelecionadaId() ?? 0)
-
-      if (updateError) throw updateError
-
-      const responsavel = await getAdminActorLabel()
-      const { error: historicoError } = await supabase.from('os_historico').insert({
-        os_id: id,
-        acao: novoStatus === 'APROVADO' ? 'ORCAMENTO_APROVADO' : 'ORCAMENTO_REPROVADO',
-        status_anterior: statusAnterior,
-        status_novo: statusNovo,
-        prioridade_anterior: prioridadeAnterior,
-        prioridade_nova: prioridadeAnterior,
-        descricao:
-          novoStatus === 'APROVADO'
-            ? 'Orçamento aprovado manualmente no administrativo.'
-            : 'Orçamento reprovado manualmente no administrativo.',
-        responsavel,
+      const response = await adminFetch('/api/admin/aprovacao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'ALTERAR_STATUS', id, novoStatus, valorVisitaTecnico }),
       })
-
-      if (historicoError) throw historicoError
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Erro ao atualizar orçamento.')
 
       await carregar()
     } catch (err) {
@@ -273,28 +114,13 @@ export default function AprovacaoPage() {
   setErro('')
 
   try {
-    const { error: updateError } = await supabase
-      .from('ordens_servico')
-      .update({
-        status: 'AGUARDANDO_APROVACAO',
-        orcamento_status: item.orcamento_status ?? 'PENDENTE',
-      })
-      .eq('id', item.id)
-      .eq('unidade_id', getUnidadeSelecionadaId() ?? 0)
-
-    if (updateError) throw updateError
-
-    const responsavel = await getAdminActorLabel()
-    const { error: historicoError } = await supabase.from('os_historico').insert({
-      os_id: item.id,
-      acao: 'ORCAMENTO_ENVIADO_CLIENTE',
-      status_anterior: item.status ?? 'AGUARDANDO_REVISAO',
-      status_novo: 'AGUARDANDO_APROVACAO',
-      descricao: 'Orcamento revisado pelo administrativo e enviado ao cliente.',
-      responsavel,
+    const response = await adminFetch('/api/admin/aprovacao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acao: 'ENVIAR_CLIENTE', id: item.id }),
     })
-
-    if (historicoError) throw historicoError
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(payload?.error ?? 'Erro ao liberar orçamento para o cliente.')
   } catch (err) {
     setErro(formatarErro(err, 'Erro ao liberar orcamento para o cliente.'))
     setProcessandoId(null)

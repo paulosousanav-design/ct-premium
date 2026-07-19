@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { limitarRotaPublica } from '@/lib/rate-limit'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -10,6 +11,8 @@ function normalizeDigits(value: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    const bloqueio = await limitarRotaPublica(request, 'resposta-orcamento', 10, 300)
+    if (bloqueio) return bloqueio
     if (!supabaseUrl || !serviceRoleKey) {
       return NextResponse.json(
         { error: 'Configuração do Supabase ausente no servidor.' },

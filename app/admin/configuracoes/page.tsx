@@ -46,6 +46,14 @@ type MarcaForm = {
   categoriaId: string
 }
 
+type SaudeSistema = {
+  status: 'SAUDAVEL' | 'ATENCAO' | 'FALHA'
+  latenciaMs: number
+  verificadoEm?: string
+  verificacoes?: Array<{ tabela: string; critica: boolean; ok: boolean; erro?: string | null }>
+  storage?: Array<{ nome: string; ok: boolean }>
+}
+
 const empresaInicial: EmpresaConfig = {
   id: null,
   nome_fantasia: 'Chame o Tecnico',
@@ -89,6 +97,8 @@ export default function ConfiguracoesPage() {
   const [salvando, setSalvando] = useState(false)
   const [salvandoEquipamento, setSalvandoEquipamento] = useState(false)
   const [baixandoBackup, setBaixandoBackup] = useState(false)
+  const [verificandoSaude, setVerificandoSaude] = useState(false)
+  const [saude, setSaude] = useState<SaudeSistema | null>(null)
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [tabelaPendente, setTabelaPendente] = useState(false)
@@ -129,6 +139,21 @@ export default function ConfiguracoesPage() {
 
     setCategoriasEquipamento((data?.categorias ?? []) as CategoriaEquipamento[])
     setMarcasEquipamento((data?.marcas ?? []) as MarcaEquipamento[])
+  }
+
+  async function verificarSaude() {
+    setVerificandoSaude(true)
+    setErro('')
+    try {
+      const response = await adminFetch('/api/admin/saude', { cache: 'no-store' })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error ?? 'Erro ao verificar saude do sistema.')
+      setSaude(data as SaudeSistema)
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Erro ao verificar saude do sistema.')
+    } finally {
+      setVerificandoSaude(false)
+    }
   }
 
   function handleChange(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
@@ -453,6 +478,14 @@ export default function ConfiguracoesPage() {
         </div>
 
         <aside className="space-y-4">
+          <div className="rounded-xl bg-white p-5 shadow-sm">
+            <p className="text-xs font-black uppercase text-emerald-600">ADM Master</p>
+            <h2 className="mt-1 text-lg font-black text-slate-950">Saude do sistema</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Verifica banco, estruturas essenciais, armazenamento e tempo de resposta.</p>
+            {saude && <div className={`mt-3 rounded-lg px-3 py-3 text-sm font-black ${saude.status === 'SAUDAVEL' ? 'bg-emerald-50 text-emerald-700' : saude.status === 'ATENCAO' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}><p>{saude.status} - {saude.latenciaMs} ms</p><p className="mt-1 text-xs font-semibold">{[...(saude.verificacoes ?? []).filter((item) => !item.ok).map((item) => item.tabela), ...(saude.storage ?? []).filter((item) => !item.ok).map((item) => `Storage ${item.nome}`)].join(', ') || 'Todas as verificacoes passaram.'}</p></div>}
+            <button type="button" onClick={verificarSaude} disabled={verificandoSaude} className="mt-4 w-full rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 disabled:opacity-60">{verificandoSaude ? 'Verificando...' : 'Executar diagnostico'}</button>
+          </div>
+
           <div className="rounded-xl bg-white p-5 shadow-sm">
             <p className="text-xs font-black uppercase text-orange-600">ADM Master</p>
             <h2 className="mt-1 text-lg font-black text-slate-950">Backup do sistema</h2>

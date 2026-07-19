@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
-import { getUnidadeSelecionadaId } from '@/lib/unidade-client'
+import { adminFetch } from '@/lib/admin-fetch'
 
 type OrdemServico = {
   id: number
@@ -45,22 +44,10 @@ export default function FinalizadasPage() {
     setLoading(true)
     setErro('')
     try {
-      const unidadeId = getUnidadeSelecionadaId()
-      let query = supabase
-        .from('ordens_servico')
-        .select(`
-          id, numero_os, status, modelo, created_at, finalizada_em, garantia, total,
-          cliente_total, status_financeiro,
-          clientes:cliente_id ( nome ),
-          categorias:categoria_id ( nome ),
-          marcas:marca_id ( nome ),
-          parceiros:parceiro_id ( responsavel, nome_fantasia )
-        `)
-        .eq('status', 'FINALIZADA')
-        .order('finalizada_em', { ascending: false, nullsFirst: false })
-      if (unidadeId) query = query.eq('unidade_id', unidadeId)
-      const { data, error } = await query
-      if (error) throw error
+      const response = await adminFetch('/api/admin/finalizadas')
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Erro ao carregar as OS finalizadas.')
+      const data = payload?.data
 
       setOrdens(
         ((data ?? []) as unknown as OrdemServicoSupabase[]).map((item) => {
@@ -75,10 +62,7 @@ export default function FinalizadasPage() {
         })
       )
 
-      if (unidadeId) {
-        const { data: unidade } = await supabase.from('unidades').select('nome_fantasia, tipo').eq('id', unidadeId).maybeSingle()
-        if (unidade?.nome_fantasia) setUnidadeNome(`${unidade.tipo === 'MATRIZ' ? 'Matriz' : 'Filial'} — ${unidade.nome_fantasia}`)
-      }
+      setUnidadeNome(String(payload?.unidadeNome ?? 'Unidade selecionada'))
     } catch (error) {
       setErro(formatarErro(error, 'Erro ao carregar as OS finalizadas.'))
     } finally {

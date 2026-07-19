@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { getUnidadeSelecionadaId } from '@/lib/unidade-client'
+import { adminFetch } from '@/lib/admin-fetch'
 
 type OSItem = {
   id: number
@@ -23,6 +22,13 @@ type OSItem = {
   marca_nome?: string | null
 }
 
+type RelacaoNome = { nome?: string | null }
+type OSResposta = OSItem & {
+  clientes?: RelacaoNome | RelacaoNome[] | null
+  categorias?: RelacaoNome | RelacaoNome[] | null
+  marcas?: RelacaoNome | RelacaoNome[] | null
+}
+
 export default function FinalizadasPage() {
   const router = useRouter()
 
@@ -40,72 +46,15 @@ export default function FinalizadasPage() {
     setErro('')
 
     try {
-      const unidadeId = getUnidadeSelecionadaId()
-      let query = supabase
-        .from('ordens_servico')
-        .select(
-          'id, numero_os, status, prioridade, garantia, total, created_at, finalizada_em, modelo, categoria_id, marca_id, cliente_id'
-        )
-        .eq('status', 'FINALIZADA')
-        .order('finalizada_em', { ascending: false, nullsFirst: false })
-      if (unidadeId) query = query.eq('unidade_id', unidadeId)
-      const { data, error } = await query
-
-      if (error) throw error
-
-      const ordens = data ?? []
-      const clienteIds = Array.from(
-        new Set(ordens.map((item) => item.cliente_id).filter(Boolean))
-      ) as number[]
-      const categoriaIds = Array.from(
-        new Set(ordens.map((item) => item.categoria_id).filter(Boolean))
-      ) as number[]
-      const marcaIds = Array.from(
-        new Set(ordens.map((item) => item.marca_id).filter(Boolean))
-      ) as number[]
-
-      let clientesMap = new Map<number, string | null>()
-      let categoriasMap = new Map<number, string | null>()
-      let marcasMap = new Map<number, string | null>()
-
-      if (clienteIds.length > 0) {
-        const { data: clientesData, error: clientesError } = await supabase
-          .from('clientes')
-          .select('id, nome')
-          .in('id', clienteIds)
-
-        if (clientesError) throw clientesError
-
-        clientesMap = new Map((clientesData ?? []).map((c) => [c.id, c.nome ?? null]))
-      }
-
-      if (categoriaIds.length > 0) {
-        const { data: categoriasData, error: categoriasError } = await supabase
-          .from('categorias')
-          .select('id, nome')
-          .in('id', categoriaIds)
-
-        if (categoriasError) throw categoriasError
-
-        categoriasMap = new Map((categoriasData ?? []).map((c) => [c.id, c.nome ?? null]))
-      }
-
-      if (marcaIds.length > 0) {
-        const { data: marcasData, error: marcasError } = await supabase
-          .from('marcas')
-          .select('id, nome')
-          .in('id', marcaIds)
-
-        if (marcasError) throw marcasError
-
-        marcasMap = new Map((marcasData ?? []).map((m) => [m.id, m.nome ?? null]))
-      }
-
+      const response = await adminFetch('/api/admin/finalizadas')
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Erro ao carregar as finalizadas.')
+      const ordens = (payload?.data ?? []) as OSResposta[]
       const formatado: OSItem[] = ordens.map((item) => ({
         ...item,
-        cliente_nome: item.cliente_id ? clientesMap.get(item.cliente_id) ?? '-' : '-',
-        categoria_nome: item.categoria_id ? categoriasMap.get(item.categoria_id) ?? null : null,
-        marca_nome: item.marca_id ? marcasMap.get(item.marca_id) ?? null : null,
+        cliente_nome: primeira(item.clientes)?.nome ?? '-',
+        categoria_nome: primeira(item.categorias)?.nome ?? null,
+        marca_nome: primeira(item.marcas)?.nome ?? null,
       }))
 
       setLista(formatado)
@@ -292,6 +241,10 @@ function formatDate(value: string) {
 
 function formatarEquipamento(os: OSItem) {
   return [os.categoria_nome, os.marca_nome, os.modelo].filter(Boolean).join(' / ') || '-'
+}
+
+function primeira<T>(value?: T | T[] | null) {
+  return Array.isArray(value) ? value[0] : value
 }
 
 function formatarErro(err: unknown, fallback: string) {

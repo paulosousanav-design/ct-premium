@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { limitarRotaPublica } from '@/lib/rate-limit'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -59,6 +60,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const bloqueio = await limitarRotaPublica(request, 'abertura-chamado', 5, 3600)
+    if (bloqueio) return bloqueio
     if (!aberturaChamadosAtiva) {
       return NextResponse.json(
         { error: 'A abertura online de chamados estara disponivel em breve. No momento, estamos credenciando tecnicos parceiros.' },

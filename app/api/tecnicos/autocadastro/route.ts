@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { limitarRotaPublica } from '@/lib/rate-limit'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -27,6 +28,8 @@ async function colunaExiste(
 
 export async function POST(request: NextRequest) {
   try {
+    const bloqueio = await limitarRotaPublica(request, 'autocadastro-tecnico', 5, 3600)
+    if (bloqueio) return bloqueio
     const dados = await lerDadosAutocadastro(request)
     const body = dados.body
     const nome = String(body?.nome ?? '').trim()
