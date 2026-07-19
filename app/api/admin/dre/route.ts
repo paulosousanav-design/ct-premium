@@ -60,6 +60,8 @@ export async function GET(request: NextRequest) {
     const receitaVendasBruta = soma(vendas, (item) => numero(item.subtotal))
     const descontosVendas = soma(vendas, (item) => numero(item.desconto))
     const recebimentosOs = soma(recebimentosEscopo, (item) => numero(item.valor)) || soma(ordens, recebimentoFallbackNoPeriodo(inicio, fim))
+    const issRetidoRecebimentos = base === 'CAIXA' ? soma(recebimentosEscopo, (item) => numero(item.iss_retido)) : 0
+    const receitasFinanceiras = base === 'CAIXA' ? soma(recebimentosEscopo, (item) => numero(item.juros) + numero(item.multa)) : 0
 
     let receitaServicos = receitaServicosCompetencia
     let receitaPecasOs = receitaPecasOsCompetencia
@@ -72,7 +74,7 @@ export async function GET(request: NextRequest) {
       receitaServicos = recebimentosOs * proporcaoServico
       receitaPecasOs = recebimentosOs - receitaServicos
       receitaVendas = soma(vendas, (item) => numero(item.total))
-      deducoes = 0
+      deducoes = issRetidoRecebimentos
     }
 
     const custoPecaOsReconhecido = (item: Registro) => {
@@ -121,7 +123,7 @@ export async function GET(request: NextRequest) {
     const custosDiretos = custoPecasOs + custoVendas + custoTecnicos + custosContas
     const lucroBruto = receitaLiquida - custosDiretos
     const resultadoOperacional = lucroBruto - despesasOperacionais
-    const resultadoLiquido = resultadoOperacional - despesasFinanceiras - despesasNaoOperacionais
+    const resultadoLiquido = resultadoOperacional + receitasFinanceiras - despesasFinanceiras - despesasNaoOperacionais
 
     const meses = montarMeses(inicio, fim)
     if (base === 'COMPETENCIA') {
@@ -136,7 +138,7 @@ export async function GET(request: NextRequest) {
       const custoVendaPorId = agruparValor(itensVenda, 'venda_id', (item) => numero(item.quantidade) * numero(item.valor_custo_unitario))
       for (const venda of vendas) adicionarMes(meses, venda.criado_em, { receita: numero(venda.total), custos: custoVendaPorId.get(numero(venda.id)) ?? 0 })
     } else {
-      for (const item of recebimentosEscopo) adicionarMes(meses, item.criado_em, { receita: numero(item.valor) })
+      for (const item of recebimentosEscopo) adicionarMes(meses, item.criado_em, { receita: numero(item.valor) + numero(item.juros) + numero(item.multa), despesas: numero(item.iss_retido) })
       for (const venda of vendas) adicionarMes(meses, venda.criado_em, { receita: numero(venda.total) })
       for (const item of pagamentosTecnicosEscopo) adicionarMes(meses, item.criado_em, { custos: numero(item.valor) })
       for (const item of comissoesPagas) adicionarMes(meses, item.pago_em, { custos: numero(item.total_comissao) })
@@ -157,14 +159,15 @@ export async function GET(request: NextRequest) {
       filtros: { inicio, fim, base, consolidado: auth.consolidado },
       resumo: {
         receitaBruta, deducoes, receitaLiquida, custosDiretos, lucroBruto,
-        despesasOperacionais, despesasFinanceiras, despesasNaoOperacionais, investimentos,
+        despesasOperacionais, receitasFinanceiras, despesasFinanceiras, despesasNaoOperacionais, investimentos,
         resultadoOperacional, resultadoLiquido,
         margemBruta: percentual(lucroBruto, receitaLiquida),
         margemOperacional: percentual(resultadoLiquido, receitaLiquida),
       },
       linhas: {
         receitaServicos, receitaPecasOs, receitaVendas,
-        descontos: deducoes - impostosSobreVendas, impostosSobreVendas,
+        descontos: deducoes - impostosSobreVendas - issRetidoRecebimentos, impostosSobreVendas: impostosSobreVendas + issRetidoRecebimentos,
+        receitasFinanceiras,
         custoPecasOs, custoVendas, custoTecnicos, custosContas,
       },
       despesasCategorias,
@@ -225,7 +228,7 @@ async function carregarPecasOs(supabase: ReturnType<typeof db>, ids: number[]) {
   if (!ids.length) return []
   const { data, error } = await supabase.from('os_pecas').select('os_id, quantidade, valor_custo').in('os_id', ids)
   if (error && String(error.code) !== '42703' && !tabelaAusente(error)) throw error
-  return (data ?? []) as Registro[]
+  return (data ?? []) as unknown as Registro[]
 }
 
 async function carregarItensVenda(supabase: ReturnType<typeof db>, ids: number[]) {
@@ -236,9 +239,13 @@ async function carregarItensVenda(supabase: ReturnType<typeof db>, ids: number[]
 }
 
 async function carregarHistorico(supabase: ReturnType<typeof db>, tipo: string, inicio: string, fim: string) {
-  const { data, error } = await supabase.from('financeiro_historico').select('os_id, tipo, valor, criado_em').eq('tipo', tipo).gte('criado_em', inicio).lte('criado_em', fim)
+  const temDetalhesRecebimento = await colunaExiste(supabase, 'financeiro_historico', 'iss_retido')
+  const campos = temDetalhesRecebimento
+    ? 'os_id, tipo, valor, valor_principal, juros, multa, desconto, iss_retido, valor_liquido, criado_em'
+    : 'os_id, tipo, valor, criado_em'
+  const { data, error } = await supabase.from('financeiro_historico').select(campos).eq('tipo', tipo).gte('criado_em', inicio).lte('criado_em', fim)
   if (error && !tabelaAusente(error)) throw error
-  return (data ?? []) as Registro[]
+  return (data ?? []) as unknown as Registro[]
 }
 
 async function carregarComissoesPagas(supabase: ReturnType<typeof db>, inicio: string, fim: string, ordemIds: number[]) {
@@ -314,6 +321,8 @@ function montarDetalhes(params: {
       const comum = { id: `rec-${recebimento.os_id}-${recebimento.criado_em}`, origem: 'Recebimento', documento: String(ordem.numero_os ?? `OS #${recebimento.os_id}`), descricao: 'Valor recebido da OS', data: String(recebimento.criado_em ?? '') || null }
       adicionar('receitaServicos', { ...comum, valor: numero(recebimento.valor) * proporcaoServico })
       adicionar('receitaPecasOs', { ...comum, valor: numero(recebimento.valor) * (1 - proporcaoServico) })
+      adicionar('receitasFinanceiras', { ...comum, descricao: 'Juros e multa recebidos', valor: numero(recebimento.juros) + numero(recebimento.multa) })
+      adicionar('impostosSobreVendas', { ...comum, descricao: 'ISS retido pelo tomador', valor: numero(recebimento.iss_retido) })
     }
     if (!recebimentosEscopo.length) {
       for (const ordem of ordens) {

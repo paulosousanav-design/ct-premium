@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
     const temValorRecebidoCliente = await colunaExiste(supabase, 'ordens_servico', 'valor_recebido_cliente')
     const temDataUltimoRecebimento = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
     const temDescontoRecebimentoCliente = await colunaExiste(supabase, 'ordens_servico', 'desconto_recebimento_cliente')
+    const temAcrescimosRecebimento = await colunaExiste(supabase, 'ordens_servico', 'juros_recebidos_cliente')
     const temTaxaDiagnostico = await colunaExiste(supabase, 'ordens_servico', 'encerramento_taxa_diagnostico')
     const selectPagamentoTecnico = temPagamentoTecnico
       ? `
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest) {
     const selectValorRecebidoCliente = temValorRecebidoCliente ? 'valor_recebido_cliente,' : ''
     const selectDataUltimoRecebimento = temDataUltimoRecebimento ? 'data_ultimo_recebimento,' : ''
     const selectDescontoRecebimentoCliente = temDescontoRecebimentoCliente ? 'desconto_recebimento_cliente,' : ''
+    const selectAcrescimosRecebimento = temAcrescimosRecebimento ? 'juros_recebidos_cliente, multa_recebida_cliente, iss_retido_cliente,' : ''
     const selectTaxaDiagnostico = temTaxaDiagnostico ? 'encerramento_taxa_diagnostico,' : ''
 
     const selectOrdens = `
@@ -84,6 +86,7 @@ export async function GET(request: NextRequest) {
         ${selectTaxaDiagnostico}
         ${selectValorRecebidoCliente}
         ${selectDescontoRecebimentoCliente}
+        ${selectAcrescimosRecebimento}
         tecnico_total,
         ${selectPagamentoTecnico}
         ${selectFormaPagamentoTecnico}
@@ -141,6 +144,7 @@ export async function GET(request: NextRequest) {
       historico: historico.data,
       historicoPendente: historico.tabelaPendente,
       descontoRecebimentoPendente: !temDescontoRecebimentoCliente,
+      acrescimosRecebimentoPendente: !temAcrescimosRecebimento,
       vendasResumo,
     })
   } catch (error) {
@@ -296,9 +300,11 @@ export async function PATCH(request: NextRequest) {
       const temValorRecebidoCliente = await colunaExiste(supabase, 'ordens_servico', 'valor_recebido_cliente')
       const temDataUltimoRecebimento = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
       const temDescontoRecebimentoCliente = await colunaExiste(supabase, 'ordens_servico', 'desconto_recebimento_cliente')
+      const temAcrescimosRecebimento = await colunaExiste(supabase, 'ordens_servico', 'juros_recebidos_cliente')
       const temTaxaDiagnostico = await colunaExiste(supabase, 'ordens_servico', 'encerramento_taxa_diagnostico')
       const selectValorRecebido = temValorRecebidoCliente ? ', valor_recebido_cliente' : ''
       const selectDescontoRecebimento = temDescontoRecebimentoCliente ? ', desconto_recebimento_cliente' : ''
+      const selectAcrescimosRecebimento = temAcrescimosRecebimento ? ', juros_recebidos_cliente, multa_recebida_cliente, iss_retido_cliente' : ''
       const selectTaxaDiagnostico = temTaxaDiagnostico ? ', encerramento_taxa_diagnostico' : ''
       const ordemAtualQuery = supabase.from('ordens_servico') as unknown as {
         select: (columns: string) => {
@@ -312,13 +318,16 @@ export async function PATCH(request: NextRequest) {
               cliente_total?: number | string | null
               valor_recebido_cliente?: number | string | null
               desconto_recebimento_cliente?: number | string | null
+              juros_recebidos_cliente?: number | string | null
+              multa_recebida_cliente?: number | string | null
+              iss_retido_cliente?: number | string | null
               encerramento_taxa_diagnostico?: number | string | null
             }) | null; error: unknown }>
           }
         }
       }
       const { data: ordemAtual, error: ordemAtualError } = await ordemAtualQuery
-        .select(`id, numero_os, status, status_financeiro, total, cliente_total${selectTaxaDiagnostico}${selectValorRecebido}${selectDescontoRecebimento}`)
+        .select(`id, numero_os, status, status_financeiro, total, cliente_total${selectTaxaDiagnostico}${selectValorRecebido}${selectDescontoRecebimento}${selectAcrescimosRecebimento}`)
         .eq('id', id)
         .maybeSingle()
 
@@ -340,16 +349,21 @@ export async function PATCH(request: NextRequest) {
       const descontoAtual = descontoRecebimentoCliente(ordemAtual)
       const valorLancado = toNumber(body?.valor)
       const descontoLancado = toNumber(body?.desconto)
+      const jurosLancados = toNumber(body?.juros)
+      const multaLancada = toNumber(body?.multa)
+      const issRetidoLancado = toNumber(body?.issRetido)
       const agora = new Date().toISOString()
-      const saldoAtual = Math.max(totalCliente - recebidoAtual - descontoAtual, 0)
+      const issRetidoAtual = toNumber(ordemAtual?.iss_retido_cliente)
+      const saldoAtual = Math.max(totalCliente - recebidoAtual - descontoAtual - issRetidoAtual, 0)
       const proximoDesconto = pagamento ? Math.min(totalCliente, descontoAtual + descontoLancado) : status === 'PENDENTE' ? 0 : descontoAtual
+      const proximoIssRetido = pagamento ? Math.min(totalCliente, issRetidoAtual + issRetidoLancado) : status === 'PENDENTE' ? 0 : issRetidoAtual
       const proximoRecebido = pagamento
         ? Math.min(totalCliente, recebidoAtual + valorLancado)
         : status === 'PENDENTE'
           ? 0
           : recebidoAtual
       const statusFinal = pagamento
-        ? proximoRecebido + proximoDesconto >= totalCliente
+        ? proximoRecebido + proximoDesconto + proximoIssRetido >= totalCliente
           ? 'RECEBIDO'
           : 'PARCIAL'
         : status
@@ -372,8 +386,15 @@ export async function PATCH(request: NextRequest) {
         )
       }
 
-      if (pagamento && (valorLancado <= 0 || descontoLancado < 0 || valorLancado + descontoLancado > saldoAtual)) {
-        return NextResponse.json({ error: 'Informe valor recebido e desconto validos para o saldo da OS.' }, { status: 400 })
+      if (pagamento && (jurosLancados > 0 || multaLancada > 0 || issRetidoLancado > 0) && !temAcrescimosRecebimento) {
+        return NextResponse.json(
+          { error: 'Rode o SQL de juros, multa e ISS retido antes de registrar estes valores.' },
+          { status: 400 }
+        )
+      }
+
+      if (pagamento && ([valorLancado, descontoLancado, jurosLancados, multaLancada, issRetidoLancado].some((valor) => valor < 0) || valorLancado + descontoLancado + issRetidoLancado <= 0 || valorLancado + descontoLancado + issRetidoLancado > saldoAtual + 0.009)) {
+        return NextResponse.json({ error: 'Informe principal, desconto e ISS retido validos para o saldo da OS.' }, { status: 400 })
       }
 
       const updatePayload: Record<string, unknown> = {
@@ -388,6 +409,11 @@ export async function PATCH(request: NextRequest) {
       }
       if (temDescontoRecebimentoCliente) {
         updatePayload.desconto_recebimento_cliente = proximoDesconto
+      }
+      if (temAcrescimosRecebimento) {
+        updatePayload.juros_recebidos_cliente = pagamento ? toNumber(ordemAtual?.juros_recebidos_cliente) + jurosLancados : status === 'PENDENTE' ? 0 : toNumber(ordemAtual?.juros_recebidos_cliente)
+        updatePayload.multa_recebida_cliente = pagamento ? toNumber(ordemAtual?.multa_recebida_cliente) + multaLancada : status === 'PENDENTE' ? 0 : toNumber(ordemAtual?.multa_recebida_cliente)
+        updatePayload.iss_retido_cliente = proximoIssRetido
       }
       if (await colunaExiste(supabase, 'ordens_servico', 'forma_recebimento')) {
         updatePayload.forma_recebimento = pagamento ? forma : null
@@ -405,9 +431,15 @@ export async function PATCH(request: NextRequest) {
         tipo: 'RECEBIMENTO_OS',
         statusAnterior: ordemAtual?.status_financeiro ?? null,
         statusNovo: statusFinal,
-        valor: pagamento ? valorLancado : totalCliente,
+        valor: pagamento ? valorLancado + issRetidoLancado : totalCliente,
+        valorPrincipal: pagamento ? valorLancado : undefined,
+        juros: pagamento ? jurosLancados : undefined,
+        multa: pagamento ? multaLancada : undefined,
+        desconto: pagamento ? descontoLancado : undefined,
+        issRetido: pagamento ? issRetidoLancado : undefined,
+        valorLiquido: pagamento ? valorLancado + jurosLancados + multaLancada : undefined,
         descricao: pagamento
-          ? `${ordemAtual?.numero_os ?? `OS #${id}`} recebeu ${formatCurrency(valorLancado)} via ${forma}${descontoLancado > 0 ? ` com desconto de ${formatCurrency(descontoLancado)}` : ''}. Saldo: ${formatCurrency(Math.max(totalCliente - proximoRecebido - proximoDesconto, 0))}.`
+          ? `${ordemAtual?.numero_os ?? `OS #${id}`} recebeu principal ${formatCurrency(valorLancado)} via ${forma}, juros ${formatCurrency(jurosLancados)}, multa ${formatCurrency(multaLancada)}, desconto ${formatCurrency(descontoLancado)} e ISS retido ${formatCurrency(issRetidoLancado)}. Entrada no caixa: ${formatCurrency(valorLancado + jurosLancados + multaLancada)}. Saldo: ${formatCurrency(Math.max(totalCliente - proximoRecebido - proximoDesconto - proximoIssRetido, 0))}.`
           : `${ordemAtual?.numero_os ?? `OS #${id}`} marcada como ${statusFinal}.`,
       })
       return NextResponse.json({ ok: true })
@@ -568,6 +600,12 @@ async function registrarHistoricoFinanceiro(
     valor: number
     descricao: string
     responsavel?: string
+    valorPrincipal?: number
+    juros?: number
+    multa?: number
+    desconto?: number
+    issRetido?: number
+    valorLiquido?: number
   }
 ) {
   const { error } = await supabase.from('financeiro_historico').insert({
@@ -580,6 +618,14 @@ async function registrarHistoricoFinanceiro(
     valor: item.valor,
     descricao: item.descricao,
     responsavel: item.responsavel ?? 'Admin',
+    ...(item.valorPrincipal === undefined ? {} : {
+      valor_principal: item.valorPrincipal,
+      juros: item.juros ?? 0,
+      multa: item.multa ?? 0,
+      desconto: item.desconto ?? 0,
+      iss_retido: item.issRetido ?? 0,
+      valor_liquido: item.valorLiquido ?? item.valor,
+    }),
   })
 
   if (

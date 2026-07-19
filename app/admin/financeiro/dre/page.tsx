@@ -11,6 +11,7 @@ type Resumo = {
   custosDiretos: number
   lucroBruto: number
   despesasOperacionais: number
+  receitasFinanceiras: number
   despesasFinanceiras: number
   despesasNaoOperacionais: number
   investimentos: number
@@ -28,6 +29,7 @@ type Dre = {
     receitaVendas: number
     descontos: number
     impostosSobreVendas: number
+    receitasFinanceiras: number
     custoPecasOs: number
     custoVendas: number
     custoTecnicos: number
@@ -168,6 +170,7 @@ export default function DrePage() {
               <Linha label="(-) Despesas operacionais" valor={-dados.resumo.despesasOperacionais} forte />
               {dados.despesasCategorias.map((item) => <Linha key={item.categoria} label={formatLabel(item.categoria)} valor={-item.valor} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: `despesa:${item.categoria}`, titulo: `Despesas — ${formatLabel(item.categoria)}` })} />)}
               <Linha label="(=) Resultado operacional" valor={dados.resumo.resultadoOperacional} forte grande fundo={dados.resumo.resultadoOperacional >= 0 ? 'green' : 'red'} />
+              <Linha label="(+) Receitas financeiras (juros e multas)" valor={dados.resumo.receitasFinanceiras} onDetalhe={() => setDetalheAtivo({ chave: 'receitasFinanceiras', titulo: 'Receitas financeiras' })} />
               <Linha label="(-) Despesas financeiras" valor={-dados.resumo.despesasFinanceiras} onDetalhe={() => setDetalheAtivo({ chave: 'despesasFinanceiras', titulo: 'Despesas financeiras' })} />
               <Linha label="(-) Despesas não operacionais" valor={-dados.resumo.despesasNaoOperacionais} onDetalhe={() => setDetalheAtivo({ chave: 'despesasNaoOperacionais', titulo: 'Despesas não operacionais' })} />
               <Linha label="(=) Resultado líquido gerencial" valor={dados.resumo.resultadoLiquido} forte grande fundo={dados.resumo.resultadoLiquido >= 0 ? 'green' : 'red'} />

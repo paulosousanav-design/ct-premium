@@ -22,6 +22,9 @@ type OrdemFinanceira = {
   total: number | string | null
   valor_recebido_cliente?: number | string | null
   desconto_recebimento_cliente?: number | string | null
+  juros_recebidos_cliente?: number | string | null
+  multa_recebida_cliente?: number | string | null
+  iss_retido_cliente?: number | string | null
   tecnico_total?: number | string | null
   tecnico_status_pagamento?: string | null
   tecnico_pago_em?: string | null
@@ -137,6 +140,7 @@ export default function FinanceiroPage() {
   const [contasPagarPendente, setContasPagarPendente] = useState(false)
   const [historicoPendente, setHistoricoPendente] = useState(false)
   const [descontoRecebimentoPendente, setDescontoRecebimentoPendente] = useState(false)
+  const [acrescimosRecebimentoPendente, setAcrescimosRecebimentoPendente] = useState(false)
   const [loading, setLoading] = useState(true)
   const [salvandoId, setSalvandoId] = useState<number | null>(null)
   const [erro, setErro] = useState('')
@@ -165,6 +169,7 @@ export default function FinanceiroPage() {
       setContasPagarPendente(Boolean(data?.contasPagarPendente))
       setHistoricoPendente(Boolean(data?.historicoPendente))
       setDescontoRecebimentoPendente(Boolean(data?.descontoRecebimentoPendente))
+      setAcrescimosRecebimentoPendente(Boolean(data?.acrescimosRecebimentoPendente))
       setVendasResumo(data?.vendasResumo ?? { total: 0, totalMes: 0, quantidade: 0 })
     } catch (error) {
       setErro(formatarErro(error, 'Erro ao carregar financeiro.'))
@@ -205,7 +210,7 @@ export default function FinanceiroPage() {
     })
     return {
       total: base.reduce((acc, os) => acc + valorCliente(os), 0),
-      recebido: base.reduce((acc, os) => acc + valorRecebidoCliente(os), 0),
+      recebido: base.reduce((acc, os) => acc + valorCaixaRecebidoCliente(os), 0),
       aReceber: base.reduce((acc, os) => acc + saldoCliente(os), 0),
       descontos: base.reduce((acc, os) => acc + descontoRecebimentoCliente(os), 0),
     }
@@ -236,19 +241,19 @@ export default function FinanceiroPage() {
   const resumo = useMemo(() => {
     const ordensFinalizadas = ordens.filter((os) => os.status === 'FINALIZADA')
     const ordensRecebiveis = ordens.filter(osRecebivel)
-    const ordensComRecebimento = ordens.filter((os) => valorRecebidoCliente(os) > 0)
+    const ordensComRecebimento = ordens.filter((os) => valorLiquidadoCliente(os) > 0)
     const receberCliente = ordensRecebiveis
       .filter((os) => !ehGarantidorOuSeguradora(os) && saldoCliente(os) > 0)
       .reduce((acc, os) => acc + saldoCliente(os), 0)
     const recebidoCliente = ordensComRecebimento
-      .filter((os) => !ehGarantidorOuSeguradora(os) && valorRecebidoCliente(os) > 0)
-      .reduce((acc, os) => acc + valorRecebidoCliente(os), 0)
+      .filter((os) => !ehGarantidorOuSeguradora(os) && valorLiquidadoCliente(os) > 0)
+      .reduce((acc, os) => acc + valorCaixaRecebidoCliente(os), 0)
     const receberGarantidor = ordensRecebiveis
       .filter((os) => ehGarantidorOuSeguradora(os) && saldoCliente(os) > 0)
       .reduce((acc, os) => acc + saldoCliente(os), 0)
     const recebidoGarantidor = ordensComRecebimento
-      .filter((os) => ehGarantidorOuSeguradora(os) && valorRecebidoCliente(os) > 0)
-      .reduce((acc, os) => acc + valorRecebidoCliente(os), 0)
+      .filter((os) => ehGarantidorOuSeguradora(os) && valorLiquidadoCliente(os) > 0)
+      .reduce((acc, os) => acc + valorCaixaRecebidoCliente(os), 0)
     const pagarTecnico = ordensFinalizadas
       .filter((os) => !tecnicoProprio(os) && !tecnicoPago(os) && valorTecnico(os) > 0)
       .reduce((acc, os) => acc + valorTecnico(os), 0)
@@ -292,7 +297,7 @@ export default function FinanceiroPage() {
     const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0, 23, 59, 59)
     const ordensFinalizadas = ordens.filter((os) => os.status === 'FINALIZADA')
     const recebidasMes = ordens.filter((os) =>
-      valorRecebidoCliente(os) > 0 && estaNoPeriodo(os.data_ultimo_recebimento ?? os.data_pagamento ?? os.created_at, inicioMes, fimMes)
+      valorLiquidadoCliente(os) > 0 && estaNoPeriodo(os.data_ultimo_recebimento ?? os.data_pagamento ?? os.created_at, inicioMes, fimMes)
     )
     const tecnicosPagosMes = ordensFinalizadas.filter((os) =>
       !tecnicoProprio(os) && tecnicoPago(os) && estaNoPeriodo(os.tecnico_pago_em ?? os.created_at, inicioMes, fimMes)
@@ -308,10 +313,10 @@ export default function FinanceiroPage() {
 
     const recebidoClienteMes = recebidasMes
       .filter((os) => !ehGarantidorOuSeguradora(os))
-      .reduce((acc, os) => acc + valorRecebidoCliente(os), 0)
+      .reduce((acc, os) => acc + valorCaixaRecebidoCliente(os), 0)
     const recebidoGarantidorMes = recebidasMes
       .filter((os) => ehGarantidorOuSeguradora(os))
-      .reduce((acc, os) => acc + valorRecebidoCliente(os), 0)
+      .reduce((acc, os) => acc + valorCaixaRecebidoCliente(os), 0)
     const pagoTecnicoMes = tecnicosPagosMes.reduce((acc, os) => acc + valorTecnico(os), 0)
     const contasPagasValorMes = contasPagasMes.reduce((acc, conta) => acc + toNumber(conta.valor), 0)
     const descontosMes = recebidasMes.reduce((acc, os) => acc + descontoRecebimentoCliente(os), 0)
@@ -410,7 +415,7 @@ export default function FinanceiroPage() {
       const response = await adminFetch('/api/admin/financeiro', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: 'OS', id, status, forma, valor: recebimento?.valor, desconto: recebimento?.desconto }),
+        body: JSON.stringify({ tipo: 'OS', id, status, forma, valor: recebimento?.valor, desconto: recebimento?.desconto, juros: recebimento?.juros, multa: recebimento?.multa, issRetido: recebimento?.issRetido }),
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error ?? 'Erro ao atualizar financeiro.')
@@ -519,6 +524,11 @@ export default function FinanceiroPage() {
       {descontoRecebimentoPendente && (
         <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
           Rode o SQL de desconto no recebimento para liberar desconto ao baixar faturas.
+        </div>
+      )}
+      {acrescimosRecebimentoPendente && (
+        <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          Rode o arquivo supabase-add-acrescimos-iss-recebimentos.sql para liberar juros, multa e ISS retido.
         </div>
       )}
 
@@ -752,6 +762,8 @@ function RecebimentosTable({
             <th className="p-3">Origem</th>
             <th className="p-3">Valor cliente</th>
             <th className="p-3">Recebido</th>
+            <th className="p-3">Juros/multa</th>
+            <th className="p-3">ISS retido</th>
             <th className="p-3">Desconto</th>
             <th className="p-3">Saldo</th>
             <th className="p-3">Status</th>
@@ -761,8 +773,8 @@ function RecebimentosTable({
           </tr>
         </thead>
         <tbody>
-          {loading && <LinhaMensagem colSpan={11} texto="Carregando..." />}
-          {!loading && ordens.length === 0 && <LinhaMensagem colSpan={11} texto="Nenhum registro encontrado." />}
+          {loading && <LinhaMensagem colSpan={13} texto="Carregando..." />}
+          {!loading && ordens.length === 0 && <LinhaMensagem colSpan={13} texto="Nenhum registro encontrado." />}
           {!loading &&
             ordens.map((os) => {
               const saldo = saldoCliente(os)
@@ -772,7 +784,9 @@ function RecebimentosTable({
                   <td className="p-3">{nomeCliente(os)}</td>
                   <td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-black ${ehGarantidorOuSeguradora(os) ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'}`}>{ehGarantidorOuSeguradora(os) ? nomeGarantidor(os) : 'CLIENTE'}</span></td>
                   <td className="p-3 font-semibold">{formatCurrency(valorCliente(os))}</td>
-                  <td className="p-3 font-semibold text-emerald-700">{formatCurrency(valorRecebidoCliente(os))}</td>
+                  <td className="p-3 font-semibold text-emerald-700">{formatCurrency(valorCaixaRecebidoCliente(os))}</td>
+                  <td className="p-3 font-semibold text-emerald-700">{formatCurrency(acrescimosRecebimentoCliente(os))}</td>
+                  <td className="p-3 font-semibold text-violet-700">{formatCurrency(issRetidoCliente(os))}</td>
                   <td className="p-3 font-semibold text-orange-700">{formatCurrency(descontoRecebimentoCliente(os))}</td>
                   <td className="p-3 font-semibold text-orange-700">{formatCurrency(saldo)}</td>
                   <td className="p-3"><StatusFinanceiro status={os.status_financeiro} /></td>
@@ -1351,6 +1365,7 @@ function osRecebivel(os: OrdemFinanceira) {
 
 function valorRecebidoCliente(os: OrdemFinanceira) {
   const recebido = toNumber(os.valor_recebido_cliente)
+  if (os.iss_retido_cliente !== undefined) return Math.min(recebido, valorCliente(os))
   if (recebido > 0) return Math.min(recebido, valorCliente(os))
   return os.status_financeiro === 'RECEBIDO' ? valorCliente(os) : 0
 }
@@ -1359,8 +1374,24 @@ function descontoRecebimentoCliente(os: OrdemFinanceira) {
   return Math.max(toNumber(os.desconto_recebimento_cliente), 0)
 }
 
+function issRetidoCliente(os: OrdemFinanceira) {
+  return Math.max(toNumber(os.iss_retido_cliente), 0)
+}
+
+function acrescimosRecebimentoCliente(os: OrdemFinanceira) {
+  return Math.max(toNumber(os.juros_recebidos_cliente), 0) + Math.max(toNumber(os.multa_recebida_cliente), 0)
+}
+
+function valorCaixaRecebidoCliente(os: OrdemFinanceira) {
+  return valorRecebidoCliente(os) + acrescimosRecebimentoCliente(os)
+}
+
+function valorLiquidadoCliente(os: OrdemFinanceira) {
+  return valorRecebidoCliente(os) + issRetidoCliente(os)
+}
+
 function saldoCliente(os: OrdemFinanceira) {
-  return Math.max(valorCliente(os) - valorRecebidoCliente(os) - descontoRecebimentoCliente(os), 0)
+  return Math.max(valorCliente(os) - valorRecebidoCliente(os) - descontoRecebimentoCliente(os) - issRetidoCliente(os), 0)
 }
 
 function valorTecnico(os: OrdemFinanceira) {
@@ -1486,21 +1517,43 @@ function pedirRecebimentoComDesconto(os: OrdemFinanceira, usarSaldoComoPadrao: b
     return null
   }
 
-  const saldoAposDesconto = Math.max(saldo - desconto, 0)
-  const valorPadrao = usarSaldoComoPadrao ? saldoAposDesconto : 0
+  const respostaIss = window.prompt(
+    `ISS retido pelo tomador nesta baixa. Informe 0 quando nao houver retencao.`,
+    '0,00'
+  )
+  if (respostaIss === null) return null
+  const issRetido = parseMoneyInput(respostaIss)
+  if (!Number.isFinite(issRetido) || issRetido < 0 || desconto + issRetido > saldo) {
+    window.alert(`ISS retido invalido. Desconto + ISS devem ficar ate ${formatCurrency(saldo)}.`)
+    return null
+  }
+
+  const respostaJuros = window.prompt('Juros recebidos nesta baixa:', '0,00')
+  if (respostaJuros === null) return null
+  const juros = parseMoneyInput(respostaJuros)
+  const respostaMulta = window.prompt('Multa recebida nesta baixa:', '0,00')
+  if (respostaMulta === null) return null
+  const multa = parseMoneyInput(respostaMulta)
+  if (![juros, multa].every((valor) => Number.isFinite(valor) && valor >= 0)) {
+    window.alert('Informe juros e multa validos.')
+    return null
+  }
+
+  const saldoAposRetencoes = Math.max(saldo - desconto - issRetido, 0)
+  const valorPadrao = usarSaldoComoPadrao ? saldoAposRetencoes : 0
   const resposta = window.prompt(
-    `Valor recebido agora. Saldo apos desconto: ${formatCurrency(saldoAposDesconto)}`,
+    `Valor principal recebido agora. Entrada total no caixa sera principal + juros + multa. Saldo apos desconto e ISS: ${formatCurrency(saldoAposRetencoes)}`,
     valorPadrao > 0 ? String(valorPadrao.toFixed(2)).replace('.', ',') : ''
   )
   if (resposta === null) return null
 
   const valor = parseMoneyInput(resposta)
-  if (!Number.isFinite(valor) || valor <= 0 || valor + desconto > saldo) {
-    window.alert(`Valor invalido. Valor recebido + desconto deve ficar ate ${formatCurrency(saldo)}.`)
+  if (!Number.isFinite(valor) || valor < 0 || valor + desconto + issRetido <= 0 || valor + desconto + issRetido > saldo) {
+    window.alert(`Valor invalido. Principal + desconto + ISS deve ficar ate ${formatCurrency(saldo)}.`)
     return null
   }
 
-  return { valor, desconto }
+  return { valor, desconto, juros, multa, issRetido }
 }
 
 function parseMoneyInput(value: string) {
