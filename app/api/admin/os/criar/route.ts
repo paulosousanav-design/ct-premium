@@ -32,10 +32,20 @@ export async function GET(request: NextRequest) {
     const auth = await requireAdminUnidade(request, 'os')
     if (!auth.ok) return auth.response
 
+    const supabase = getSupabaseAdmin()
+    if (request.nextUrl.searchParams.get('opcoes') === '1') {
+      const [{ data: categorias, error: categoriasError }, { data: marcas, error: marcasError }] = await Promise.all([
+        supabase.from('categorias').select('id, nome').order('nome', { ascending: true }),
+        supabase.from('marcas').select('id, nome, categoria_id').order('nome', { ascending: true }),
+      ])
+      if (categoriasError) throw categoriasError
+      if (marcasError) throw marcasError
+      return NextResponse.json({ categorias: categorias ?? [], marcas: marcas ?? [] })
+    }
+
     const termo = String(request.nextUrl.searchParams.get('q') ?? '').trim()
     if (termo.length < 3) return NextResponse.json({ data: [] })
 
-    const supabase = getSupabaseAdmin()
     const termoSeguro = termo.replace(/[%_,]/g, '')
     const digits = apenasNumeros(termoSeguro)
     const filtros = [

@@ -31,7 +31,6 @@ for (const cabecalho of ['Content-Security-Policy', 'X-Content-Type-Options', 'X
 
 const clientes = listar(join(root, 'app')).filter((arquivo) => arquivo.endsWith('.tsx'))
 const acessoDiretoPermitido = new Set([
-  'app/admin/os/page.tsx',
   'app/admin/os/[id]/page.tsx',
 ])
 for (const arquivo of clientes) {

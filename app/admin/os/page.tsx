@@ -9,7 +9,6 @@ import {
   useState,
 } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { adminFetch } from '@/lib/admin-fetch'
 
 type Categoria = {
@@ -316,23 +315,14 @@ export default function OrdensServicoPage() {
     setErro('')
 
     try {
-      const categoriasRes = await supabase
-        .from('categorias')
-        .select('id, nome')
-        .order('nome', { ascending: true })
-
-      if (categoriasRes.error) throw categoriasRes.error
-      setCategorias(categoriasRes.data ?? [])
-
-      const marcasRes = await supabase
-        .from('marcas')
-        .select('id, nome, categoria_id')
-        .order('nome', { ascending: true })
-
-      if (marcasRes.error) throw marcasRes.error
-      setMarcas(marcasRes.data ?? [])
-
-      await carregarOrdensTriagem()
+      const [opcoesResponse] = await Promise.all([
+        adminFetch('/api/admin/os/criar?opcoes=1'),
+        carregarOrdensTriagem(),
+      ])
+      const opcoes = await opcoesResponse.json().catch(() => null)
+      if (!opcoesResponse.ok) throw new Error(opcoes?.error ?? 'Erro ao carregar categorias e marcas.')
+      setCategorias((opcoes?.categorias ?? []) as Categoria[])
+      setMarcas((opcoes?.marcas ?? []) as Marca[])
     } catch (err) {
       console.error('Erro no carregarDados:', err)
       setErro(formatarErro(err, 'Erro ao carregar a OS.'))
@@ -523,108 +513,8 @@ export default function OrdensServicoPage() {
 
       const numeroOS = data.numeroOS
       const osCriada = { id: data.id }
-      /*
-      const whatsappLimpo = form.whatsapp.trim()
-      const emailLimpo = form.email.trim()
-
-      let clienteId: number | null = null
-
-      const { data: clientePorWhatsapp, error: erroWhatsapp } = await supabase
-        .from('clientes')
-        .select('id')
-        .eq('whatsapp', whatsappLimpo)
-        .maybeSingle()
-
-      if (erroWhatsapp) throw erroWhatsapp
-      if (clientePorWhatsapp?.id) {
-        clienteId = clientePorWhatsapp.id
-      }
-
-      if (!clienteId && emailLimpo) {
-        const { data: clientePorEmail, error: erroEmail } = await supabase
-          .from('clientes')
-          .select('id')
-          .eq('email', emailLimpo)
-          .maybeSingle()
-
-        if (erroEmail) throw erroEmail
-        if (clientePorEmail?.id) {
-          clienteId = clientePorEmail.id
-        }
-      }
-
-      if (!clienteId) {
-        const { data: novoCliente, error: novoClienteError } = await supabase
-          .from('clientes')
-          .insert({
-            nome: form.nomeCliente.trim(),
-            cpf_cnpj: form.cpfCnpj.trim(),
-            whatsapp: whatsappLimpo,
-            email: emailLimpo || null,
-            cep: form.cep.trim() || null,
-            logradouro: form.rua.trim() || null,
-            numero: form.numero.trim() || null,
-            bairro: form.bairro.trim() || null,
-            cidade: form.cidade.trim() || null,
-            estado: form.estado.trim() || null,
-          })
-          .select('id')
-          .single()
-
-        if (novoClienteError) throw novoClienteError
-        clienteId = novoCliente.id
-      }
-
-      const numeroOS = gerarNumeroOS()
-
-      const { data: osCriada, error: osError } = await supabase
-        .from('ordens_servico')
-        .insert({
-          numero_os: numeroOS,
-          cliente_id: Number(clienteId),
-          categoria_id: Number(form.categoriaId),
-          marca_id: Number(form.marcaId),
-          modelo: form.modelo.trim(),
-          numero_serie: form.numeroSerie.trim() || null,
-          defeito: form.defeito.trim(),
-          status: 'NOVA',
-          prioridade: form.prioridade,
-          parceiro_id: null,
-          sla_status: 'NORMAL',
-        })
-        .select('id')
-        .single()
-
-      if (osError) throw osError
-      if (!osCriada?.id) throw new Error('A OS foi criada, mas o ID não retornou.')
-
-      */
 
       if (!osCriada?.id) throw new Error('A OS foi criada, mas o ID não retornou.')
-
-      if (false && fotos.length > 0) {
-        for (const arquivo of fotos) {
-          const caminho = `${osCriada.id}/${Date.now()}-${arquivo.name}`
-
-          const { error: uploadError } = await supabase.storage
-            .from('os-fotos')
-            .upload(caminho, arquivo)
-
-          if (uploadError) throw uploadError
-
-          const { data: urlData } = supabase.storage
-            .from('os-fotos')
-            .getPublicUrl(caminho)
-
-          const { error: fotoDbError } = await supabase.from('os_fotos').insert({
-            os_id: osCriada.id,
-            nome_arquivo: arquivo.name,
-            url: urlData.publicUrl,
-          })
-
-          if (fotoDbError) throw fotoDbError
-        }
-      }
 
       setMensagem(`OS criada com sucesso: ${numeroOS}`)
       setForm(formInicial)
