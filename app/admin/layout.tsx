@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
+import { adminFetch } from '@/lib/admin-fetch'
 import {
   ESCOPO_CONSOLIDADO,
   getUnidadeSelecionadaId,
@@ -19,6 +20,7 @@ type MenuItem = {
   label: string
   href: string
   permissao: string
+  contador?: boolean
 }
 
 type UnidadeAcesso = {
@@ -47,6 +49,7 @@ const menu: MenuItem[] = [
   { label: 'Relatorios', href: '/admin/relatorios', permissao: 'relatorios' },
   { label: 'Academia Tecnica', href: '/admin/academia', permissao: 'academia' },
   { label: 'Documentos Tecnicos', href: '/admin/documentos', permissao: 'documentos' },
+  { label: 'Chat interno', href: '/admin/chat', permissao: 'chat', contador: true },
   { label: 'Configuracoes', href: '/admin/configuracoes', permissao: 'configuracoes' },
 ]
 
@@ -58,6 +61,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [unidades, setUnidades] = useState<UnidadeAcesso[]>([])
   const [unidadeSelecionadaId, setUnidadeSelecionada] = useState<number | null>(null)
   const [escopoGerencial, setEscopoGerencialState] = useState(ESCOPO_CONSOLIDADO)
+  const [chatNaoLidas, setChatNaoLidas] = useState(0)
   const pathname = usePathname()
   const router = useRouter()
   const isLoginPage = pathname === '/admin/login'
@@ -119,6 +123,23 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     void Promise.resolve().then(carregarPermissoes)
   }, [carregarPermissoes, isLoginPage])
 
+  useEffect(() => {
+    if (!permissoes?.includes('chat') || isLoginPage) return
+    let ativo = true
+    const carregarNaoLidas = async () => {
+      try {
+        const response = await adminFetch('/api/admin/chat', { cache: 'no-store' })
+        const data = await response.json().catch(() => null)
+        if (ativo && response.ok) setChatNaoLidas(Number(data?.totalNaoLidas ?? 0))
+      } catch {
+        // O menu continua funcional mesmo se o contador estiver temporariamente indisponivel.
+      }
+    }
+    void carregarNaoLidas()
+    const timer = window.setInterval(() => void carregarNaoLidas(), 15000)
+    return () => { ativo = false; window.clearInterval(timer) }
+  }, [isLoginPage, permissoes])
+
   const menuVisivel = useMemo(() => {
     if (permissoes === null) return []
     if (usuarioInativo) return []
@@ -173,7 +194,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <nav className="flex-1 p-4">
+          <nav className="flex-1 overflow-y-auto p-4">
             <ul className="space-y-2">
               {menuVisivel.map((item) => {
                 const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
@@ -182,11 +203,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   <li key={item.href}>
                     <Link
                       href={item.href}
-                      className={`block rounded-xl px-4 py-3 text-sm font-medium transition ${
+                      className={`flex items-center justify-between gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${
                         active ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-900 hover:text-white'
                       }`}
                     >
-                      {item.label}
+                      <span>{item.label}</span>
+                      {item.contador && chatNaoLidas > 0 && <span className="rounded-full bg-orange-600 px-2 py-0.5 text-[11px] font-black text-white">{chatNaoLidas > 99 ? '99+' : chatNaoLidas}</span>}
                     </Link>
                   </li>
                 )
