@@ -34,6 +34,11 @@ export default function ChatInternoPage() {
   const [erro, setErro] = useState('')
   const fimRef = useRef<HTMLDivElement>(null)
 
+  useEffect(() => {
+    const conversaInicial = Number(new URLSearchParams(window.location.search).get('conversaId'))
+    if (conversaInicial) void Promise.resolve().then(() => setConversaId(conversaInicial))
+  }, [])
+
   const carregar = useCallback(async (selecionada: number | null, silencioso = false) => {
     if (!silencioso) setLoading(true)
     try {

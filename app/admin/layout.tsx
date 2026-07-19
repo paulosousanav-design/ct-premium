@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { adminFetch } from '@/lib/admin-fetch'
 import {
@@ -30,6 +30,22 @@ type UnidadeAcesso = {
   nome_fantasia: string
   ativa: boolean
 }
+
+type ChatMensagemResumo = {
+  id?: number
+  conteudo?: string
+  criado_em?: string
+  autor?: { nome?: string | null; email?: string | null } | Array<{ nome?: string | null; email?: string | null }> | null
+}
+
+type ChatConversaResumo = {
+  id: number
+  titulo?: string
+  naoLidas?: number
+  ultimaMensagem?: ChatMensagemResumo | null
+}
+
+type ChatAlerta = { conversaId: number; titulo: string; autor: string; conteudo: string }
 
 const menu: MenuItem[] = [
   { label: 'Dashboard', href: '/admin/dashboard', permissao: 'dashboard' },
@@ -62,6 +78,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [unidadeSelecionadaId, setUnidadeSelecionada] = useState<number | null>(null)
   const [escopoGerencial, setEscopoGerencialState] = useState(ESCOPO_CONSOLIDADO)
   const [chatNaoLidas, setChatNaoLidas] = useState(0)
+  const [chatAlerta, setChatAlerta] = useState<ChatAlerta | null>(null)
+  const [chatSomAtivo, setChatSomAtivo] = useState(true)
+  const chatNaoLidasAnterior = useRef<number | null>(null)
+  const chatAlertaTimer = useRef<number | null>(null)
   const pathname = usePathname()
   const router = useRouter()
   const isLoginPage = pathname === '/admin/login'
@@ -124,21 +144,52 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }, [carregarPermissoes, isLoginPage])
 
   useEffect(() => {
+    void Promise.resolve().then(() => setChatSomAtivo(window.localStorage.getItem('ct-chat-som') !== 'desativado'))
+  }, [])
+
+  useEffect(() => {
     if (!permissoes?.includes('chat') || isLoginPage) return
     let ativo = true
     const carregarNaoLidas = async () => {
       try {
         const response = await adminFetch('/api/admin/chat', { cache: 'no-store' })
         const data = await response.json().catch(() => null)
-        if (ativo && response.ok) setChatNaoLidas(Number(data?.totalNaoLidas ?? 0))
+        if (ativo && response.ok) {
+          const total = Number(data?.totalNaoLidas ?? 0)
+          const anterior = chatNaoLidasAnterior.current
+          setChatNaoLidas(total)
+          if (anterior !== null && total > anterior && pathname !== '/admin/chat') {
+            const conversas = (Array.isArray(data?.conversas) ? data.conversas : []) as ChatConversaResumo[]
+            const conversa = conversas.find((item) => Number(item.naoLidas ?? 0) > 0)
+            const mensagem = conversa?.ultimaMensagem
+            const autorRaw = mensagem?.autor
+            const autor = Array.isArray(autorRaw) ? autorRaw[0] : autorRaw
+            if (conversa) {
+              setChatAlerta({
+                conversaId: Number(conversa.id),
+                titulo: String(conversa.titulo ?? 'Chat interno'),
+                autor: String(autor?.nome ?? autor?.email ?? 'Nova mensagem'),
+                conteudo: String(mensagem?.conteudo ?? 'Você recebeu uma nova mensagem.'),
+              })
+              if (chatSomAtivo) tocarAlertaChat()
+              if (chatAlertaTimer.current) window.clearTimeout(chatAlertaTimer.current)
+              chatAlertaTimer.current = window.setTimeout(() => setChatAlerta(null), 9000)
+            }
+          }
+          chatNaoLidasAnterior.current = total
+        }
       } catch {
         // O menu continua funcional mesmo se o contador estiver temporariamente indisponivel.
       }
     }
     void carregarNaoLidas()
-    const timer = window.setInterval(() => void carregarNaoLidas(), 15000)
-    return () => { ativo = false; window.clearInterval(timer) }
-  }, [isLoginPage, permissoes])
+    const timer = window.setInterval(() => void carregarNaoLidas(), 6000)
+    return () => {
+      ativo = false
+      window.clearInterval(timer)
+      if (chatAlertaTimer.current) window.clearTimeout(chatAlertaTimer.current)
+    }
+  }, [chatSomAtivo, isLoginPage, pathname, permissoes])
 
   const menuVisivel = useMemo(() => {
     if (permissoes === null) return []
@@ -165,12 +216,64 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     window.location.reload()
   }
 
+  function alternarSomChat() {
+    const novoValor = !chatSomAtivo
+    setChatSomAtivo(novoValor)
+    window.localStorage.setItem('ct-chat-som', novoValor ? 'ativado' : 'desativado')
+  }
+
+  function abrirConversaChat(conversaId?: number) {
+    setChatAlerta(null)
+    router.push(conversaId ? `/admin/chat?conversaId=${conversaId}` : '/admin/chat')
+  }
+
   if (isLoginPage) {
     return <>{children}</>
   }
 
   return (
     <div className="min-h-screen bg-[#c7d3cf]">
+      {permissoes?.includes('chat') && (
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={alternarSomChat}
+            title={chatSomAtivo ? 'Desativar som do chat' : 'Ativar som do chat'}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-sm shadow-lg"
+            aria-label={chatSomAtivo ? 'Desativar som do chat' : 'Ativar som do chat'}
+          >
+            {chatSomAtivo ? '🔔' : '🔕'}
+          </button>
+          <button
+            type="button"
+            onClick={() => abrirConversaChat()}
+            className="relative rounded-full bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-xl hover:bg-slate-800"
+          >
+            Chat
+            {chatNaoLidas > 0 && (
+              <span className="absolute -right-2 -top-2 min-w-6 rounded-full bg-red-600 px-1.5 py-1 text-[10px] font-black text-white">
+                {chatNaoLidas > 99 ? '99+' : chatNaoLidas}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+
+      {chatAlerta && (
+        <div className="fixed right-4 top-4 z-[60] w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-2xl border border-orange-200 bg-white shadow-2xl">
+          <button type="button" onClick={() => abrirConversaChat(chatAlerta.conversaId)} className="block w-full p-4 text-left">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-wide text-orange-600">Nova mensagem · {chatAlerta.titulo}</p>
+                <p className="mt-1 truncate text-sm font-black text-slate-950">{chatAlerta.autor}</p>
+                <p className="mt-1 line-clamp-2 text-sm text-slate-600">{chatAlerta.conteudo}</p>
+              </div>
+              <span className="rounded-full bg-orange-100 px-2 py-1 text-xs font-black text-orange-700">Abrir</span>
+            </div>
+          </button>
+          <button type="button" onClick={() => setChatAlerta(null)} className="w-full border-t border-slate-100 px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50">Dispensar</button>
+        </div>
+      )}
       <div className="flex min-h-screen">
         <aside className="hidden w-[300px] border-r border-slate-800 bg-slate-950 text-white lg:flex lg:flex-col">
           <div className="border-b border-slate-800 p-5">
@@ -295,4 +398,25 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       </div>
     </div>
   )
+}
+
+function tocarAlertaChat() {
+  try {
+    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!AudioContextClass) return
+    const contexto = new AudioContextClass()
+    const oscilador = contexto.createOscillator()
+    const ganho = contexto.createGain()
+    oscilador.frequency.value = 720
+    ganho.gain.setValueAtTime(0.0001, contexto.currentTime)
+    ganho.gain.exponentialRampToValueAtTime(0.12, contexto.currentTime + 0.02)
+    ganho.gain.exponentialRampToValueAtTime(0.0001, contexto.currentTime + 0.22)
+    oscilador.connect(ganho)
+    ganho.connect(contexto.destination)
+    oscilador.start()
+    oscilador.stop(contexto.currentTime + 0.23)
+    oscilador.addEventListener('ended', () => void contexto.close())
+  } catch {
+    // Alguns navegadores bloqueiam som antes da primeira interacao do usuario.
+  }
 }
