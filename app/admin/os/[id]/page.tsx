@@ -13,9 +13,7 @@ function formatDate(data?: string | null) {
 
 import { type ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { adminFetch } from '@/lib/admin-fetch'
-import { getAdminActorLabel } from '@/lib/admin-actor'
 
 type Cliente = {
   id: number
@@ -446,168 +444,6 @@ export default function OrdemServicoAtendimentoPage() {
           : toNumber(osPayloadRelacoes.desconto) || toNumber(osPayloadRelacoes.tecnico_desconto),
         observacaoTecnica: osPayloadRelacoes.observacao_tecnica ?? '',
       })
-      return
-
-      const { data, error } = await supabase
-        .from('ordens_servico')
-        .select(`
-          id,
-          numero_os,
-          created_at,
-          status,
-          prioridade,
-          garantia,
-          referencia_garantidor,
-          bloqueada,
-          finalizada_em,
-          modelo,
-          numero_serie,
-          defeito,
-          diagnostico_tecnico,
-          servico_executado,
-          pecas_utilizadas,
-          valor_pecas,
-          valor_mao_obra,
-          desconto,
-          total,
-          observacao_tecnica,
-          cliente_id,
-          garantidor_id,
-          categoria_id,
-          marca_id
-        `)
-        .eq('id', id)
-        .maybeSingle()
-
-      if (error) throw error
-
-      if (!data) {
-        setErro('OS não encontrada.')
-        setOs(null)
-        return
-      }
-
-      const osData = data as NonNullable<typeof data>
-      let cliente: Cliente | null = null
-      let categoria: Categoria | null = null
-      let marca: Marca | null = null
-      const clienteId = osData.cliente_id
-      const categoriaId = osData.categoria_id
-      const marcaId = osData.marca_id
-
-      if (clienteId) {
-        const { data: clienteData, error: clienteError } = await supabase
-          .from('clientes')
-          .select('id, nome, cpf_cnpj, whatsapp, email, cep, logradouro, numero, bairro, cidade, estado')
-          .eq('id', clienteId)
-          .maybeSingle()
-
-        if (clienteError) throw clienteError
-        cliente = clienteData ?? null
-      }
-
-      if (categoriaId) {
-        const { data: categoriaData, error: categoriaError } = await supabase
-          .from('categorias')
-          .select('id, nome')
-          .eq('id', categoriaId)
-          .maybeSingle()
-
-        if (categoriaError) throw categoriaError
-        categoria = categoriaData ?? null
-      }
-
-      if (marcaId) {
-        const { data: marcaData, error: marcaError } = await supabase
-          .from('marcas')
-          .select('id, nome')
-          .eq('id', marcaId)
-          .maybeSingle()
-
-        if (marcaError) throw marcaError
-        marca = marcaData ?? null
-      }
-
-      const { data: fotosData, error: fotosError } = await supabase
-        .from('os_fotos')
-        .select('id, nome_arquivo, url, criado_em')
-        .eq('os_id', osData.id)
-        .order('criado_em', { ascending: false })
-
-      if (fotosError) throw fotosError
-
-      const { data: historicoData, error: historicoError } = await supabase
-        .from('os_historico')
-        .select(`
-          id,
-          os_id,
-          acao,
-          status_anterior,
-          status_novo,
-          prioridade_anterior,
-          prioridade_nova,
-          descricao,
-          responsavel,
-          criado_em
-        `)
-        .eq('os_id', osData.id)
-        .order('criado_em', { ascending: false })
-
-      if (historicoError) throw historicoError
-
-      const { data: pecasData, error: pecasError } = await supabase
-        .from('os_pecas')
-        .select('id, descricao, quantidade, valor_unitario, total_item, criado_em')
-        .eq('os_id', osData.id)
-        .order('criado_em', { ascending: true })
-
-      if (pecasError) throw pecasError
-
-      const { data: categoriasData, error: categoriasError } = await supabase
-        .from('categorias')
-        .select('id, nome')
-        .order('nome', { ascending: true })
-
-      if (categoriasError) throw categoriasError
-
-      const { data: marcasData, error: marcasError } = await supabase
-        .from('marcas')
-        .select('id, nome, categoria_id')
-        .order('nome', { ascending: true })
-
-      if (marcasError) throw marcasError
-
-      const osComRelacoes: OrdemServico = {
-        ...osData,
-        cliente,
-        categoria,
-        marca,
-      }
-
-      setOs(osComRelacoes)
-      setFotos((fotosData ?? []) as OSFoto[])
-      setHistorico((historicoData ?? []) as HistoricoItem[])
-      setPecas((pecasData ?? []) as PecaItemDb[])
-      setCategorias((categoriasData ?? []) as Categoria[])
-      setMarcas((marcasData ?? []) as Marca[])
-      setForm({
-        status: osData.status ?? 'NOVA',
-        prioridade: osData.prioridade ?? 'NORMAL',
-        garantia: osData.garantia ? 'SIM' : 'NAO',
-        garantidorId: osData.garantidor_id ? String(osData.garantidor_id) : '',
-        referenciaGarantidor: osData.referencia_garantidor ?? '',
-        categoriaId: osData.categoria_id ? String(osData.categoria_id) : '',
-        marcaId: osData.marca_id ? String(osData.marca_id) : '',
-        modelo: osData.modelo ?? '',
-        numeroSerie: osData.numero_serie ?? '',
-        diagnosticoTecnico: osData.diagnostico_tecnico ?? '',
-        servicoExecutado: osData.servico_executado ?? '',
-        tecnicoValorMaoObra: toNumber(osData.valor_mao_obra),
-        valorPecasCliente: toNumber(osData.valor_pecas),
-        valorMaoObra: toNumber(osData.valor_mao_obra),
-        desconto: toNumber(osData.desconto),
-        observacaoTecnica: osData.observacao_tecnica ?? '',
-      })
     } catch (err) {
       setErro(formatarErro(err, 'Erro ao carregar OS.'))
     } finally {
@@ -873,63 +709,12 @@ export default function OrdemServicoAtendimentoPage() {
       }
 
       if (novasFotos.length > 0) {
-        for (const arquivo of novasFotos) {
-          const caminho = `${os.id}/atendimento/${Date.now()}-${arquivo.name}`
-
-          const { error: uploadError } = await supabase.storage
-            .from('os-fotos')
-            .upload(caminho, arquivo)
-
-          if (uploadError) throw uploadError
-
-          const { data: urlData } = supabase.storage.from('os-fotos').getPublicUrl(caminho)
-
-          const { error: fotoDbError } = await supabase.from('os_fotos').insert({
-            os_id: os.id,
-            nome_arquivo: arquivo.name,
-            url: urlData.publicUrl,
-          })
-
-          if (fotoDbError) throw fotoDbError
-        }
-      }
-
-      if (false) {
-      const pecasResumo = ''
-      const bloqueada = statusFinal === 'FINALIZADA'
-      const statusAnterior = os?.status ?? 'NOVA'
-      const prioridadeAnterior = os?.prioridade ?? 'NORMAL'
-
-      const resumo = [
-        `Status: ${statusAnterior} → ${statusFinal}`,
-        `Prioridade: ${prioridadeAnterior} → ${form.prioridade}`,
-        `Garantia: ${form.garantia}`,
-        form.diagnosticoTecnico.trim() ? `Diagnóstico: ${form.diagnosticoTecnico.trim()}` : '',
-        form.servicoExecutado.trim() ? `Serviço: ${form.servicoExecutado.trim()}` : '',
-        pecasResumo ? `Peças: ${pecasResumo}` : '',
-        `Peças total: ${formatCurrency(form.valorPecasCliente)}`,
-        `Mão de obra: ${formatCurrency(form.valorMaoObra)}`,
-        `Desconto: ${formatCurrency(form.desconto)}`,
-        `Total: ${formatCurrency(total)}`,
-        bloqueada ? 'OS finalizada e bloqueada.' : '',
-        novasFotos.length > 0 ? `Fotos adicionadas: ${novasFotos.length}` : '',
-      ]
-        .filter(Boolean)
-        .join(' | ')
-
-      const responsavel = await getAdminActorLabel()
-      const { error: historicoError } = await supabase.from('os_historico').insert({
-        os_id: os?.id ?? id,
-        acao: statusFinal === 'FINALIZADA' ? 'OS_FINALIZADA' : 'ATENDIMENTO_TECNICO',
-        status_anterior: statusAnterior,
-        status_novo: statusFinal,
-        prioridade_anterior: prioridadeAnterior,
-        prioridade_nova: form.prioridade,
-        descricao: resumo,
-        responsavel,
-      })
-
-      if (historicoError) throw historicoError
+        const formData = new FormData()
+        formData.set('osId', String(os.id))
+        novasFotos.forEach((arquivo) => formData.append('fotos', arquivo))
+        const fotosResponse = await adminFetch('/api/admin/os/fotos', { method: 'POST', body: formData })
+        const fotosPayload = await fotosResponse.json().catch(() => null)
+        if (!fotosResponse.ok) throw new Error(fotosPayload?.error ?? 'Erro ao enviar fotos da OS.')
       }
 
       if (statusFinal === 'FINALIZADA') {

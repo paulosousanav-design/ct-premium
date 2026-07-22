@@ -30,17 +30,14 @@ for (const cabecalho of ['Content-Security-Policy', 'X-Content-Type-Options', 'X
 }
 
 const clientes = listar(join(root, 'app')).filter((arquivo) => arquivo.endsWith('.tsx'))
-const acessoDiretoPermitido = new Set([
-  'app/admin/os/[id]/page.tsx',
-])
 for (const arquivo of clientes) {
   const conteudo = readFileSync(arquivo, 'utf8')
   const caminho = relativo(arquivo)
   if (conteudo.includes('SUPABASE_SERVICE_ROLE_KEY')) {
     falhas.push(`${relativo(arquivo)} expoe a chave service_role em componente React.`)
   }
-  if (caminho.startsWith('app/admin/') && /supabase\s*\.from\s*\(/.test(conteudo) && !acessoDiretoPermitido.has(caminho)) {
-    falhas.push(`${caminho} acessa tabelas diretamente fora da lista temporaria de migracao.`)
+  if (caminho.startsWith('app/admin/') && /supabase\s*\.(?:from\s*\(|storage\b)/.test(conteudo)) {
+    falhas.push(`${caminho} acessa dados ou armazenamento diretamente pelo navegador.`)
   }
 }
 
@@ -50,7 +47,7 @@ if (falhas.length) {
   process.exit(1)
 }
 
-console.log(`Verificacao de seguranca aprovada: ${rotasAdmin.length} rotas administrativas, ${publicasProtegidas.length} rotas publicas e ${acessoDiretoPermitido.size} telas temporarias verificadas.`)
+console.log(`Verificacao de seguranca aprovada: ${rotasAdmin.length} rotas administrativas, ${publicasProtegidas.length} rotas publicas e nenhuma tela administrativa com acesso direto a tabelas.`)
 
 function listar(diretorio) {
   const arquivos = []
