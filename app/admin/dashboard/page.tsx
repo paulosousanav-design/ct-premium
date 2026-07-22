@@ -558,7 +558,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
             <KpiCard
               title="SLA cumprido"
               value={`${formatNumber(kpis.slaPercentual)}%`}
@@ -969,19 +969,19 @@ function KpiCard({
   const barra = semAmostra ? 'bg-slate-300' : atingiu ? 'bg-emerald-500' : 'bg-amber-500'
 
   return (
-    <article className={`rounded-xl border p-4 ${tone}`}>
+    <article className={`rounded-xl border px-3 py-3 ${tone}`}>
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-black uppercase leading-tight opacity-70">{title}</p>
-        <span className="rounded-full bg-white/70 px-2 py-1 text-[9px] font-black uppercase">
+        <p className="text-[10px] font-black uppercase leading-tight opacity-70">{title}</p>
+        <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[8px] font-black uppercase">
           {semAmostra ? 'Sem dados' : atingiu ? 'Meta atingida' : 'Atenção'}
         </span>
       </div>
-      <p className="mt-2 break-words text-2xl font-black leading-none">{value}</p>
-      <p className="mt-2 text-xs font-bold">{meta}</p>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/80">
+      <p className="mt-1.5 break-words text-xl font-black leading-none">{value}</p>
+      <p className="mt-1.5 text-[11px] font-bold">{meta}</p>
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/80">
         <div className={`h-full rounded-full transition-all ${barra}`} style={{ width: `${Math.min(Math.max(progresso, 0), 100)}%` }} />
       </div>
-      <p className="mt-2 line-clamp-2 text-[11px] font-semibold opacity-75">{detail}</p>
+      <p className="mt-1.5 line-clamp-1 text-[10px] font-semibold opacity-75" title={detail}>{detail}</p>
     </article>
   )
 }
