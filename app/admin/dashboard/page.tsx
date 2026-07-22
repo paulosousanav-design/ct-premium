@@ -70,6 +70,53 @@ type GarantidorFiltro = {
 }
 
 type FiltroOrigemDashboard = 'TODOS' | 'CLIENTE' | 'GARANTIDOR'
+type PeriodoKpi = 'MES_ATUAL' | '30_DIAS' | '90_DIAS'
+
+type KpiResumo = {
+  slaPercentual: number
+  slaAmostras: number
+  tempoMedioConclusaoDias: number
+  conclusoesAmostras: number
+  aprovacaoPercentual: number
+  aprovacoes: number
+  decisoesOrcamento: number
+  produtividadeMedia: number
+  tecnicosAtivos: number
+  tecnicoDestaque: { nome: string; total: number } | null
+  ticketMedio: number
+  ticketAmostras: number
+}
+
+type KpiMetas = {
+  metaSlaPercentual: number
+  metaConclusaoDias: number
+  metaAprovacaoPercentual: number
+  metaProdutividade: number
+  metaTicket: number
+}
+
+const KPI_VAZIO: KpiResumo = {
+  slaPercentual: 0,
+  slaAmostras: 0,
+  tempoMedioConclusaoDias: 0,
+  conclusoesAmostras: 0,
+  aprovacaoPercentual: 0,
+  aprovacoes: 0,
+  decisoesOrcamento: 0,
+  produtividadeMedia: 0,
+  tecnicosAtivos: 0,
+  tecnicoDestaque: null,
+  ticketMedio: 0,
+  ticketAmostras: 0,
+}
+
+const KPI_METAS_PADRAO: KpiMetas = {
+  metaSlaPercentual: 90,
+  metaConclusaoDias: 5,
+  metaAprovacaoPercentual: 70,
+  metaProdutividade: 10,
+  metaTicket: 500,
+}
 
 const STATUS_RAPIDOS = [
   { value: 'NOVA', label: 'Nova', className: 'border-slate-300 text-slate-700 hover:bg-slate-50', icon: UserIcon },
@@ -126,6 +173,12 @@ export default function DashboardPage() {
   const [filtroOrigem, setFiltroOrigem] = useState<FiltroOrigemDashboard>('TODOS')
   const [filtroGarantidor, setFiltroGarantidor] = useState('TODOS')
   const [garantidoresFiltro, setGarantidoresFiltro] = useState<GarantidorFiltro[]>([])
+  const [periodoKpi, setPeriodoKpi] = useState<PeriodoKpi>('MES_ATUAL')
+  const [kpis, setKpis] = useState<KpiResumo>(KPI_VAZIO)
+  const [metasKpi, setMetasKpi] = useState<KpiMetas>(KPI_METAS_PADRAO)
+  const [metasEdicao, setMetasEdicao] = useState<KpiMetas>(KPI_METAS_PADRAO)
+  const [editandoMetas, setEditandoMetas] = useState(false)
+  const [salvandoMetas, setSalvandoMetas] = useState(false)
 
   const carregarDashboard = useCallback(async () => {
     setLoading(true)
@@ -152,10 +205,11 @@ export default function DashboardPage() {
       }
       const params = new URLSearchParams({ origem: filtroOrigem })
       if (filtroGarantidor !== 'TODOS') params.set('garantidor', filtroGarantidor)
-      const [dashboardResponse, parceirosResumo, relatoriosResumo] = await Promise.all([
+      const [dashboardResponse, parceirosResumo, relatoriosResumo, configuracaoKpi] = await Promise.all([
         adminFetch(`/api/admin/dashboard?${params.toString()}`),
         carregarResumoParceiros(),
-        carregarResumoRelatorios(filtroOrigem, filtroGarantidor),
+        carregarResumoRelatorios(filtroOrigem, filtroGarantidor, periodoKpi),
+        carregarConfiguracaoKpi(),
       ])
       const dashboardData = await dashboardResponse.json().catch(() => null)
       if (!dashboardResponse.ok) throw new Error(dashboardData?.error ?? 'Erro ao carregar o dashboard.')
@@ -230,12 +284,34 @@ export default function DashboardPage() {
       setUltimasOs(ultimasOsData)
       setHistorico(historicoData)
       setGarantidoresFiltro(garantidoresResumo)
+      setKpis(relatoriosResumo.kpis)
+      setMetasKpi(configuracaoKpi)
     } catch (err) {
       setErro(formatarErro(err, 'Erro ao carregar o dashboard.'))
     } finally {
       setLoading(false)
     }
-  }, [filtroGarantidor, filtroOrigem])
+  }, [filtroGarantidor, filtroOrigem, periodoKpi])
+
+  async function salvarMetasKpi() {
+    setSalvandoMetas(true)
+    setErro('')
+    try {
+      const response = await adminFetch('/api/admin/relatorios/configuracoes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(metasEdicao),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Erro ao salvar as metas dos KPIs.')
+      setMetasKpi(metasEdicao)
+      setEditandoMetas(false)
+    } catch (err) {
+      setErro(formatarErro(err, 'Erro ao salvar as metas dos KPIs.'))
+    } finally {
+      setSalvandoMetas(false)
+    }
+  }
 
   useEffect(() => {
     // Carrega os dados iniciais e os recarrega quando os filtros mudam.
@@ -425,6 +501,110 @@ export default function DashboardPage() {
             value={loading ? '...' : String(stats.slaGarantiaForaPrazo)}
             tone={stats.slaGarantiaForaPrazo > 0 ? 'amber' : 'green'}
           />
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-orange-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-orange-700">KPI</span>
+                <h2 className="text-lg font-black text-slate-900">Desempenho operacional</h2>
+              </div>
+              <p className="mt-1 text-sm text-slate-500">Indicadores calculados pelas OS do período e do escopo selecionado.</p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={periodoKpi}
+                onChange={(event) => setPeriodoKpi(event.target.value as PeriodoKpi)}
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none focus:border-orange-500"
+              >
+                <option value="MES_ATUAL">Este mês</option>
+                <option value="30_DIAS">Últimos 30 dias</option>
+                <option value="90_DIAS">Últimos 90 dias</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  setMetasEdicao(metasKpi)
+                  setEditandoMetas((atual) => !atual)
+                }}
+                className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-black text-slate-700 transition hover:border-orange-400 hover:text-orange-600"
+              >
+                {editandoMetas ? 'Fechar metas' : 'Editar metas'}
+              </button>
+            </div>
+          </div>
+
+          {editandoMetas && (
+            <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50/60 p-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <MetaInput label="SLA mínimo (%)" value={metasEdicao.metaSlaPercentual} onChange={(value) => setMetasEdicao((atual) => ({ ...atual, metaSlaPercentual: value }))} />
+                <MetaInput label="Conclusão máxima (dias)" value={metasEdicao.metaConclusaoDias} onChange={(value) => setMetasEdicao((atual) => ({ ...atual, metaConclusaoDias: value }))} />
+                <MetaInput label="Aprovação mínima (%)" value={metasEdicao.metaAprovacaoPercentual} onChange={(value) => setMetasEdicao((atual) => ({ ...atual, metaAprovacaoPercentual: value }))} />
+                <MetaInput label="OS por técnico" value={metasEdicao.metaProdutividade} onChange={(value) => setMetasEdicao((atual) => ({ ...atual, metaProdutividade: value }))} />
+                <MetaInput label="Ticket mínimo (R$)" value={metasEdicao.metaTicket} onChange={(value) => setMetasEdicao((atual) => ({ ...atual, metaTicket: value }))} />
+              </div>
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  disabled={salvandoMetas}
+                  onClick={() => void salvarMetasKpi()}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:opacity-60"
+                >
+                  {salvandoMetas ? 'Salvando...' : 'Salvar metas'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <KpiCard
+              title="SLA cumprido"
+              value={`${formatNumber(kpis.slaPercentual)}%`}
+              meta={`Meta ≥ ${formatNumber(metasKpi.metaSlaPercentual)}%`}
+              detail={`${kpis.slaAmostras} OS analisadas`}
+              atingiu={kpis.slaAmostras > 0 && kpis.slaPercentual >= metasKpi.metaSlaPercentual}
+              semAmostra={kpis.slaAmostras === 0}
+              progresso={percentualProgresso(kpis.slaPercentual, metasKpi.metaSlaPercentual)}
+            />
+            <KpiCard
+              title="Tempo de conclusão"
+              value={`${formatNumber(kpis.tempoMedioConclusaoDias)} dias`}
+              meta={`Meta ≤ ${formatNumber(metasKpi.metaConclusaoDias)} dias`}
+              detail={`${kpis.conclusoesAmostras} conclusões`}
+              atingiu={kpis.conclusoesAmostras > 0 && kpis.tempoMedioConclusaoDias <= metasKpi.metaConclusaoDias}
+              semAmostra={kpis.conclusoesAmostras === 0}
+              progresso={percentualProgressoInverso(kpis.tempoMedioConclusaoDias, metasKpi.metaConclusaoDias)}
+            />
+            <KpiCard
+              title="Aprovação de orçamento"
+              value={`${formatNumber(kpis.aprovacaoPercentual)}%`}
+              meta={`Meta ≥ ${formatNumber(metasKpi.metaAprovacaoPercentual)}%`}
+              detail={`${kpis.aprovacoes} de ${kpis.decisoesOrcamento} decisões`}
+              atingiu={kpis.decisoesOrcamento > 0 && kpis.aprovacaoPercentual >= metasKpi.metaAprovacaoPercentual}
+              semAmostra={kpis.decisoesOrcamento === 0}
+              progresso={percentualProgresso(kpis.aprovacaoPercentual, metasKpi.metaAprovacaoPercentual)}
+            />
+            <KpiCard
+              title="Produtividade técnica"
+              value={`${formatNumber(kpis.produtividadeMedia)} OS`}
+              meta={`Meta ≥ ${formatNumber(metasKpi.metaProdutividade)} por técnico`}
+              detail={kpis.tecnicoDestaque ? `Destaque: ${kpis.tecnicoDestaque.nome} (${kpis.tecnicoDestaque.total})` : 'Sem técnico concluinte'}
+              atingiu={kpis.tecnicosAtivos > 0 && kpis.produtividadeMedia >= metasKpi.metaProdutividade}
+              semAmostra={kpis.tecnicosAtivos === 0}
+              progresso={percentualProgresso(kpis.produtividadeMedia, metasKpi.metaProdutividade)}
+            />
+            <KpiCard
+              title="Ticket médio"
+              value={formatCurrency(kpis.ticketMedio)}
+              meta={`Meta ≥ ${formatCurrency(metasKpi.metaTicket)}`}
+              detail={`${kpis.ticketAmostras} OS com valor`}
+              atingiu={kpis.ticketAmostras > 0 && kpis.ticketMedio >= metasKpi.metaTicket}
+              semAmostra={kpis.ticketAmostras === 0}
+              progresso={percentualProgresso(kpis.ticketMedio, metasKpi.metaTicket)}
+            />
+          </div>
         </section>
 
         <section className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
@@ -764,6 +944,64 @@ function FinanceMiniCard({
   )
 }
 
+function KpiCard({
+  title,
+  value,
+  meta,
+  detail,
+  atingiu,
+  semAmostra,
+  progresso,
+}: {
+  title: string
+  value: string
+  meta: string
+  detail: string
+  atingiu: boolean
+  semAmostra: boolean
+  progresso: number
+}) {
+  const tone = semAmostra
+    ? 'border-slate-200 bg-slate-50 text-slate-600'
+    : atingiu
+      ? 'border-emerald-200 bg-emerald-50/70 text-emerald-800'
+      : 'border-amber-200 bg-amber-50/70 text-amber-800'
+  const barra = semAmostra ? 'bg-slate-300' : atingiu ? 'bg-emerald-500' : 'bg-amber-500'
+
+  return (
+    <article className={`rounded-xl border p-4 ${tone}`}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11px] font-black uppercase leading-tight opacity-70">{title}</p>
+        <span className="rounded-full bg-white/70 px-2 py-1 text-[9px] font-black uppercase">
+          {semAmostra ? 'Sem dados' : atingiu ? 'Meta atingida' : 'Atenção'}
+        </span>
+      </div>
+      <p className="mt-2 break-words text-2xl font-black leading-none">{value}</p>
+      <p className="mt-2 text-xs font-bold">{meta}</p>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/80">
+        <div className={`h-full rounded-full transition-all ${barra}`} style={{ width: `${Math.min(Math.max(progresso, 0), 100)}%` }} />
+      </div>
+      <p className="mt-2 line-clamp-2 text-[11px] font-semibold opacity-75">{detail}</p>
+    </article>
+  )
+}
+
+function MetaInput({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+  return (
+    <label className="text-xs font-bold text-slate-700">
+      {label}
+      <input
+        type="number"
+        min="0.01"
+        step="0.1"
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold outline-none focus:border-orange-500"
+      />
+    </label>
+  )
+}
+
 function QuickButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
@@ -801,10 +1039,14 @@ function InfoItem({
   )
 }
 
-async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard, garantidorId: string) {
+async function carregarResumoRelatorios(
+  filtroOrigem: FiltroOrigemDashboard,
+  garantidorId: string,
+  periodoKpi: PeriodoKpi
+) {
   try {
     const hoje = new Date()
-    const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+    const inicio = inicioPeriodoKpi(hoje, periodoKpi)
     const params = new URLSearchParams({
       inicio: formatDateInput(inicio),
       fim: formatDateInput(hoje),
@@ -820,6 +1062,7 @@ async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard, gar
     const slaParticular = data?.slaResumo?.particular ?? {}
     const slaGarantia = data?.slaResumo?.garantia ?? {}
     const statusResumo = Array.isArray(data?.statusResumo) ? data.statusResumo : []
+    const kpisData = data?.kpis ?? {}
     const countStatus = (status: string) =>
       Number(statusResumo.find((item: { status?: string; total?: number }) => item.status === status)?.total ?? 0) || 0
 
@@ -846,6 +1089,7 @@ async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard, gar
       slaGarantiaPercentual: Number(slaGarantia.percentualDentro ?? 0) || 0,
       slaParticularForaPrazo: Number(slaParticular.foraPrazo ?? 0) || 0,
       slaGarantiaForaPrazo: Number(slaGarantia.foraPrazo ?? 0) || 0,
+      kpis: normalizarKpis(kpisData),
     }
   } catch {
     return {
@@ -870,7 +1114,46 @@ async function carregarResumoRelatorios(filtroOrigem: FiltroOrigemDashboard, gar
       slaGarantiaPercentual: 0,
       slaParticularForaPrazo: 0,
       slaGarantiaForaPrazo: 0,
+      kpis: KPI_VAZIO,
     }
+  }
+}
+
+async function carregarConfiguracaoKpi(): Promise<KpiMetas> {
+  try {
+    const response = await adminFetch('/api/admin/relatorios/configuracoes')
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) return KPI_METAS_PADRAO
+    const data = payload?.data ?? {}
+    return {
+      metaSlaPercentual: numeroPositivoOuZero(data.metaSlaPercentual, KPI_METAS_PADRAO.metaSlaPercentual),
+      metaConclusaoDias: numeroPositivo(data.metaConclusaoDias, KPI_METAS_PADRAO.metaConclusaoDias),
+      metaAprovacaoPercentual: numeroPositivoOuZero(data.metaAprovacaoPercentual, KPI_METAS_PADRAO.metaAprovacaoPercentual),
+      metaProdutividade: numeroPositivo(data.metaProdutividade, KPI_METAS_PADRAO.metaProdutividade),
+      metaTicket: numeroPositivo(data.metaTicket, KPI_METAS_PADRAO.metaTicket),
+    }
+  } catch {
+    return KPI_METAS_PADRAO
+  }
+}
+
+function normalizarKpis(data: Record<string, unknown>): KpiResumo {
+  const destaque = data.tecnicoDestaque as { nome?: unknown; total?: unknown } | null | undefined
+  return {
+    slaPercentual: Number(data.slaPercentual ?? 0) || 0,
+    slaAmostras: Number(data.slaAmostras ?? 0) || 0,
+    tempoMedioConclusaoDias: Number(data.tempoMedioConclusaoDias ?? 0) || 0,
+    conclusoesAmostras: Number(data.conclusoesAmostras ?? 0) || 0,
+    aprovacaoPercentual: Number(data.aprovacaoPercentual ?? 0) || 0,
+    aprovacoes: Number(data.aprovacoes ?? 0) || 0,
+    decisoesOrcamento: Number(data.decisoesOrcamento ?? 0) || 0,
+    produtividadeMedia: Number(data.produtividadeMedia ?? 0) || 0,
+    tecnicosAtivos: Number(data.tecnicosAtivos ?? 0) || 0,
+    tecnicoDestaque: destaque?.nome
+      ? { nome: String(destaque.nome), total: Number(destaque.total ?? 0) || 0 }
+      : null,
+    ticketMedio: Number(data.ticketMedio ?? 0) || 0,
+    ticketAmostras: Number(data.ticketAmostras ?? 0) || 0,
   }
 }
 
@@ -914,6 +1197,37 @@ function formatCurrency(value: number) {
     style: 'currency',
     currency: 'BRL',
   }).format(value || 0)
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(value || 0)
+}
+
+function percentualProgresso(valor: number, meta: number) {
+  if (meta <= 0) return valor > 0 ? 100 : 0
+  return (valor / meta) * 100
+}
+
+function percentualProgressoInverso(valor: number, meta: number) {
+  if (valor <= 0 || meta <= 0) return 0
+  return (meta / valor) * 100
+}
+
+function inicioPeriodoKpi(hoje: Date, periodo: PeriodoKpi) {
+  if (periodo === 'MES_ATUAL') return new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+  const inicio = new Date(hoje)
+  inicio.setDate(inicio.getDate() - (periodo === '30_DIAS' ? 29 : 89))
+  return inicio
+}
+
+function numeroPositivo(value: unknown, fallback: number) {
+  const numero = Number(value)
+  return Number.isFinite(numero) && numero > 0 ? numero : fallback
+}
+
+function numeroPositivoOuZero(value: unknown, fallback: number) {
+  const numero = Number(value)
+  return Number.isFinite(numero) && numero >= 0 ? numero : fallback
 }
 
 function formatDateInput(date: Date) {

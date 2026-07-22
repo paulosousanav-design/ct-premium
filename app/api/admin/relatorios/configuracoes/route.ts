@@ -14,21 +14,32 @@ export async function GET(request: NextRequest) {
   const auth = await requireAdminPermission(request, 'relatorios')
   if (!auth.ok) return auth.response
 
-  const { data, error } = await db()
+  const supabase = db()
+  const { data, error } = await supabase
     .from('empresas')
-    .select('id, sla_particular_dias, sla_garantia_dias')
+    .select('id, sla_particular_dias, sla_garantia_dias, kpi_meta_sla_percentual, kpi_meta_conclusao_dias, kpi_meta_aprovacao_percentual, kpi_meta_produtividade, kpi_meta_ticket')
     .eq('ativa', true)
     .order('id', { ascending: true })
     .limit(1)
     .maybeSingle()
 
-  if (error) return NextResponse.json({ data: { slaParticularDias: 3, slaGarantiaDias: 7 }, tabelaPendente: true })
+  if (error) {
+    const { data: empresa } = await supabase
+      .from('empresas')
+      .select('id, sla_particular_dias, sla_garantia_dias')
+      .eq('ativa', true)
+      .order('id', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    return NextResponse.json({
+      data: montarConfiguracao(empresa),
+      tabelaKpiPendente: true,
+    })
+  }
   return NextResponse.json({
-    data: {
-      slaParticularDias: normalizarDias(data?.sla_particular_dias, 3),
-      slaGarantiaDias: normalizarDias(data?.sla_garantia_dias, 7),
-    },
-    tabelaPendente: false,
+    data: montarConfiguracao(data),
+    tabelaKpiPendente: false,
   })
 }
 
@@ -50,18 +61,31 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Empresa ativa não encontrada.' }, { status: 400 })
   }
 
+  const payload: Record<string, number | string> = { atualizado_em: new Date().toISOString() }
+
+  if (body && (Object.hasOwn(body, 'slaParticularDias') || Object.hasOwn(body, 'slaGarantiaDias'))) {
+    payload.sla_particular_dias = normalizarDias(body.slaParticularDias, 3)
+    payload.sla_garantia_dias = normalizarDias(body.slaGarantiaDias, 7)
+  }
+
+  if (body && Object.hasOwn(body, 'metaSlaPercentual')) {
+    payload.kpi_meta_sla_percentual = normalizarPercentual(body.metaSlaPercentual, 90)
+    payload.kpi_meta_conclusao_dias = normalizarPositivo(body.metaConclusaoDias, 5)
+    payload.kpi_meta_aprovacao_percentual = normalizarPercentual(body.metaAprovacaoPercentual, 70)
+    payload.kpi_meta_produtividade = normalizarPositivo(body.metaProdutividade, 10)
+    payload.kpi_meta_ticket = normalizarPositivo(body.metaTicket, 500)
+  }
+
   const { error } = await supabase
     .from('empresas')
-    .update({
-      sla_particular_dias: normalizarDias(body?.slaParticularDias, 3),
-      sla_garantia_dias: normalizarDias(body?.slaGarantiaDias, 7),
-      atualizado_em: new Date().toISOString(),
-    })
+    .update(payload)
     .eq('id', empresa.id)
 
   if (error) {
     return NextResponse.json(
-      { error: 'Execute o arquivo supabase-add-config-sla.sql no Supabase antes de salvar.' },
+      { error: body && Object.hasOwn(body, 'metaSlaPercentual')
+        ? 'Execute o arquivo supabase-add-config-kpi.sql no Supabase antes de salvar as metas.'
+        : 'Execute o arquivo supabase-add-config-sla.sql no Supabase antes de salvar.' },
       { status: 400 }
     )
   }
@@ -72,4 +96,26 @@ export async function PUT(request: NextRequest) {
 function normalizarDias(value: unknown, fallback: number) {
   const numero = Math.trunc(Number(value))
   return Number.isFinite(numero) && numero >= 1 && numero <= 365 ? numero : fallback
+}
+
+function montarConfiguracao(data: Record<string, unknown> | null | undefined) {
+  return {
+    slaParticularDias: normalizarDias(data?.sla_particular_dias, 3),
+    slaGarantiaDias: normalizarDias(data?.sla_garantia_dias, 7),
+    metaSlaPercentual: normalizarPercentual(data?.kpi_meta_sla_percentual, 90),
+    metaConclusaoDias: normalizarPositivo(data?.kpi_meta_conclusao_dias, 5),
+    metaAprovacaoPercentual: normalizarPercentual(data?.kpi_meta_aprovacao_percentual, 70),
+    metaProdutividade: normalizarPositivo(data?.kpi_meta_produtividade, 10),
+    metaTicket: normalizarPositivo(data?.kpi_meta_ticket, 500),
+  }
+}
+
+function normalizarPercentual(value: unknown, fallback: number) {
+  const numero = Number(value)
+  return Number.isFinite(numero) && numero >= 0 && numero <= 100 ? numero : fallback
+}
+
+function normalizarPositivo(value: unknown, fallback: number) {
+  const numero = Number(value)
+  return Number.isFinite(numero) && numero > 0 ? numero : fallback
 }

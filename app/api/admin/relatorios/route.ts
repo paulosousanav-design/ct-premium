@@ -11,6 +11,7 @@ type OrdemRelatorio = {
   created_at: string | null
   finalizada_em?: string | null
   status: string | null
+  orcamento_status?: string | null
   status_financeiro?: string | null
   data_pagamento?: string | null
   data_ultimo_recebimento?: string | null
@@ -105,6 +106,7 @@ export async function GET(request: NextRequest) {
       created_at,
       finalizada_em,
       status,
+      orcamento_status,
       garantia,
       total,
       ${temClienteTotal ? 'cliente_total,' : ''}
@@ -178,6 +180,7 @@ export async function GET(request: NextRequest) {
       slaGarantiaDias
     )
     const ticketCategorias = montarTicketPorCategoria(ordensPeriodo)
+    const kpis = montarKpis(ordensPeriodo, slaResumo)
 
     const financeiro = ordensPeriodo.reduce(
       (acc, ordem) => {
@@ -291,6 +294,7 @@ export async function GET(request: NextRequest) {
       tecnicoResumo,
       garantidorResumo,
       slaResumo,
+      kpis,
       slaGarantidores,
       resumoMensal,
       ticketCategorias,
@@ -631,6 +635,66 @@ function calcularSla(ordens: OrdemRelatorio[], dataReferencia: Date, limiteDias:
     percentualDentro: total > 0 ? Math.round((dentroPrazo / total) * 100) : 0,
     mediaDias: total > 0 ? Number((somaDias / total).toFixed(1)) : 0,
   }
+}
+
+function montarKpis(
+  ordens: OrdemRelatorio[],
+  slaResumo: ReturnType<typeof montarSlaResumo>
+) {
+  const slaTotal = slaResumo.particular.total + slaResumo.garantia.total
+  const slaDentro = slaResumo.particular.dentroPrazo + slaResumo.garantia.dentroPrazo
+  const concluidas = ordens.filter((ordem) =>
+    ['FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(ordem.status)) && Boolean(ordem.finalizada_em)
+  )
+  const ciclosDias = concluidas
+    .map((ordem) => diasEntre(ordem.created_at, ordem.finalizada_em))
+    .filter((dias): dias is number => dias !== null)
+  const decisoes = ordens.filter((ordem) =>
+    ['APROVADO', 'REPROVADO'].includes(String(ordem.orcamento_status).toUpperCase())
+  )
+  const aprovadas = decisoes.filter((ordem) => String(ordem.orcamento_status).toUpperCase() === 'APROVADO').length
+  const produtividade = new Map<string, number>()
+
+  for (const ordem of concluidas) {
+    const tecnico = getNomeRelacao(ordem.parceiros)
+    if (tecnico) produtividade.set(tecnico, (produtividade.get(tecnico) ?? 0) + 1)
+  }
+
+  const rankingTecnicos = Array.from(produtividade.entries())
+    .map(([nome, total]) => ({ nome, total }))
+    .sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome, 'pt-BR'))
+  const conclusoesComTecnico = rankingTecnicos.reduce((total, tecnico) => total + tecnico.total, 0)
+  const concluidasComValor = concluidas.filter((ordem) => valorClienteOrdem(ordem) > 0)
+
+  return {
+    slaPercentual: slaTotal > 0 ? Number(((slaDentro / slaTotal) * 100).toFixed(1)) : 0,
+    slaAmostras: slaTotal,
+    tempoMedioConclusaoDias: ciclosDias.length
+      ? Number((ciclosDias.reduce((total, dias) => total + dias, 0) / ciclosDias.length).toFixed(1))
+      : 0,
+    conclusoesAmostras: ciclosDias.length,
+    aprovacaoPercentual: decisoes.length ? Number(((aprovadas / decisoes.length) * 100).toFixed(1)) : 0,
+    aprovacoes: aprovadas,
+    decisoesOrcamento: decisoes.length,
+    produtividadeMedia: produtividade.size ? Number((conclusoesComTecnico / produtividade.size).toFixed(1)) : 0,
+    tecnicosAtivos: produtividade.size,
+    tecnicoDestaque: rankingTecnicos[0] ?? null,
+    ticketMedio: concluidasComValor.length
+      ? mediaValor(
+          concluidasComValor.reduce((total, ordem) => total + valorClienteOrdem(ordem), 0),
+          concluidasComValor.length
+        )
+      : 0,
+    ticketAmostras: concluidasComValor.length,
+  }
+}
+
+function diasEntre(inicioValor: string | null | undefined, fimValor: string | null | undefined) {
+  if (!inicioValor || !fimValor) return null
+  const inicio = new Date(inicioValor).getTime()
+  const fim = new Date(fimValor).getTime()
+  if (!Number.isFinite(inicio) || !Number.isFinite(fim) || fim < inicio) return null
+  return (fim - inicio) / 86400000
 }
 
 function diasCiclo(ordem: OrdemRelatorio, dataReferencia: Date) {
