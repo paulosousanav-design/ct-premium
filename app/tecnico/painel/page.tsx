@@ -4,7 +4,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import QRCode from 'qrcode'
-import { type ChangeEvent, type CSSProperties, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, type CSSProperties, type FormEvent, useCallback, useEffect, useState } from 'react'
 
 type OSItem = {
   id: number
@@ -65,6 +65,8 @@ type DocumentoTecnico = {
   criado_em: string | null
 }
 
+type FiltroOperacional = 'TODOS' | 'SEM_AGENDA' | 'PENDENCIAS' | 'AGUARDANDO_EQUIPE' | 'AGENDADAS'
+
 export default function PainelTecnicoPage() {
   const [tecnicoId] = useState(() => getTecnicoId())
   const [tecnicoLogado, setTecnicoLogado] = useState<TecnicoLogado | null>(null)
@@ -82,6 +84,8 @@ export default function PainelTecnicoPage() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
   const [abaAtiva, setAbaAtiva] = useState<'tratamento' | 'finalizadas'>('tratamento')
+  const [filtroOperacional, setFiltroOperacional] = useState<FiltroOperacional>('TODOS')
+  const [mostrarCracha, setMostrarCracha] = useState(false)
   const [osDocumentoId, setOsDocumentoId] = useState('')
   const [agendaDatas, setAgendaDatas] = useState<Record<string, string>>(() => carregarAgendaLocal(tecnicoId))
 
@@ -161,20 +165,55 @@ export default function PainelTecnicoPage() {
   const ordensAbertas = ordens.filter((os) => !['FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(os.status)))
   const ordensFinalizadas = ordens.filter((os) => os.status === 'FINALIZADA')
   const ordensAReceber = ordensFinalizadas.filter((os) => !tecnicoPago(os))
-  const agendaItens = useMemo(
-    () => ordensAbertas
-      .map((os) => ({
-        os,
-        dataHora: getAgendaDateTime(os, agendaDatas) || defaultAgendaDateTime(os.created_at),
-        agendado: Boolean(getAgendaDateTime(os, agendaDatas)),
-      }))
-      .sort((a, b) => new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime()),
-    [agendaDatas, ordensAbertas]
+  const ordensSemAgenda = ordensAbertas.filter((os) => !getAgendaDateTime(os, agendaDatas))
+  const ordensPendentes = ordensAbertas.filter((os) =>
+    ['EM_ATENDIMENTO', 'CRITICA', 'AGUARDANDO_PECA'].includes(String(os.status))
   )
+  const ordensAguardandoEquipe = ordensAbertas.filter((os) =>
+    ['AGUARDANDO_REVISAO', 'AGUARDANDO_APROVACAO'].includes(String(os.status))
+  )
+  const ordensAgendadas = ordensAbertas.filter((os) => Boolean(getAgendaDateTime(os, agendaDatas)))
+  const ordensExibidas = filtroOperacional === 'SEM_AGENDA'
+    ? ordensSemAgenda
+    : filtroOperacional === 'PENDENCIAS'
+      ? ordensPendentes
+      : filtroOperacional === 'AGUARDANDO_EQUIPE'
+        ? ordensAguardandoEquipe
+        : filtroOperacional === 'AGENDADAS'
+          ? ordensAgendadas
+          : ordensAbertas
+  const tituloLista = filtroOperacional === 'SEM_AGENDA'
+    ? 'OS para agendar'
+    : filtroOperacional === 'PENDENCIAS'
+      ? 'Minhas pendências'
+      : filtroOperacional === 'AGUARDANDO_EQUIPE'
+        ? 'Aguardando a equipe'
+        : filtroOperacional === 'AGENDADAS'
+          ? 'Atendimentos agendados'
+          : 'Meus atendimentos'
+  const agendaItens = ordensAbertas
+    .map((os) => ({
+      os,
+      dataHora: getAgendaDateTime(os, agendaDatas) || defaultAgendaDateTime(os.created_at),
+      agendado: Boolean(getAgendaDateTime(os, agendaDatas)),
+    }))
+    .sort((a, b) => new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime())
 
   async function sair() {
     await fetch('/api/tecnico/login', { method: 'DELETE' }).catch(() => null)
     window.location.href = '/tecnico/login'
+  }
+
+  function abrirFiltro(filtro: FiltroOperacional) {
+    setAbaAtiva('tratamento')
+    setFiltroOperacional(filtro)
+    window.setTimeout(() => document.getElementById('minhas-os')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+  }
+
+  function abrirFinalizadas() {
+    setAbaAtiva('finalizadas')
+    setFiltroOperacional('TODOS')
+    window.setTimeout(() => document.getElementById('minhas-os')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
   }
 
   async function atualizarAgenda(osId: number, dataHora: string) {
@@ -207,60 +246,78 @@ export default function PainelTecnicoPage() {
   return (
     <main className="min-h-screen bg-[#c7d3cf] px-4 py-5">
       <div className="mx-auto max-w-7xl space-y-4">
-        <header className="rounded-xl bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-4">
-              <Image src="/logo-ct.png" alt="Chame o Tecnico" width={150} height={65} className="h-auto w-[130px]" />
-              <div>
-                <h1 className="text-2xl font-bold text-slate-950">Painel do tecnico</h1>
-                <p className="text-sm text-slate-600">{tecnicoNome || 'Ordens direcionadas para atendimento'}</p>
+        <header className="overflow-hidden rounded-xl bg-slate-950 shadow-sm">
+          <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="rounded-lg bg-white px-2 py-1.5">
+                <Image src="/logo-ct.png" alt="Chame o Técnico" width={118} height={50} className="h-auto w-[92px] sm:w-[105px]" />
+              </div>
+              <div className="min-w-0 text-white">
+                <p className="truncate text-sm font-black sm:text-base">Portal do Técnico</p>
+                <p className="truncate text-[10px] font-semibold text-slate-400 sm:text-xs">Central de atendimentos</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {!tecnicoId && (
-                <Link
-                  href="/tecnico/academia"
-                  className="inline-flex h-10 items-center rounded-lg bg-orange-500 px-4 text-sm font-semibold text-white"
-                >
-                  Academia Técnica
-                </Link>
-              )}
-              <button
-                type="button"
-                onClick={carregarOrdens}
-                className="inline-flex h-10 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white"
-              >
-                Atualizar
-              </button>
-              {!tecnicoId && (
-                <button
-                  type="button"
-                  onClick={sair}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  Sair
-                </button>
-              )}
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={carregarOrdens} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-800">Atualizar</button>
+              {!tecnicoId && <button type="button" onClick={sair} className="hidden rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300 transition hover:bg-slate-800 sm:block">Sair</button>}
             </div>
           </div>
+          <nav className="flex gap-1 overflow-x-auto border-t border-slate-800 px-3 py-2 sm:px-5">
+            <PortalNavButton label="Atendimentos" active={!mostrarCracha && abaAtiva === 'tratamento' && filtroOperacional !== 'AGENDADAS'} onClick={() => { setMostrarCracha(false); abrirFiltro('TODOS') }} />
+            <PortalNavButton label="Agenda" active={!mostrarCracha && filtroOperacional === 'AGENDADAS'} onClick={() => { setMostrarCracha(false); abrirFiltro('AGENDADAS') }} />
+            <PortalNavButton label="Pagamentos" active={!mostrarCracha && abaAtiva === 'finalizadas'} onClick={() => { setMostrarCracha(false); abrirFinalizadas() }} />
+            {!tecnicoId && <Link href="/tecnico/academia" className="whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold text-slate-300 transition hover:bg-slate-800 hover:text-white">Academia</Link>}
+            {!tecnicoId && <button type="button" onClick={() => setMostrarCracha((atual) => !atual)} className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold transition ${mostrarCracha ? 'bg-orange-500 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>Crachá digital</button>}
+          </nav>
         </header>
 
         {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{erro}</div>}
 
-        {!tecnicoId && <CrachaDigital />}
+        <section className="overflow-hidden rounded-xl bg-gradient-to-br from-white via-white to-orange-50 p-4 shadow-sm sm:p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-sm font-black text-white">{iniciaisNome(tecnicoNome)}</div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wide text-orange-600">Olá, técnico</p>
+                <h1 className="truncate text-lg font-black text-slate-950 sm:text-xl">{tecnicoNome || 'Bem-vindo ao seu portal'}</h1>
+                <p className="text-xs text-slate-500">Veja primeiro o que precisa da sua atenção.</p>
+              </div>
+            </div>
+            <div className={`rounded-lg px-3 py-2 text-xs font-bold ${ordensSemAgenda.length ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+              {ordensSemAgenda.length ? `${ordensSemAgenda.length} OS aguardando agendamento` : 'Agenda organizada'}
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div className="mb-2">
+            <h2 className="text-lg font-black text-slate-950">Minha central de trabalho</h2>
+            <p className="text-xs text-slate-600">Escolha uma opção para ver somente o que precisa.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+            <PortalActionCard label="Agendar visita" detail="Sem data definida" count={ordensSemAgenda.length} tone="red" icon="calendar" active={filtroOperacional === 'SEM_AGENDA' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('SEM_AGENDA')} />
+            <PortalActionCard label="Minhas pendências" detail="Precisam de ação" count={ordensPendentes.length} tone="cyan" icon="alert" active={filtroOperacional === 'PENDENCIAS' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('PENDENCIAS')} />
+            <PortalActionCard label="Aguardando equipe" detail="Em análise interna" count={ordensAguardandoEquipe.length} tone="slate" icon="hourglass" active={filtroOperacional === 'AGUARDANDO_EQUIPE' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('AGUARDANDO_EQUIPE')} />
+            <PortalActionCard label="Agendados" detail="Com data marcada" count={ordensAgendadas.length} tone="blue" icon="check-calendar" active={filtroOperacional === 'AGENDADAS' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('AGENDADAS')} />
+            <PortalActionCard label="Meus serviços" detail="Todos em aberto" count={ordensAbertas.length} tone="indigo" icon="services" active={filtroOperacional === 'TODOS' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('TODOS')} />
+            <PortalActionCard label="Finalizados" detail="Histórico e valores" count={ordensFinalizadas.length} tone="green" icon="check" active={abaAtiva === 'finalizadas'} onClick={abrirFinalizadas} />
+          </div>
+        </section>
+
+        {!tecnicoId && mostrarCracha && <CrachaDigital />}
 
         <div className="grid gap-3 xl:grid-cols-3 xl:gap-4">
-          <section className="rounded-xl bg-white p-3 shadow-sm sm:p-4 xl:col-span-2">
+          <section id="minhas-os" className="scroll-mt-4 rounded-xl bg-white p-3 shadow-sm sm:p-4 xl:col-span-2">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-slate-950">Minhas OS</h2>
-                <p className="text-xs text-slate-500">Separe o que esta em tratamento dos servicos ja concluidos.</p>
+                <h2 className="text-lg font-black text-slate-950">{abaAtiva === 'finalizadas' ? 'Serviços finalizados' : tituloLista}</h2>
+                <p className="text-xs text-slate-500">{abaAtiva === 'finalizadas' ? 'Consulte o histórico, valores e documentos.' : `${ordensExibidas.length} OS nesta seleção.`}</p>
               </div>
 
               <div className="inline-flex w-full rounded-lg bg-slate-100 p-1 sm:w-auto">
                 <button
                   type="button"
-                  onClick={() => setAbaAtiva('tratamento')}
+                  onClick={() => { setAbaAtiva('tratamento'); setFiltroOperacional('TODOS') }}
                   className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-black transition sm:flex-none sm:px-3 sm:text-xs ${
                     abaAtiva === 'tratamento' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                   }`}
@@ -269,7 +326,7 @@ export default function PainelTecnicoPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setAbaAtiva('finalizadas')}
+                  onClick={abrirFinalizadas}
                   className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-black transition sm:flex-none sm:px-3 sm:text-xs ${
                     abaAtiva === 'finalizadas' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                   }`}
@@ -281,9 +338,9 @@ export default function PainelTecnicoPage() {
 
             {loading ? (
               <p className="text-sm text-slate-500">Carregando...</p>
-            ) : abaAtiva === 'tratamento' && ordensAbertas.length ? (
+            ) : abaAtiva === 'tratamento' && ordensExibidas.length ? (
               <div className="grid gap-2 sm:gap-3 md:grid-cols-2">
-                {ordensAbertas.map((os) => {
+                {ordensExibidas.map((os) => {
                   const alerta = getStatusAlerta(os.status)
                   const agendaDataHora = getAgendaDateTime(os, agendaDatas)
                   const agendado = Boolean(agendaDataHora)
@@ -338,7 +395,7 @@ export default function PainelTecnicoPage() {
                             href={tecnicoId ? `/tecnico/os/${os.id}?tecnico=${encodeURIComponent(tecnicoId)}` : `/tecnico/os/${os.id}`}
                             className="block rounded-lg bg-slate-900 px-3 py-1.5 text-center text-xs font-bold text-white transition hover:bg-slate-800 sm:py-2"
                           >
-                            Tratar OS
+                            Abrir atendimento
                           </Link>
                         ) : (
                           <button
@@ -355,7 +412,10 @@ export default function PainelTecnicoPage() {
                 })}
               </div>
             ) : abaAtiva === 'tratamento' ? (
-              <p className="text-sm text-slate-500">Nenhuma OS aberta atribuida para este tecnico.</p>
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+                <p className="text-sm font-bold text-slate-700">Nada pendente nesta opção.</p>
+                <button type="button" onClick={() => abrirFiltro('TODOS')} className="mt-2 text-xs font-black text-orange-600">Ver todos os atendimentos</button>
+              </div>
             ) : ordensFinalizadas.length ? (
               <>
                 <div className="mb-2 flex justify-end sm:mb-3">
@@ -387,14 +447,14 @@ export default function PainelTecnicoPage() {
                         href={tecnicoId ? `/tecnico/os/${os.id}?tecnico=${encodeURIComponent(tecnicoId)}` : `/tecnico/os/${os.id}`}
                         className="block rounded-lg bg-slate-900 px-3 py-1.5 text-center text-xs font-bold text-white transition hover:bg-slate-800 sm:py-2"
                       >
-                        Ver OS finalizada
+                        Abrir OS finalizada
                       </Link>
                       <button
                         type="button"
                         onClick={() => setOsDocumentoId(String(os.id))}
                         className="mt-1.5 block w-full rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-center text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 sm:mt-2 sm:py-2"
                       >
-                        Enviar NF/recibo
+                        Enviar nota fiscal
                       </button>
                     </article>
                   ))}
@@ -406,24 +466,93 @@ export default function PainelTecnicoPage() {
           </section>
 
           <aside className="space-y-3 xl:space-y-4">
-            <AgendaTecnicoPanel
-              itens={agendaItens}
-              onDataHoraChange={atualizarAgenda}
-            />
+            {filtroOperacional === 'AGENDADAS' && abaAtiva === 'tratamento' && (
+              <AgendaTecnicoPanel
+                itens={agendaItens}
+                onDataHoraChange={atualizarAgenda}
+              />
+            )}
             <ResumoTecnicoPanel resumo={resumo} />
-            <DocumentoPagamentoPanel
-              tecnicoId={tecnicoId}
-              documentos={documentos}
-              tabelaPendente={documentosPendentes}
-              ordensFinalizadas={ordensFinalizadas}
-              osSelecionadaId={osDocumentoId}
-              onOsSelecionada={setOsDocumentoId}
-              onUploaded={carregarDocumentos}
-            />
+            {abaAtiva === 'finalizadas' && (
+              <DocumentoPagamentoPanel
+                tecnicoId={tecnicoId}
+                documentos={documentos}
+                tabelaPendente={documentosPendentes}
+                ordensFinalizadas={ordensFinalizadas}
+                osSelecionadaId={osDocumentoId}
+                onOsSelecionada={setOsDocumentoId}
+                onUploaded={carregarDocumentos}
+              />
+            )}
           </aside>
         </div>
       </div>
     </main>
+  )
+}
+
+function PortalNavButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold transition ${active ? 'bg-orange-500 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
+    >
+      {label}
+    </button>
+  )
+}
+
+function PortalActionCard({
+  label,
+  detail,
+  count,
+  tone,
+  icon,
+  active,
+  onClick,
+}: {
+  label: string
+  detail: string
+  count: number
+  tone: 'red' | 'cyan' | 'slate' | 'blue' | 'indigo' | 'green'
+  icon: 'calendar' | 'alert' | 'hourglass' | 'check-calendar' | 'services' | 'check'
+  active: boolean
+  onClick: () => void
+}) {
+  const tones = {
+    red: 'bg-red-50 text-red-600',
+    cyan: 'bg-cyan-50 text-cyan-600',
+    slate: 'bg-slate-100 text-slate-600',
+    blue: 'bg-blue-50 text-blue-600',
+    indigo: 'bg-indigo-50 text-indigo-600',
+    green: 'bg-emerald-50 text-emerald-600',
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative min-h-[112px] rounded-xl border bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:min-h-[122px] sm:p-4 ${active ? 'border-orange-400 ring-2 ring-orange-100' : 'border-slate-200'}`}
+    >
+      <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${tones[tone]}`}><PortalIcon name={icon} /></span>
+      <span className={`absolute right-3 top-3 min-w-6 rounded-full px-1.5 py-1 text-center text-[10px] font-black ${count ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-400'}`}>{count}</span>
+      <span className="mt-3 block text-xs font-black leading-tight text-slate-950 sm:text-sm">{label}</span>
+      <span className="mt-1 block text-[10px] font-semibold leading-tight text-slate-500">{detail}</span>
+    </button>
+  )
+}
+
+function PortalIcon({ name }: { name: 'calendar' | 'alert' | 'hourglass' | 'check-calendar' | 'services' | 'check' }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
+      {name === 'calendar' && <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></>}
+      {name === 'alert' && <><path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9 2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></>}
+      {name === 'hourglass' && <><path d="M6 2h12M6 22h12M8 2c0 5 2 6 4 8-2 2-4 3-4 8M16 2c0 5-2 6-4 8 2 2 4 3 4 8" /></>}
+      {name === 'check-calendar' && <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18M8 15l2 2 4-4" /></>}
+      {name === 'services' && <><path d="M12 2 3 7l9 5 9-5-9-5Z" /><path d="m3 12 9 5 9-5M3 17l9 5 9-5" /></>}
+      {name === 'check' && <><circle cx="12" cy="12" r="9" /><path d="m8 12 2.5 2.5L16 9" /></>}
+    </svg>
   )
 }
 
@@ -640,13 +769,13 @@ function DocumentoPagamentoPanel({
   onOsSelecionada: (id: string) => void
   onUploaded: () => Promise<void>
 }) {
-  const [tipo, setTipo] = useState('RECIBO')
   const [valor, setValor] = useState('')
   const [observacao, setObservacao] = useState('')
   const [arquivo, setArquivo] = useState<File | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
+  const notasFiscais = documentos.filter((documento) => String(documento.tipo).toUpperCase() === 'NF')
 
   async function enviarDocumento(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -654,7 +783,7 @@ function DocumentoPagamentoPanel({
     setMensagem('')
 
     if (!arquivo) {
-      setErro('Selecione a NF ou recibo para enviar.')
+      setErro('Selecione a nota fiscal para enviar.')
       return
     }
 
@@ -662,7 +791,7 @@ function DocumentoPagamentoPanel({
 
     try {
       const formData = new FormData()
-      formData.append('tipo', tipo)
+      formData.append('tipo', 'NF')
       formData.append('valor', valor || '0')
       formData.append('observacao', observacao)
       formData.append('arquivo', arquivo)
@@ -677,14 +806,14 @@ function DocumentoPagamentoPanel({
 
       if (!response.ok) throw new Error(data?.error ?? 'Nao foi possivel enviar o documento.')
 
-      setMensagem('Documento enviado para conferencia financeira.')
+      setMensagem('Nota fiscal enviada para conferência financeira.')
       setValor('')
       setObservacao('')
       setArquivo(null)
       onOsSelecionada('')
       await onUploaded()
     } catch (error) {
-      setErro(error instanceof Error ? error.message : 'Erro ao enviar documento.')
+      setErro(error instanceof Error ? error.message : 'Erro ao enviar a nota fiscal.')
     } finally {
       setEnviando(false)
     }
@@ -696,8 +825,8 @@ function DocumentoPagamentoPanel({
 
   return (
     <section className="rounded-xl bg-white p-3 shadow-sm">
-      <h3 className="text-sm font-bold text-slate-950">NF ou recibo</h3>
-      <p className="text-xs text-slate-500">Envie o documento para o Chame o Tecnico executar o pagamento.</p>
+      <h3 className="text-sm font-bold text-slate-950">Nota fiscal</h3>
+      <p className="text-xs text-slate-500">Envie a nota fiscal vinculada ao serviço para conferência e pagamento.</p>
 
       {tabelaPendente && (
         <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
@@ -725,32 +854,18 @@ function DocumentoPagamentoPanel({
           </select>
         </label>
 
-        <div className="grid grid-cols-2 gap-2">
-          <label className="text-xs font-bold text-slate-600">
-            Tipo
-            <select
-              value={tipo}
-              onChange={(event) => setTipo(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500"
-            >
-              <option value="RECIBO">Recibo</option>
-              <option value="NF">Nota fiscal</option>
-            </select>
-          </label>
-
-          <label className="text-xs font-bold text-slate-600">
-            Valor
-            <input
-              value={valor}
-              onChange={(event) => setValor(event.target.value)}
-              type="number"
-              min="0"
-              step="0.01"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500"
-              placeholder="0,00"
-            />
-          </label>
-        </div>
+        <label className="block text-xs font-bold text-slate-600">
+          Valor da nota fiscal
+          <input
+            value={valor}
+            onChange={(event) => setValor(event.target.value)}
+            type="number"
+            min="0"
+            step="0.01"
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500"
+            placeholder="0,00"
+          />
+        </label>
 
         <input
           type="file"
@@ -774,14 +889,14 @@ function DocumentoPagamentoPanel({
           disabled={enviando || tabelaPendente}
           className="w-full rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {enviando ? 'Enviando...' : 'Enviar para pagamento'}
+          {enviando ? 'Enviando...' : 'Enviar nota fiscal'}
         </button>
       </form>
 
       <div className="mt-3 space-y-2">
-        <p className="text-xs font-bold uppercase text-slate-500">Ultimos envios</p>
-        {documentos.length ? (
-          documentos.slice(0, 3).map((doc) => (
+        <p className="text-xs font-bold uppercase text-slate-500">Notas fiscais enviadas</p>
+        {notasFiscais.length ? (
+          notasFiscais.slice(0, 3).map((doc) => (
             <a
               key={doc.id}
               href={doc.url ?? '#'}
@@ -790,7 +905,7 @@ function DocumentoPagamentoPanel({
               className="block rounded-lg border border-slate-200 px-3 py-2 text-xs hover:bg-slate-50"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="font-bold text-slate-800">{doc.tipo ?? 'RECIBO'}</span>
+                <span className="font-bold text-slate-800">Nota fiscal</span>
                 <span className="font-black text-slate-700">{formatCurrency(Number(doc.valor ?? 0))}</span>
               </div>
               <div className="mt-1 flex items-center justify-between gap-2 text-slate-500">
@@ -800,7 +915,7 @@ function DocumentoPagamentoPanel({
             </a>
           ))
         ) : (
-          <p className="text-xs text-slate-500">Nenhum documento enviado ainda.</p>
+          <p className="text-xs text-slate-500">Nenhuma nota fiscal enviada ainda.</p>
         )}
       </div>
     </section>
@@ -974,6 +1089,11 @@ function resumoInicial(): ResumoTecnico {
 function getNomeTecnico(os?: OSItem) {
   const tecnico = os?.parceiros
   return tecnico?.responsavel ?? tecnico?.nome_fantasia ?? tecnico?.razao_social ?? ''
+}
+
+function iniciaisNome(nome: string) {
+  const partes = String(nome || 'Técnico').trim().split(/\s+/).filter(Boolean)
+  return `${partes[0]?.[0] ?? 'T'}${partes.length > 1 ? partes[partes.length - 1]?.[0] ?? '' : ''}`.toUpperCase()
 }
 
 function formatarEquipamento(os: OSItem) {

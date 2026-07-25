@@ -3,7 +3,8 @@
 
 alter table public.pecas
   add column if not exists codigo_barras text,
-  add column if not exists ncm text;
+  add column if not exists ncm text,
+  add column if not exists atualizado_em timestamptz not null default now();
 
 create table if not exists public.nfe_importacoes (
   id bigserial primary key,

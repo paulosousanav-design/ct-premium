@@ -1,0 +1,16 @@
+-- Armazenamento público dos materiais em PDF da Academia Técnica.
+-- O envio é feito somente pelo servidor, após validar a permissão "academia".
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'academia-materiais',
+  'academia-materiais',
+  true,
+  15728640,
+  array['application/pdf']
+)
+on conflict (id) do update
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;

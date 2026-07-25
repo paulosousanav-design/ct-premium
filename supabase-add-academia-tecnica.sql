@@ -43,3 +43,18 @@ on academia_progresso (parceiro_id, atualizado_em desc);
 alter table academia_conteudos enable row level security;
 alter table academia_conteudo_tecnicos enable row level security;
 alter table academia_progresso enable row level security;
+
+-- Materiais em PDF enviados pela administração.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'academia-materiais',
+  'academia-materiais',
+  true,
+  15728640,
+  array['application/pdf']
+)
+on conflict (id) do update
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
