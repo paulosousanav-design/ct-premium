@@ -42,10 +42,7 @@ export async function GET(request: NextRequest) {
     const colunaAgendamentoTecnicoExiste = await colunaExiste(supabase, 'ordens_servico', 'tecnico_agendado_para')
     const selectOrcamentoTecnico = colunasOrcamentoTecnicoExistem
       ? `
-        tecnico_valor_pecas,
-        tecnico_valor_mao_obra,
-        tecnico_desconto,
-        tecnico_total,`
+        tecnico_valor_mao_obra,`
       : ''
     const selectPagamentoTecnico = colunaPagamentoTecnicoExiste
       ? `
@@ -132,7 +129,7 @@ export async function GET(request: NextRequest) {
     }
 
     const selectResumoTecnico = [
-      colunasOrcamentoTecnicoExistem ? 'tecnico_total' : '',
+      colunasOrcamentoTecnicoExistem ? 'tecnico_valor_mao_obra' : '',
       colunaPagamentoTecnicoExiste ? 'tecnico_status_pagamento' : '',
     ].filter(Boolean).join(', ')
     const { data: resumoData, error: resumoError } = await supabase
@@ -258,10 +255,7 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const valorPecas = toNumber(body?.valorPecas)
-    const valorMaoObra = toNumber(body?.valorMaoObra)
-    const desconto = toNumber(body?.desconto)
-    const total = Math.max(0, valorPecas + valorMaoObra - desconto)
+    const valorServico = Math.max(0, toNumber(body?.valorMaoObra))
 
     const updatePayload: Record<string, unknown> = {
       status,
@@ -272,17 +266,16 @@ export async function PATCH(request: NextRequest) {
     }
 
     const colunasOrcamentoTecnicoExistem = await colunaExiste(supabase, 'ordens_servico', 'tecnico_total')
-    if (colunasOrcamentoTecnicoExistem) {
-      updatePayload.tecnico_valor_pecas = valorPecas
-      updatePayload.tecnico_valor_mao_obra = valorMaoObra
-      updatePayload.tecnico_desconto = desconto
-      updatePayload.tecnico_total = total
-    } else {
-      updatePayload.valor_pecas = valorPecas
-      updatePayload.valor_mao_obra = valorMaoObra
-      updatePayload.desconto = desconto
-      updatePayload.total = total
+    if (!colunasOrcamentoTecnicoExistem) {
+      return NextResponse.json(
+        { error: 'Os campos financeiros do técnico ainda não estão configurados. Contate o administrativo.' },
+        { status: 400 }
+      )
     }
+    updatePayload.tecnico_valor_pecas = 0
+    updatePayload.tecnico_valor_mao_obra = valorServico
+    updatePayload.tecnico_desconto = 0
+    updatePayload.tecnico_total = valorServico
 
     if (status === 'AGUARDANDO_REVISAO') updatePayload.orcamento_status = 'PENDENTE'
     if (status === 'PRONTO_AGUARDANDO_ENTREGA') {
@@ -314,10 +307,7 @@ export async function PATCH(request: NextRequest) {
       String(body?.diagnosticoTecnico ?? '').trim() ? `Diagnostico: ${String(body.diagnosticoTecnico).trim()}` : '',
       String(body?.servicoExecutado ?? '').trim() ? `Servico: ${String(body.servicoExecutado).trim()}` : '',
       String(body?.pecasUtilizadas ?? '').trim() ? `Pecas: ${String(body.pecasUtilizadas).trim()}` : '',
-      `Pecas total: ${formatCurrency(valorPecas)}`,
-      `Mao de obra: ${formatCurrency(valorMaoObra)}`,
-      `Desconto: ${formatCurrency(desconto)}`,
-      `Total: ${formatCurrency(total)}`,
+      `Valor do servico do tecnico: ${formatCurrency(valorServico)}`,
     ]
       .filter(Boolean)
       .join(' | ')
@@ -335,7 +325,7 @@ export async function PATCH(request: NextRequest) {
 
     if (historicoError) throw historicoError
 
-    return NextResponse.json({ ok: true, total })
+    return NextResponse.json({ ok: true, valorServico })
   } catch (error) {
     console.error('Erro ao salvar atendimento do tecnico:', error)
     return NextResponse.json(
@@ -400,7 +390,7 @@ function calcularResumo(
   ordens: Array<{
     id: number
     status: string | null
-    tecnico_total?: number | string | null
+    tecnico_valor_mao_obra?: number | string | null
     tecnico_status_pagamento?: string | null
     status_financeiro?: string | null
   }>
@@ -426,8 +416,8 @@ function calcularResumo(
   }
 }
 
-function valorTotalTecnico(os: { tecnico_total?: number | string | null }) {
-  return toNumber(os.tecnico_total)
+function valorTotalTecnico(os: { tecnico_valor_mao_obra?: number | string | null }) {
+  return toNumber(os.tecnico_valor_mao_obra)
 }
 
 function tecnicoRecebido(os: { tecnico_status_pagamento?: string | null; status_financeiro?: string | null }) {

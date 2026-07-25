@@ -14,7 +14,7 @@ type OSItem = {
   prioridade: string | null
   modelo: string | null
   defeito: string | null
-  tecnico_total?: number | string | null
+  tecnico_valor_mao_obra?: number | string | null
   tecnico_status_pagamento?: string | null
   tecnico_pago_em?: string | null
   tecnico_agendado_para?: string | null
@@ -1027,7 +1027,7 @@ function formatarEndereco(os: OSItem) {
 }
 
 function valorTotalTecnico(os: OSItem) {
-  return Number(os.tecnico_total ?? 0)
+  return Number(os.tecnico_valor_mao_obra ?? 0)
 }
 
 function tecnicoPago(os: OSItem) {

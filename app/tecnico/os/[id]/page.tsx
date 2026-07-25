@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, useCallback, useEffect, useState } from 'react'
 
 type OSDetalhe = {
   id: number
@@ -16,14 +16,7 @@ type OSDetalhe = {
   diagnostico_tecnico: string | null
   servico_executado: string | null
   pecas_utilizadas: string | null
-  valor_pecas: number | string | null
-  valor_mao_obra: number | string | null
-  desconto: number | string | null
-  total: number | string | null
-  tecnico_valor_pecas?: number | string | null
   tecnico_valor_mao_obra?: number | string | null
-  tecnico_desconto?: number | string | null
-  tecnico_total?: number | string | null
   observacao_tecnica: string | null
   fotos_count?: number
   fotos?: OSFoto[]
@@ -52,9 +45,7 @@ type FormState = {
   diagnosticoTecnico: string
   servicoExecutado: string
   pecasUtilizadas: string
-  valorPecas: string
   valorMaoObra: string
-  desconto: string
   observacaoTecnica: string
 }
 
@@ -76,9 +67,7 @@ export default function AtendimentoTecnicoPage() {
     diagnosticoTecnico: '',
     servicoExecutado: '',
     pecasUtilizadas: '',
-    valorPecas: '0',
     valorMaoObra: '0',
-    desconto: '0',
     observacaoTecnica: '',
   })
   const [loading, setLoading] = useState(true)
@@ -115,9 +104,7 @@ export default function AtendimentoTecnicoPage() {
         diagnosticoTecnico: item.diagnostico_tecnico ?? '',
         servicoExecutado: item.servico_executado ?? '',
         pecasUtilizadas: item.pecas_utilizadas ?? '',
-        valorPecas: String(valoresTecnico.valorPecas),
         valorMaoObra: String(valoresTecnico.valorMaoObra),
-        desconto: String(valoresTecnico.desconto),
         observacaoTecnica: item.observacao_tecnica ?? '',
       })
     } catch (error) {
@@ -130,10 +117,6 @@ export default function AtendimentoTecnicoPage() {
   useEffect(() => {
     void Promise.resolve().then(carregarOS)
   }, [carregarOS])
-
-  const total = useMemo(() => {
-    return Math.max(0, toNumber(form.valorPecas) + toNumber(form.valorMaoObra) - toNumber(form.desconto))
-  }, [form.valorPecas, form.valorMaoObra, form.desconto])
 
   function handleChange(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     const { name, value } = event.target
@@ -271,14 +254,9 @@ export default function AtendimentoTecnicoPage() {
                 <TextArea label="Peças utilizadas ou necessárias" name="pecasUtilizadas" value={form.pecasUtilizadas} onChange={handleChange} />
                 <TextArea label="Observação técnica" name="observacaoTecnica" value={form.observacaoTecnica} onChange={handleChange} />
 
-                <div className="grid gap-3 md:grid-cols-4">
-                  <MoneyInput label="Peças" name="valorPecas" value={form.valorPecas} onChange={handleChange} />
-                  <MoneyInput label="Mão de obra" name="valorMaoObra" value={form.valorMaoObra} onChange={handleChange} />
-                  <MoneyInput label="Desconto" name="desconto" value={form.desconto} onChange={handleChange} />
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-xs font-semibold uppercase text-slate-500">Total</p>
-                    <p className="mt-2 text-lg font-bold text-slate-950">{formatCurrency(total)}</p>
-                  </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <MoneyInput label="Valor do seu serviço" name="valorMaoObra" value={form.valorMaoObra} onChange={handleChange} />
+                  <p className="mt-2 text-xs font-semibold text-emerald-700">Informe somente o valor da sua mão de obra. Valores de peças são controlados pelo administrativo.</p>
                 </div>
 
                 <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
@@ -422,15 +400,6 @@ function toNumber(value: number | string | null | undefined) {
 
 function valoresOrcamentoTecnico(item: OSDetalhe) {
   return {
-    valorPecas: toNumber(item.tecnico_valor_pecas),
     valorMaoObra: toNumber(item.tecnico_valor_mao_obra),
-    desconto: toNumber(item.tecnico_desconto),
   }
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(value || 0)
 }
