@@ -16,7 +16,11 @@ type OrdemRelatorio = {
   data_pagamento?: string | null
   data_ultimo_recebimento?: string | null
   garantia?: boolean | null
+  valor_pecas?: number | string | null
+  valor_mao_obra?: number | string | null
   total?: number | string | null
+  cliente_valor_pecas?: number | string | null
+  cliente_valor_mao_obra?: number | string | null
   cliente_total?: number | string | null
   encerramento_taxa_diagnostico?: number | string | null
   valor_recebido_cliente?: number | string | null
@@ -26,18 +30,23 @@ type OrdemRelatorio = {
   tecnico_pago_em?: string | null
   tipo_atendimento?: string | null
   parceiro_id?: number | null
+  cliente_id?: number | null
   garantidor_id?: number | null
   categorias?: { nome?: string | null } | { nome?: string | null }[] | null
-  clientes?: { nome?: string | null } | { nome?: string | null }[] | null
+  clientes?: RelacaoNome | RelacaoNome[] | null
   parceiros?: RelacaoNome | RelacaoNome[] | null
   garantidores?: RelacaoNome | RelacaoNome[] | null
 }
 
 type RelacaoNome = {
+  id?: number | null
   nome?: string | null
   responsavel?: string | null
   nome_fantasia?: string | null
   razao_social?: string | null
+  tipo_vinculo?: string | null
+  comissao_pecas_percentual?: number | string | null
+  comissao_mao_obra_percentual?: number | string | null
 }
 
 function getSupabaseAdmin() {
@@ -83,6 +92,7 @@ export async function GET(request: NextRequest) {
     const statusOsFiltro = normalizarFiltro(request.nextUrl.searchParams.get('statusOs'))
     const tecnicoFiltro = normalizarFiltro(request.nextUrl.searchParams.get('tecnico'))
     const garantidorFiltro = normalizarFiltro(request.nextUrl.searchParams.get('garantidor'))
+    const clienteFiltro = normalizarFiltro(request.nextUrl.searchParams.get('cliente'))
     const slaParticularDias = normalizarSlaDias(request.nextUrl.searchParams.get('slaParticularDias'), slaEmpresa.particular)
     const slaGarantiaDias = normalizarSlaDias(request.nextUrl.searchParams.get('slaGarantiaDias'), slaEmpresa.garantia)
     const inicioIso = `${inicio}T00:00:00.000Z`
@@ -108,7 +118,10 @@ export async function GET(request: NextRequest) {
       status,
       orcamento_status,
       garantia,
+      valor_pecas,
+      valor_mao_obra,
       total,
+      ${temClienteTotal ? 'cliente_valor_pecas, cliente_valor_mao_obra,' : ''}
       ${temClienteTotal ? 'cliente_total,' : ''}
       ${temTaxaDiagnostico ? 'encerramento_taxa_diagnostico,' : ''}
       ${temTecnicoTotal ? 'tecnico_total,' : ''}
@@ -121,10 +134,14 @@ export async function GET(request: NextRequest) {
       ${temTecnicoPagoEm ? 'tecnico_pago_em,' : ''}
       tipo_atendimento,
       parceiro_id,
+      cliente_id,
       ${temGarantidor ? 'garantidor_id,' : ''}
       categorias:categoria_id ( nome ),
-      clientes:cliente_id ( nome ),
-      parceiros:parceiro_id ( responsavel, nome_fantasia, razao_social )
+      clientes:cliente_id ( id, nome ),
+      parceiros:parceiro_id (
+        responsavel, nome_fantasia, razao_social, tipo_vinculo,
+        comissao_pecas_percentual, comissao_mao_obra_percentual
+      )
       ${temGarantidor ? ', garantidores:garantidor_id ( nome )' : ''}
     `
 
@@ -162,6 +179,7 @@ export async function GET(request: NextRequest) {
       statusOs: statusOsFiltro,
       tecnico: tecnicoFiltro,
       garantidor: garantidorFiltro,
+      cliente: clienteFiltro,
     })
     const documentosTecnicosPagos = await carregarDocumentosTecnicosPagos(supabase)
     const statusResumo = agruparPorStatus(ordensPeriodo)
@@ -181,6 +199,9 @@ export async function GET(request: NextRequest) {
     )
     const ticketCategorias = montarTicketPorCategoria(ordensPeriodo)
     const kpis = montarKpis(ordensPeriodo, slaResumo)
+    const rentabilidade = auth.permissoes.includes('dre') && (clienteFiltro !== 'TODOS' || garantidorFiltro !== 'TODOS')
+      ? await montarRentabilidadePeriodo(supabase, ordensPeriodo)
+      : undefined
 
     const financeiro = ordensPeriodo.reduce(
       (acc, ordem) => {
@@ -238,6 +259,7 @@ export async function GET(request: NextRequest) {
         statusOs: statusOsFiltro,
         tecnico: tecnicoFiltro,
         garantidor: garantidorFiltro,
+        cliente: clienteFiltro,
       }),
       inicioMensal,
       hoje,
@@ -254,6 +276,7 @@ export async function GET(request: NextRequest) {
         statusOs: statusOsFiltro,
         tecnico: tecnicoFiltro,
         garantidor: garantidorFiltro,
+        cliente: clienteFiltro,
         slaParticularDias,
         slaGarantiaDias,
         opcoes: montarOpcoesFiltro(ordensPeriodoBase),
@@ -289,6 +312,12 @@ export async function GET(request: NextRequest) {
         ),
         estoqueBaixo: pecas.estoqueBaixo,
         valorEstoque: pecas.valorEstoque,
+        ...(rentabilidade ? {
+          custoPecasHistorico: rentabilidade.resumo.custoPecas,
+          custoTecnicosRentabilidade: rentabilidade.resumo.custoTecnicos,
+          lucroBrutoEstimado: rentabilidade.resumo.lucroBruto,
+          margemBrutaPercentual: rentabilidade.resumo.margemPercentual,
+        } : {}),
       },
       statusResumo,
       tecnicoResumo,
@@ -301,6 +330,7 @@ export async function GET(request: NextRequest) {
       pecas,
       contasPagar,
       despesasCategorias: contasPagar.despesasCategorias,
+      ...(rentabilidade ? { rentabilidade } : {}),
       ultimasOrdens: ordensPeriodo.slice(0, 12).map((ordem) => ({
         id: ordem.id,
         numero_os: ordem.numero_os,
@@ -316,6 +346,80 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Erro ao carregar relatorios:', error)
     return NextResponse.json({ error: formatarErro(error, 'Erro ao carregar relatorios.') }, { status: 500 })
+  }
+}
+
+async function montarRentabilidadePeriodo(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  ordens: OrdemRelatorio[]
+) {
+  const elegiveis = ordens.filter((ordem) => ordem.status === 'FINALIZADA')
+  const ids = elegiveis.map((ordem) => ordem.id)
+  const { data: pecas, error } = ids.length
+    ? await supabase.from('os_pecas').select('os_id, quantidade, valor_custo').in('os_id', ids)
+    : { data: [] as Array<{ os_id: number; quantidade: number; valor_custo: number }>, error: null }
+  if (error && String(error.code) !== '42703') throw error
+
+  const custosPorOs = new Map<number, number>()
+  let itensSemCusto = 0
+  for (const item of (pecas ?? []) as unknown as Array<Record<string, unknown>>) {
+    const quantidade = toNumber(item.quantidade)
+    const custo = toNumber(item.valor_custo)
+    if (quantidade > 0 && custo === 0) itensSemCusto += 1
+    const osId = Number(item.os_id)
+    custosPorOs.set(osId, (custosPorOs.get(osId) ?? 0) + quantidade * custo)
+  }
+
+  let faturamento = 0
+  let custoPecas = 0
+  let custoTecnicos = 0
+
+  for (const ordem of elegiveis) {
+    const receita = valorClienteOrdem(ordem)
+    const receitaPecas = valorPreferencial(
+      (ordem as unknown as Record<string, unknown>).cliente_valor_pecas,
+      (ordem as unknown as Record<string, unknown>).valor_pecas
+    )
+    const receitaMaoObra = valorPreferencial(
+      (ordem as unknown as Record<string, unknown>).cliente_valor_mao_obra,
+      (ordem as unknown as Record<string, unknown>).valor_mao_obra
+    )
+    const parceiroRaw = Array.isArray(ordem.parceiros) ? ordem.parceiros[0] : ordem.parceiros
+    const parceiro = parceiroRaw ?? {}
+    const proprio = String(parceiro.tipo_vinculo ?? '').toUpperCase() === 'PROPRIO'
+    const custoTecnico = proprio
+      ? receitaPecas * toNumber(parceiro.comissao_pecas_percentual) / 100
+        + receitaMaoObra * toNumber(parceiro.comissao_mao_obra_percentual) / 100
+      : toNumber(ordem.tecnico_total)
+    const custoPecasHistorico = custosPorOs.get(ordem.id) ?? 0
+    faturamento += receita
+    custoPecas += custoPecasHistorico
+    custoTecnicos += custoTecnico
+  }
+
+  const custosDiretosReconhecidos = elegiveis.reduce((acc, ordem) => {
+    const parceiroRaw = Array.isArray(ordem.parceiros) ? ordem.parceiros[0] : ordem.parceiros
+    const proprio = String(parceiroRaw?.tipo_vinculo ?? '').toUpperCase() === 'PROPRIO'
+    const custoTecnico = proprio
+      ? valorPreferencial((ordem as unknown as Record<string, unknown>).cliente_valor_pecas, (ordem as unknown as Record<string, unknown>).valor_pecas) * toNumber(parceiroRaw?.comissao_pecas_percentual) / 100
+        + valorPreferencial((ordem as unknown as Record<string, unknown>).cliente_valor_mao_obra, (ordem as unknown as Record<string, unknown>).valor_mao_obra) * toNumber(parceiroRaw?.comissao_mao_obra_percentual) / 100
+      : toNumber(ordem.tecnico_total)
+    const custoPeca = !proprio && custoTecnico > 0 ? 0 : custosPorOs.get(ordem.id) ?? 0
+    return acc + custoPeca + custoTecnico
+  }, 0)
+  const lucroBruto = faturamento - custosDiretosReconhecidos
+
+  return {
+    resumo: {
+      totalOs: elegiveis.length,
+      faturamento,
+      custoPecas,
+      custoTecnicos,
+      custosDiretos: custosDiretosReconhecidos,
+      lucroBruto,
+      margemPercentual: faturamento > 0 ? (lucroBruto / faturamento) * 100 : 0,
+      itensSemCusto,
+    },
   }
 }
 
@@ -353,6 +457,7 @@ function filtrarOrdens(
     statusOs: string
     tecnico: string
     garantidor: string
+    cliente: string
   }
 ) {
   return ordens.filter((ordem) => {
@@ -363,13 +468,20 @@ function filtrarOrdens(
     const tecnico = getNomeRelacao(ordem.parceiros) || 'Sem tecnico'
     const garantidor = getNomeRelacao(ordem.garantidores) || 'Sem garantidor'
     const garantidorId = ordem.garantidor_id ? String(ordem.garantidor_id) : 'SEM_GARANTIDOR'
+    const clienteRaw = Array.isArray(ordem.clientes) ? ordem.clientes[0] : ordem.clientes
+    const cliente = getNomeRelacao(ordem.clientes) || 'Sem cliente'
+    const clienteId = clienteRaw?.id ? String(clienteRaw.id) : 'SEM_CLIENTE'
+    const clienteCorresponde =
+      filtros.cliente === 'TODOS' ||
+      (!origemGarantidor && (filtros.cliente === clienteId || filtros.cliente === cliente))
 
     return (
       (filtros.origemFinanceira === 'TODOS' || filtros.origemFinanceira === origem) &&
       (filtros.statusFinanceiro === 'TODOS' || filtros.statusFinanceiro === statusFinanceiro) &&
       (filtros.statusOs === 'TODOS' || filtros.statusOs === statusOs) &&
       (filtros.tecnico === 'TODOS' || filtros.tecnico === tecnico) &&
-      (filtros.garantidor === 'TODOS' || filtros.garantidor === garantidor || filtros.garantidor === garantidorId)
+      (filtros.garantidor === 'TODOS' || (origemGarantidor && (filtros.garantidor === garantidor || filtros.garantidor === garantidorId))) &&
+      clienteCorresponde
     )
   })
 }
@@ -384,6 +496,20 @@ function montarOpcoesFiltro(ordens: OrdemRelatorio[]) {
         .filter(ehGarantidorOuSeguradora)
         .map((ordem) => getNomeRelacao(ordem.garantidores) || 'Sem garantidor')
     ),
+    clientes: Array.from(
+      new Map(
+        ordens
+          .filter((ordem) => !ehGarantidorOuSeguradora(ordem))
+          .map((ordem) => {
+            const cliente = Array.isArray(ordem.clientes) ? ordem.clientes[0] : ordem.clientes
+            return [String(cliente?.id ?? ''), {
+              value: String(cliente?.id ?? ''),
+              label: getNomeRelacao(ordem.clientes) || 'Sem cliente',
+            }] as const
+          })
+          .filter(([value]) => Boolean(value))
+      ).values()
+    ).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR')),
   }
 }
 

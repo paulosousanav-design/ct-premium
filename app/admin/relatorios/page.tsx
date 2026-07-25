@@ -11,6 +11,7 @@ type RelatoriosData = {
     statusOs: string
     tecnico: string
     garantidor: string
+    cliente: string
     slaParticularDias?: number
     slaGarantiaDias?: number
     opcoes: {
@@ -18,9 +19,22 @@ type RelatoriosData = {
       statusFinanceiro: string[]
       tecnicos: string[]
       garantidores: string[]
+      clientes: Array<{ value: string; label: string }>
     }
   }
   cards: Record<string, number>
+  rentabilidade?: {
+    resumo: {
+      totalOs: number
+      faturamento: number
+      custoPecas: number
+      custoTecnicos: number
+      custosDiretos: number
+      lucroBruto: number
+      margemPercentual: number
+      itensSemCusto: number
+    }
+  }
   statusResumo: Array<{ status: string; total: number }>
   tecnicoResumo: Array<{ nome: string; total: number; valor: number }>
   garantidorResumo: Array<{ nome: string; total: number; valor: number }>
@@ -103,6 +117,7 @@ export default function RelatoriosPage() {
   const [statusOs, setStatusOs] = useState('TODOS')
   const [tecnico, setTecnico] = useState('TODOS')
   const [garantidor, setGarantidor] = useState('TODOS')
+  const [cliente, setCliente] = useState('TODOS')
   const [slaParticularDias, setSlaParticularDiasState] = useState('3')
   const [slaGarantiaDias, setSlaGarantiaDiasState] = useState('7')
   const [data, setData] = useState<RelatoriosData | null>(null)
@@ -136,6 +151,7 @@ export default function RelatoriosPage() {
         statusOs,
         tecnico,
         garantidor,
+        cliente,
         slaParticularDias,
         slaGarantiaDias,
       })
@@ -149,7 +165,7 @@ export default function RelatoriosPage() {
     } finally {
       setLoading(false)
     }
-  }, [fim, garantidor, inicio, origemFinanceira, slaGarantiaDias, slaParticularDias, statusFinanceiro, statusOs, tecnico])
+  }, [cliente, fim, garantidor, inicio, origemFinanceira, slaGarantiaDias, slaParticularDias, statusFinanceiro, statusOs, tecnico])
 
   useEffect(() => {
     let ativo = true
@@ -179,6 +195,11 @@ export default function RelatoriosPage() {
   const cards = data?.cards ?? {}
   const opcoes = data?.filtros?.opcoes
   const metaValor = Number(metaMensal || 0)
+  const entidadeRentabilidade = cliente !== 'TODOS'
+    ? { tipo: 'Cliente particular', nome: opcoes?.clientes.find((item) => item.value === cliente)?.label ?? cliente }
+    : garantidor !== 'TODOS'
+      ? { tipo: 'Garantidor/Seguradora', nome: garantidor }
+      : null
 
   function setSlaParticularDias(value: string) {
     setSlaParticularDiasState(value)
@@ -204,6 +225,7 @@ export default function RelatoriosPage() {
       [`Status OS: ${formatStatus(statusOs)}`],
       [`Tecnico: ${formatFilterLabel(tecnico)}`],
       [`Garantidor: ${formatFilterLabel(garantidor)}`],
+      [`Cliente: ${cliente === 'TODOS' ? 'Todos' : opcoes?.clientes.find((item) => item.value === cliente)?.label ?? cliente}`],
       [`SLA particular: ${slaParticularDias} dias`],
       [`SLA garantia/seguradora: ${slaGarantiaDias} dias`],
       [],
@@ -345,7 +367,12 @@ export default function RelatoriosPage() {
             <FilterInput label="Origem">
               <select
                 value={origemFinanceira}
-                onChange={(event) => setOrigemFinanceira(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value
+                  setOrigemFinanceira(value)
+                  if (value === 'CLIENTE') setGarantidor('TODOS')
+                  if (value === 'GARANTIDOR') setCliente('TODOS')
+                }}
                 className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-orange-500"
               >
                 <option value="TODOS">Todos</option>
@@ -392,12 +419,38 @@ export default function RelatoriosPage() {
             <FilterInput label="Garantidor">
               <select
                 value={garantidor}
-                onChange={(event) => setGarantidor(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value
+                  setGarantidor(value)
+                  if (value !== 'TODOS') {
+                    setCliente('TODOS')
+                    setOrigemFinanceira('GARANTIDOR')
+                  }
+                }}
                 className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-orange-500"
               >
                 <option value="TODOS">Todos</option>
                 {(opcoes?.garantidores ?? []).map((nome) => (
                   <option key={nome} value={nome}>{nome}</option>
+                ))}
+              </select>
+            </FilterInput>
+            <FilterInput label="Cliente particular">
+              <select
+                value={cliente}
+                onChange={(event) => {
+                  const value = event.target.value
+                  setCliente(value)
+                  if (value !== 'TODOS') {
+                    setGarantidor('TODOS')
+                    setOrigemFinanceira('CLIENTE')
+                  }
+                }}
+                className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-orange-500"
+              >
+                <option value="TODOS">Todos</option>
+                {(opcoes?.clientes ?? []).map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
                 ))}
               </select>
             </FilterInput>
@@ -490,6 +543,26 @@ export default function RelatoriosPage() {
         <Metric label="Ticket margem medio" value={formatCurrency(cards.ticketMedioMargem ?? 0)} tone="green" />
         <Metric label="Margem total" value={formatCurrency(cards.margemTotal ?? 0)} tone="blue" />
       </section>
+
+      {data?.rentabilidade && entidadeRentabilidade && (
+        <Panel title={`Rentabilidade — ${entidadeRentabilidade.tipo}: ${entidadeRentabilidade.nome}`}>
+          <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+            <MiniCard label="OS finalizadas" value={String(data.rentabilidade.resumo.totalOs)} />
+            <MiniCard label="Faturamento analisado" value={formatCurrency(data.rentabilidade.resumo.faturamento)} />
+            <MiniCard label="Custo histórico das peças" value={formatCurrency(data.rentabilidade.resumo.custoPecas)} />
+            <MiniCard label="Técnicos/comissões" value={formatCurrency(data.rentabilidade.resumo.custoTecnicos)} />
+            <MiniCard label="Lucro bruto estimado" value={formatCurrency(data.rentabilidade.resumo.lucroBruto)} />
+            <MiniCard label="Margem bruta" value={`${data.rentabilidade.resumo.margemPercentual.toFixed(1)}%`} />
+          </div>
+
+          {data.rentabilidade.resumo.itensSemCusto > 0 && (
+            <p className="mb-3 rounded-lg bg-amber-50 p-3 text-xs font-bold text-amber-800">
+              Atenção: {data.rentabilidade.resumo.itensSemCusto} item(ns) de OS estão sem custo histórico, o que pode elevar a margem exibida.
+            </p>
+          )}
+          <p className="mt-3 text-xs font-semibold text-slate-500">Lucro bruto estimado não inclui despesas operacionais, impostos ou taxas financeiras. Quando o terceirizado informa um custo completo, o custo das peças permanece informativo e não é descontado novamente.</p>
+        </Panel>
+      )}
 
       <section className="grid gap-3 lg:grid-cols-2">
         <Panel title="OS por status">

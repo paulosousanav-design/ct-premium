@@ -22,12 +22,25 @@ type PecaInput = {
 type OrdemServico = {
   id: number
   unidade_id?: number | null
+  status?: string | null
+  garantia?: boolean | null
   cliente_id: number | null
   categoria_id: number | null
   marca_id: number | null
   parceiro_id?: number | null
   garantidor_id?: number | null
   referencia_garantidor?: string | null
+  valor_pecas?: number | string | null
+  valor_mao_obra?: number | string | null
+  desconto?: number | string | null
+  total?: number | string | null
+  cliente_valor_pecas?: number | string | null
+  cliente_valor_mao_obra?: number | string | null
+  cliente_desconto?: number | string | null
+  cliente_total?: number | string | null
+  valor_recebido_cliente?: number | string | null
+  status_financeiro?: string | null
+  tecnico_total?: number | string | null
 }
 
 type Cliente = {
@@ -55,6 +68,9 @@ type Parceiro = {
   score: number | null
   status: string | null
   especialidades?: string[] | string | null
+  tipo_vinculo?: string | null
+  comissao_pecas_percentual?: number | string | null
+  comissao_mao_obra_percentual?: number | string | null
 }
 
 function getSupabaseAdmin() {
@@ -416,7 +432,10 @@ export async function GET(request: NextRequest) {
         raio_atendimento,
         score,
         status,
-        especialidades
+        especialidades,
+        tipo_vinculo,
+        comissao_pecas_percentual,
+        comissao_mao_obra_percentual
       `)
       .order('created_at', { ascending: true })
 
@@ -433,6 +452,9 @@ export async function GET(request: NextRequest) {
       null
     )
     const tecnicosSugeridos = tecnicosOrdenados.slice(0, 3)
+    const rentabilidade = auth.permissoes.includes('dre')
+      ? await montarRentabilidadeOs(supabase, ordem, (pecas ?? []) as unknown as Record<string, unknown>[], auth.unidadeId)
+      : undefined
 
     return NextResponse.json({
       os: {
@@ -450,6 +472,7 @@ export async function GET(request: NextRequest) {
       garantidores: garantidores ?? [],
       tecnicosSugeridos,
       tecnicosDisponiveis: tecnicosOrdenados,
+      ...(rentabilidade ? { rentabilidade } : {}),
     })
   } catch (error) {
     console.error('Erro ao carregar atendimento da OS:', error)
@@ -458,6 +481,169 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+async function montarRentabilidadeOs(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  ordem: OrdemServico,
+  pecas: Record<string, unknown>[],
+  unidadeId: number
+) {
+  const parceiroAtual = ordem.parceiro_id
+    ? await carregarParceiroRentabilidade(supabase, ordem.parceiro_id)
+    : null
+  const atual = calcularRentabilidadeOrdem(ordem as unknown as Record<string, unknown>, custoPecas(pecas), parceiroAtual)
+  const entidadeTipo = ordem.garantidor_id || ordem.garantia ? 'GARANTIDOR' : 'CLIENTE'
+  const entidadeId = ordem.garantidor_id ?? ordem.cliente_id
+  const entidadeNome = entidadeId
+    ? await carregarNomeEntidadeRentabilidade(supabase, entidadeTipo, entidadeId)
+    : entidadeTipo === 'GARANTIDOR' ? 'Garantidor não identificado' : 'Cliente não identificado'
+
+  if (!entidadeId) {
+    return {
+      os: atual,
+      historico: { tipo: entidadeTipo, nome: entidadeNome, totalOs: 0, faturado: 0, recebido: 0, ticketMedio: 0, custoPecas: 0, custoTecnicos: 0, lucroBruto: 0, margemPercentual: 0 },
+      observacoes: observacoesRentabilidade(pecas, atual),
+    }
+  }
+
+  let historicoQuery = supabase
+    .from('ordens_servico')
+    .select(`
+      id, status, garantia, garantidor_id, total, valor_pecas, valor_mao_obra,
+      cliente_total, cliente_valor_pecas, cliente_valor_mao_obra,
+      valor_recebido_cliente, status_financeiro, tecnico_total,
+      parceiros:parceiro_id (
+        tipo_vinculo, comissao_pecas_percentual, comissao_mao_obra_percentual
+      )
+    `)
+    .eq('unidade_id', unidadeId)
+    .eq('status', 'FINALIZADA')
+  historicoQuery = entidadeTipo === 'GARANTIDOR'
+    ? historicoQuery.eq('garantidor_id', entidadeId)
+    : historicoQuery.eq('cliente_id', entidadeId).is('garantidor_id', null)
+  const { data: ordensEntidade, error: ordensEntidadeError } = await historicoQuery
+  if (ordensEntidadeError) throw ordensEntidadeError
+
+  const historico = (ordensEntidade ?? []) as unknown as Record<string, unknown>[]
+  const ids = historico.map((item) => Number(item.id)).filter(Boolean)
+  const { data: pecasCliente, error: pecasClienteError } = ids.length
+    ? await supabase.from('os_pecas').select('os_id, quantidade, valor_custo').in('os_id', ids)
+    : { data: [] as Record<string, unknown>[], error: null }
+  if (pecasClienteError) throw pecasClienteError
+
+  const custosPorOs = new Map<number, number>()
+  for (const item of (pecasCliente ?? []) as unknown as Record<string, unknown>[]) {
+    const osId = Number(item.os_id)
+    custosPorOs.set(osId, (custosPorOs.get(osId) ?? 0) + toNumber(item.quantidade) * toNumber(item.valor_custo))
+  }
+
+  const calculos = historico.map((item) => {
+    const parceiroRaw = Array.isArray(item.parceiros) ? item.parceiros[0] : item.parceiros
+    return calcularRentabilidadeOrdem(item, custosPorOs.get(Number(item.id)) ?? 0, (parceiroRaw ?? null) as Record<string, unknown> | null)
+  })
+  const faturado = somaCalculos(calculos, 'receita')
+  const recebido = historico.reduce((acc, item, index) => {
+    const informado = item.valor_recebido_cliente
+    if (informado !== null && informado !== undefined && informado !== '') return acc + toNumber(informado)
+    return acc + (String(item.status_financeiro ?? '').toUpperCase() === 'RECEBIDO' ? calculos[index].receita : 0)
+  }, 0)
+  const custoPecasTotal = somaCalculos(calculos, 'custoPecas')
+  const custoTecnicos = somaCalculos(calculos, 'custoTecnico')
+  const lucroBruto = somaCalculos(calculos, 'lucroBruto')
+
+  return {
+    os: atual,
+    historico: {
+      tipo: entidadeTipo,
+      nome: entidadeNome,
+      totalOs: historico.length,
+      faturado,
+      recebido,
+      ticketMedio: historico.length ? faturado / historico.length : 0,
+      custoPecas: custoPecasTotal,
+      custoTecnicos,
+      lucroBruto,
+      margemPercentual: faturado > 0 ? (lucroBruto / faturado) * 100 : 0,
+    },
+    observacoes: observacoesRentabilidade(pecas, atual),
+  }
+}
+
+async function carregarNomeEntidadeRentabilidade(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  tipo: 'CLIENTE' | 'GARANTIDOR',
+  id: number
+) {
+  const tabela = tipo === 'GARANTIDOR' ? 'garantidores' : 'clientes'
+  const { data } = await supabase.from(tabela).select('nome').eq('id', id).maybeSingle()
+  return String(data?.nome ?? (tipo === 'GARANTIDOR' ? `Garantidor #${id}` : `Cliente #${id}`))
+}
+
+async function carregarParceiroRentabilidade(supabase: ReturnType<typeof getSupabaseAdmin>, parceiroId: number) {
+  const { data, error } = await supabase
+    .from('parceiros')
+    .select('tipo_vinculo, comissao_pecas_percentual, comissao_mao_obra_percentual')
+    .eq('id', parceiroId)
+    .maybeSingle()
+  if (error) throw error
+  return (data ?? null) as Record<string, unknown> | null
+}
+
+function calcularRentabilidadeOrdem(
+  ordem: Record<string, unknown>,
+  custoPecasInformado: number,
+  parceiro: Record<string, unknown> | null
+) {
+  const receitaPecas = valorPreferencial(ordem.cliente_valor_pecas, ordem.valor_pecas)
+  const receitaMaoObra = valorPreferencial(ordem.cliente_valor_mao_obra, ordem.valor_mao_obra)
+  const receita = valorPreferencial(ordem.cliente_total, ordem.total)
+  const tecnicoProprio = String(parceiro?.tipo_vinculo ?? '').toUpperCase() === 'PROPRIO'
+  const custoTecnico = tecnicoProprio
+    ? receitaPecas * toNumber(parceiro?.comissao_pecas_percentual) / 100
+      + receitaMaoObra * toNumber(parceiro?.comissao_mao_obra_percentual) / 100
+    : toNumber(ordem.tecnico_total)
+  const terceirizadoComCustoCompleto = !tecnicoProprio && custoTecnico > 0
+  const custoPecasReconhecido = terceirizadoComCustoCompleto ? 0 : custoPecasInformado
+  const custosDiretos = custoPecasReconhecido + custoTecnico
+  const lucroBruto = receita - custosDiretos
+
+  return {
+    receita,
+    receitaPecas,
+    receitaMaoObra,
+    custoPecas: custoPecasInformado,
+    custoPecasReconhecido,
+    custoTecnico,
+    custosDiretos,
+    lucroBruto,
+    margemPercentual: receita > 0 ? (lucroBruto / receita) * 100 : 0,
+    terceirizadoComCustoCompleto,
+  }
+}
+
+function custoPecas(pecas: Record<string, unknown>[]) {
+  return pecas.reduce((acc, item) => acc + toNumber(item.quantidade) * toNumber(item.valor_custo), 0)
+}
+
+function somaCalculos<T extends Record<string, number | boolean>>(itens: T[], campo: keyof T) {
+  return itens.reduce((acc, item) => acc + (typeof item[campo] === 'number' ? Number(item[campo]) : 0), 0)
+}
+
+function valorPreferencial(principal: unknown, fallback: unknown) {
+  return principal === null || principal === undefined || principal === '' ? toNumber(fallback as number | string | null | undefined) : toNumber(principal as number | string | null | undefined)
+}
+
+function observacoesRentabilidade(pecas: Record<string, unknown>[], atual: ReturnType<typeof calcularRentabilidadeOrdem>) {
+  const avisos: string[] = []
+  if (pecas.some((item) => toNumber(item.quantidade) > 0 && toNumber(item.valor_custo) === 0)) {
+    avisos.push('Existem peças sem custo histórico; a margem pode estar superestimada.')
+  }
+  if (atual.terceirizadoComCustoCompleto && atual.custoPecas > 0) {
+    avisos.push('O custo do terceirizado já contempla a execução completa; as peças são informativas e não foram descontadas duas vezes.')
+  }
+  avisos.push('Lucro bruto estimado: não inclui despesas operacionais, impostos ou taxas financeiras.')
+  return avisos
 }
 
 export async function PATCH(request: NextRequest) {

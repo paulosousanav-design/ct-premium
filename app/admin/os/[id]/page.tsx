@@ -202,6 +202,36 @@ type PecaForm = {
   valorUnitario: string
 }
 
+type RentabilidadeResumo = {
+  receita: number
+  receitaPecas: number
+  receitaMaoObra: number
+  custoPecas: number
+  custoPecasReconhecido: number
+  custoTecnico: number
+  custosDiretos: number
+  lucroBruto: number
+  margemPercentual: number
+  terceirizadoComCustoCompleto: boolean
+}
+
+type RentabilidadeOs = {
+  os: RentabilidadeResumo
+  historico: {
+    tipo: 'CLIENTE' | 'GARANTIDOR'
+    nome: string
+    totalOs: number
+    faturado: number
+    recebido: number
+    ticketMedio: number
+    custoPecas: number
+    custoTecnicos: number
+    lucroBruto: number
+    margemPercentual: number
+  }
+  observacoes: string[]
+}
+
 const STATUS_OPTIONS = [
   { value: 'NOVA', label: 'Nova' },
   { value: 'EM_TRIAGEM', label: 'Em Triagem' },
@@ -265,6 +295,7 @@ export default function OrdemServicoAtendimentoPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [marcas, setMarcas] = useState<Marca[]>([])
   const [garantidores, setGarantidores] = useState<Garantidor[]>([])
+  const [rentabilidade, setRentabilidade] = useState<RentabilidadeOs | null>(null)
   const [novasFotos, setNovasFotos] = useState<File[]>([])
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
@@ -407,6 +438,7 @@ export default function OrdemServicoAtendimentoPage() {
       setCategorias((payload.categorias ?? []) as Categoria[])
       setMarcas((payload.marcas ?? []) as Marca[])
       setGarantidores((payload.garantidores ?? []) as Garantidor[])
+      setRentabilidade((payload.rentabilidade ?? null) as RentabilidadeOs | null)
       setTecnicoAvulso({
         nome: osPayloadRelacoes.tecnico_avulso_nome ?? '',
         whatsapp: osPayloadRelacoes.tecnico_avulso_whatsapp ?? '',
@@ -1289,6 +1321,8 @@ export default function OrdemServicoAtendimentoPage() {
           <InfoCard label="Garantia" value={form.garantia} />
           <InfoCard label="Modelo" value={os.modelo ?? '-'} />
         </section>
+
+        {rentabilidade && <RentabilidadeMaster dados={rentabilidade} />}
 
         {['FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(os.status)) && os.equipamento_entrega_status && os.equipamento_entrega_status !== 'NAO_APLICAVEL' && (
           <section className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
@@ -2193,6 +2227,77 @@ function formatarEntregaStatus(status?: string | null) {
 
 function formatarMeioAviso(meio?: string | null) {
   return ({ WHATSAPP: 'WhatsApp', TELEFONE: 'telefone', PRESENCIAL: 'atendimento presencial', EMAIL: 'e-mail' } as Record<string, string>)[String(meio)] ?? '-'
+}
+
+function RentabilidadeMaster({ dados }: { dados: RentabilidadeOs }) {
+  const margemOsPositiva = dados.os.lucroBruto >= 0
+  const margemHistoricoPositiva = dados.historico.lucroBruto >= 0
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-indigo-200 bg-white shadow-sm">
+      <div className="flex flex-col justify-between gap-2 bg-slate-950 px-4 py-3 text-white sm:flex-row sm:items-center">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-indigo-300">Visão Master</p>
+          <h2 className="text-lg font-black">Rentabilidade da OS e histórico do pagador</h2>
+        </div>
+        <span className="rounded-full bg-indigo-500/20 px-3 py-1 text-xs font-black text-indigo-200">Restrito</span>
+      </div>
+
+      <div className="grid gap-4 p-4 xl:grid-cols-2">
+        <div>
+          <h3 className="mb-2 text-sm font-black text-slate-900">Esta OS</h3>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <RentabilidadeCard label="Faturamento" valor={dados.os.receita} />
+            <RentabilidadeCard label="Custo das peças" valor={dados.os.custoPecas} tom="amber" />
+            <RentabilidadeCard label="Técnico/comissão" valor={dados.os.custoTecnico} tom="amber" />
+            <RentabilidadeCard label="Custos diretos" valor={dados.os.custosDiretos} tom="red" />
+            <RentabilidadeCard label="Lucro bruto estimado" valor={dados.os.lucroBruto} tom={margemOsPositiva ? 'green' : 'red'} />
+            <RentabilidadeCard label="Margem bruta" texto={`${dados.os.margemPercentual.toFixed(1)}%`} tom={margemOsPositiva ? 'green' : 'red'} />
+          </div>
+        </div>
+
+        <div>
+          <h3 className="mb-2 text-sm font-black text-slate-900">
+            Histórico {dados.historico.tipo === 'GARANTIDOR' ? 'do garantidor' : 'do cliente particular'}: {dados.historico.nome}
+          </h3>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <RentabilidadeCard label="OS finalizadas" texto={String(dados.historico.totalOs)} />
+            <RentabilidadeCard label="Total faturado" valor={dados.historico.faturado} />
+            <RentabilidadeCard label="Total recebido" valor={dados.historico.recebido} tom="green" />
+            <RentabilidadeCard label="Ticket médio" valor={dados.historico.ticketMedio} />
+            <RentabilidadeCard label="Lucro bruto acumulado" valor={dados.historico.lucroBruto} tom={margemHistoricoPositiva ? 'green' : 'red'} />
+            <RentabilidadeCard label="Margem acumulada" texto={`${dados.historico.margemPercentual.toFixed(1)}%`} tom={margemHistoricoPositiva ? 'green' : 'red'} />
+          </div>
+        </div>
+      </div>
+
+      {dados.observacoes.length > 0 && (
+        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
+          {dados.observacoes.map((item) => <p key={item} className="text-xs font-semibold text-slate-600">• {item}</p>)}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function RentabilidadeCard({
+  label,
+  valor,
+  texto,
+  tom = 'slate',
+}: {
+  label: string
+  valor?: number
+  texto?: string
+  tom?: 'slate' | 'green' | 'amber' | 'red'
+}) {
+  const cores = {
+    slate: 'border-slate-200 bg-slate-50 text-slate-950',
+    green: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    amber: 'border-amber-200 bg-amber-50 text-amber-800',
+    red: 'border-red-200 bg-red-50 text-red-800',
+  }
+  return <div className={`rounded-lg border p-3 ${cores[tom]}`}><p className="text-[10px] font-black uppercase tracking-wide opacity-70">{label}</p><p className="mt-1 text-base font-black">{texto ?? formatCurrency(valor ?? 0)}</p></div>
 }
 
 function Field({
