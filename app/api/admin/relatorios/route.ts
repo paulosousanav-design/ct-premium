@@ -315,6 +315,7 @@ export async function GET(request: NextRequest) {
         ...(rentabilidade ? {
           custoPecasHistorico: rentabilidade.resumo.custoPecas,
           custoTecnicosRentabilidade: rentabilidade.resumo.custoTecnicos,
+          custoRotasRateadas: rentabilidade.resumo.custoRotas,
           lucroBrutoEstimado: rentabilidade.resumo.lucroBruto,
           margemBrutaPercentual: rentabilidade.resumo.margemPercentual,
         } : {}),
@@ -369,10 +370,12 @@ async function montarRentabilidadePeriodo(
     const osId = Number(item.os_id)
     custosPorOs.set(osId, (custosPorOs.get(osId) ?? 0) + quantidade * custo)
   }
+  const custosRotasPorOs = await carregarCustosRotasRelatorio(supabase, ids)
 
   let faturamento = 0
   let custoPecas = 0
   let custoTecnicos = 0
+  let custoRotas = 0
 
   for (const ordem of elegiveis) {
     const receita = valorClienteOrdem(ordem)
@@ -395,6 +398,7 @@ async function montarRentabilidadePeriodo(
     faturamento += receita
     custoPecas += custoPecasHistorico
     custoTecnicos += custoTecnico
+    custoRotas += custosRotasPorOs.get(ordem.id) ?? 0
   }
 
   const custosDiretosReconhecidos = elegiveis.reduce((acc, ordem) => {
@@ -405,7 +409,7 @@ async function montarRentabilidadePeriodo(
         + valorPreferencial((ordem as unknown as Record<string, unknown>).cliente_valor_mao_obra, (ordem as unknown as Record<string, unknown>).valor_mao_obra) * toNumber(parceiroRaw?.comissao_mao_obra_percentual) / 100
       : toNumber(ordem.tecnico_total)
     const custoPeca = !proprio && custoTecnico > 0 ? 0 : custosPorOs.get(ordem.id) ?? 0
-    return acc + custoPeca + custoTecnico
+    return acc + custoPeca + custoTecnico + (custosRotasPorOs.get(ordem.id) ?? 0)
   }, 0)
   const lucroBruto = faturamento - custosDiretosReconhecidos
 
@@ -415,12 +419,28 @@ async function montarRentabilidadePeriodo(
       faturamento,
       custoPecas,
       custoTecnicos,
+      custoRotas,
       custosDiretos: custosDiretosReconhecidos,
       lucroBruto,
       margemPercentual: faturamento > 0 ? (lucroBruto / faturamento) * 100 : 0,
       itensSemCusto,
     },
   }
+}
+
+async function carregarCustosRotasRelatorio(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  osIds: number[]
+) {
+  const mapa = new Map<number, number>()
+  if (!osIds.length || !(await tabelaExiste(supabase, 'rota_ordens'))) return mapa
+  const { data, error } = await supabase.from('rota_ordens').select('os_id, custo_rateado').in('os_id', osIds)
+  if (error) throw error
+  for (const item of data ?? []) {
+    const osId = Number(item.os_id)
+    mapa.set(osId, (mapa.get(osId) ?? 0) + toNumber(item.custo_rateado))
+  }
+  return mapa
 }
 
 async function carregarSlaEmpresa(supabase: ReturnType<typeof getSupabaseAdmin>) {

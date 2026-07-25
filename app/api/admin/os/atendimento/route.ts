@@ -492,7 +492,16 @@ async function montarRentabilidadeOs(
   const parceiroAtual = ordem.parceiro_id
     ? await carregarParceiroRentabilidade(supabase, ordem.parceiro_id)
     : null
-  const atual = calcularRentabilidadeOrdem(ordem as unknown as Record<string, unknown>, custoPecas(pecas), parceiroAtual)
+  const [custosRotasAtual, rotasAtual] = await Promise.all([
+    carregarCustosRotas(supabase, [ordem.id]),
+    carregarRotasDaOs(supabase, ordem.id),
+  ])
+  const atual = calcularRentabilidadeOrdem(
+    ordem as unknown as Record<string, unknown>,
+    custoPecas(pecas),
+    parceiroAtual,
+    custosRotasAtual.get(ordem.id) ?? 0
+  )
   const entidadeTipo = ordem.garantidor_id || ordem.garantia ? 'GARANTIDOR' : 'CLIENTE'
   const entidadeId = ordem.garantidor_id ?? ordem.cliente_id
   const entidadeNome = entidadeId
@@ -502,7 +511,8 @@ async function montarRentabilidadeOs(
   if (!entidadeId) {
     return {
       os: atual,
-      historico: { tipo: entidadeTipo, nome: entidadeNome, totalOs: 0, faturado: 0, recebido: 0, ticketMedio: 0, custoPecas: 0, custoTecnicos: 0, lucroBruto: 0, margemPercentual: 0 },
+      historico: { tipo: entidadeTipo, nome: entidadeNome, totalOs: 0, faturado: 0, recebido: 0, ticketMedio: 0, custoPecas: 0, custoTecnicos: 0, custoRotas: 0, lucroBruto: 0, margemPercentual: 0 },
+      rotas: rotasAtual,
       observacoes: observacoesRentabilidade(pecas, atual),
     }
   }
@@ -537,10 +547,16 @@ async function montarRentabilidadeOs(
     const osId = Number(item.os_id)
     custosPorOs.set(osId, (custosPorOs.get(osId) ?? 0) + toNumber(item.quantidade) * toNumber(item.valor_custo))
   }
+  const custosRotasPorOs = await carregarCustosRotas(supabase, ids)
 
   const calculos = historico.map((item) => {
     const parceiroRaw = Array.isArray(item.parceiros) ? item.parceiros[0] : item.parceiros
-    return calcularRentabilidadeOrdem(item, custosPorOs.get(Number(item.id)) ?? 0, (parceiroRaw ?? null) as Record<string, unknown> | null)
+    return calcularRentabilidadeOrdem(
+      item,
+      custosPorOs.get(Number(item.id)) ?? 0,
+      (parceiroRaw ?? null) as Record<string, unknown> | null,
+      custosRotasPorOs.get(Number(item.id)) ?? 0
+    )
   })
   const faturado = somaCalculos(calculos, 'receita')
   const recebido = historico.reduce((acc, item, index) => {
@@ -550,6 +566,7 @@ async function montarRentabilidadeOs(
   }, 0)
   const custoPecasTotal = somaCalculos(calculos, 'custoPecas')
   const custoTecnicos = somaCalculos(calculos, 'custoTecnico')
+  const custoRotas = somaCalculos(calculos, 'custoRota')
   const lucroBruto = somaCalculos(calculos, 'lucroBruto')
 
   return {
@@ -563,9 +580,11 @@ async function montarRentabilidadeOs(
       ticketMedio: historico.length ? faturado / historico.length : 0,
       custoPecas: custoPecasTotal,
       custoTecnicos,
+      custoRotas,
       lucroBruto,
       margemPercentual: faturado > 0 ? (lucroBruto / faturado) * 100 : 0,
     },
+    rotas: rotasAtual,
     observacoes: observacoesRentabilidade(pecas, atual),
   }
 }
@@ -593,7 +612,8 @@ async function carregarParceiroRentabilidade(supabase: ReturnType<typeof getSupa
 function calcularRentabilidadeOrdem(
   ordem: Record<string, unknown>,
   custoPecasInformado: number,
-  parceiro: Record<string, unknown> | null
+  parceiro: Record<string, unknown> | null,
+  custoRota = 0
 ) {
   const receitaPecas = valorPreferencial(ordem.cliente_valor_pecas, ordem.valor_pecas)
   const receitaMaoObra = valorPreferencial(ordem.cliente_valor_mao_obra, ordem.valor_mao_obra)
@@ -605,7 +625,7 @@ function calcularRentabilidadeOrdem(
     : toNumber(ordem.tecnico_total)
   const terceirizadoComCustoCompleto = !tecnicoProprio && custoTecnico > 0
   const custoPecasReconhecido = terceirizadoComCustoCompleto ? 0 : custoPecasInformado
-  const custosDiretos = custoPecasReconhecido + custoTecnico
+  const custosDiretos = custoPecasReconhecido + custoTecnico + custoRota
   const lucroBruto = receita - custosDiretos
 
   return {
@@ -615,11 +635,41 @@ function calcularRentabilidadeOrdem(
     custoPecas: custoPecasInformado,
     custoPecasReconhecido,
     custoTecnico,
+    custoRota,
     custosDiretos,
     lucroBruto,
     margemPercentual: receita > 0 ? (lucroBruto / receita) * 100 : 0,
     terceirizadoComCustoCompleto,
   }
+}
+
+async function carregarCustosRotas(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  osIds: number[]
+) {
+  const mapa = new Map<number, number>()
+  if (!osIds.length || !(await tabelaExiste(supabase, 'rota_ordens'))) return mapa
+  const { data, error } = await supabase.from('rota_ordens').select('os_id, custo_rateado').in('os_id', osIds)
+  if (error) throw error
+  for (const item of data ?? []) {
+    const osId = Number(item.os_id)
+    mapa.set(osId, (mapa.get(osId) ?? 0) + toNumber(item.custo_rateado))
+  }
+  return mapa
+}
+
+async function carregarRotasDaOs(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  osId: number
+) {
+  if (!(await tabelaExiste(supabase, 'rota_ordens'))) return []
+  const { data, error } = await supabase
+    .from('rota_ordens')
+    .select('id, finalidade, custo_rateado, rotas:rota_id(id, numero_rota, origem, destino, data_inicio, status)')
+    .eq('os_id', osId)
+    .order('vinculado_em')
+  if (error) throw error
+  return data ?? []
 }
 
 function custoPecas(pecas: Record<string, unknown>[]) {

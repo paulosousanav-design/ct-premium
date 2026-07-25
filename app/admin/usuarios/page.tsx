@@ -38,6 +38,7 @@ const permissoes = [
   { id: 'aprovacao', label: 'Aprovacao' },
   { id: 'financeiro', label: 'Financeiro' },
   { id: 'dre', label: 'DRE Gerencial' },
+  { id: 'rotas', label: 'Gestao de Rotas' },
   { id: 'vendas', label: 'Vendas' },
   { id: 'pecas', label: 'Pecas e estoque' },
   { id: 'clientes', label: 'Clientes' },

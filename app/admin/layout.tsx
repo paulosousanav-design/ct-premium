@@ -57,6 +57,7 @@ const menu: MenuItem[] = [
   { label: 'Aprovacao', href: '/admin/aprovacao', permissao: 'aprovacao' },
   { label: 'Financeiro', href: '/admin/financeiro', permissao: 'financeiro' },
   { label: 'DRE Gerencial', href: '/admin/financeiro/dre', permissao: 'dre' },
+  { label: 'Gestao de Rotas', href: '/admin/rotas', permissao: 'rotas' },
   { label: 'Vendas', href: '/admin/vendas', permissao: 'vendas' },
   { label: 'Pecas', href: '/admin/pecas', permissao: 'pecas' },
   { label: 'Clientes', href: '/admin/clientes', permissao: 'clientes' },

@@ -209,6 +209,7 @@ type RentabilidadeResumo = {
   custoPecas: number
   custoPecasReconhecido: number
   custoTecnico: number
+  custoRota: number
   custosDiretos: number
   lucroBruto: number
   margemPercentual: number
@@ -226,9 +227,30 @@ type RentabilidadeOs = {
     ticketMedio: number
     custoPecas: number
     custoTecnicos: number
+    custoRotas: number
     lucroBruto: number
     margemPercentual: number
   }
+  rotas: Array<{
+    id: number
+    finalidade: 'COLETA' | 'ATENDIMENTO' | 'ENTREGA' | 'RETORNO' | 'OUTRA'
+    custo_rateado: number
+    rotas?: {
+      id: number
+      numero_rota?: string | null
+      origem?: string | null
+      destino?: string | null
+      data_inicio?: string | null
+      status?: string | null
+    } | Array<{
+      id: number
+      numero_rota?: string | null
+      origem?: string | null
+      destino?: string | null
+      data_inicio?: string | null
+      status?: string | null
+    }> | null
+  }>
   observacoes: string[]
 }
 
@@ -2250,10 +2272,25 @@ function RentabilidadeMaster({ dados }: { dados: RentabilidadeOs }) {
             <RentabilidadeCard label="Faturamento" valor={dados.os.receita} />
             <RentabilidadeCard label="Custo das peças" valor={dados.os.custoPecas} tom="amber" />
             <RentabilidadeCard label="Técnico/comissão" valor={dados.os.custoTecnico} tom="amber" />
+            <RentabilidadeCard label="Rota rateada" valor={dados.os.custoRota} tom="amber" />
             <RentabilidadeCard label="Custos diretos" valor={dados.os.custosDiretos} tom="red" />
             <RentabilidadeCard label="Lucro bruto estimado" valor={dados.os.lucroBruto} tom={margemOsPositiva ? 'green' : 'red'} />
             <RentabilidadeCard label="Margem bruta" texto={`${dados.os.margemPercentual.toFixed(1)}%`} tom={margemOsPositiva ? 'green' : 'red'} />
           </div>
+          {dados.rotas.length > 0 && (
+            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
+              <p className="text-[10px] font-black uppercase tracking-wide text-blue-700">Rotas relacionadas à OS</p>
+              <div className="mt-2 space-y-1.5">
+                {dados.rotas.map((vinculo) => {
+                  const rota = Array.isArray(vinculo.rotas) ? vinculo.rotas[0] : vinculo.rotas
+                  return <div key={vinculo.id} className="flex flex-wrap items-center justify-between gap-2 rounded bg-white px-3 py-2 text-xs">
+                    <span><b>{rota?.numero_rota ?? `Rota #${rota?.id ?? vinculo.id}`}</b> · {labelFinalidadeRota(vinculo.finalidade)} · {rota?.origem ?? '-'} → {rota?.destino ?? '-'}</span>
+                    <b className="text-amber-700">{formatCurrency(vinculo.custo_rateado)}</b>
+                  </div>
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <div>
@@ -2265,6 +2302,7 @@ function RentabilidadeMaster({ dados }: { dados: RentabilidadeOs }) {
             <RentabilidadeCard label="Total faturado" valor={dados.historico.faturado} />
             <RentabilidadeCard label="Total recebido" valor={dados.historico.recebido} tom="green" />
             <RentabilidadeCard label="Ticket médio" valor={dados.historico.ticketMedio} />
+            <RentabilidadeCard label="Rotas rateadas" valor={dados.historico.custoRotas} tom="amber" />
             <RentabilidadeCard label="Lucro bruto acumulado" valor={dados.historico.lucroBruto} tom={margemHistoricoPositiva ? 'green' : 'red'} />
             <RentabilidadeCard label="Margem acumulada" texto={`${dados.historico.margemPercentual.toFixed(1)}%`} tom={margemHistoricoPositiva ? 'green' : 'red'} />
           </div>
@@ -2298,6 +2336,10 @@ function RentabilidadeCard({
     red: 'border-red-200 bg-red-50 text-red-800',
   }
   return <div className={`rounded-lg border p-3 ${cores[tom]}`}><p className="text-[10px] font-black uppercase tracking-wide opacity-70">{label}</p><p className="mt-1 text-base font-black">{texto ?? formatCurrency(valor ?? 0)}</p></div>
+}
+
+function labelFinalidadeRota(value: string) {
+  return ({ COLETA: 'Coleta', ATENDIMENTO: 'Atendimento', ENTREGA: 'Entrega', RETORNO: 'Retorno', OUTRA: 'Outra' } as Record<string, string>)[value] ?? value
 }
 
 function Field({

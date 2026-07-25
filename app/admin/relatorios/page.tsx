@@ -29,6 +29,7 @@ type RelatoriosData = {
       faturamento: number
       custoPecas: number
       custoTecnicos: number
+      custoRotas: number
       custosDiretos: number
       lucroBruto: number
       margemPercentual: number
@@ -551,6 +552,7 @@ export default function RelatoriosPage() {
             <MiniCard label="Faturamento analisado" value={formatCurrency(data.rentabilidade.resumo.faturamento)} />
             <MiniCard label="Custo histórico das peças" value={formatCurrency(data.rentabilidade.resumo.custoPecas)} />
             <MiniCard label="Técnicos/comissões" value={formatCurrency(data.rentabilidade.resumo.custoTecnicos)} />
+            <MiniCard label="Rotas rateadas" value={formatCurrency(data.rentabilidade.resumo.custoRotas)} />
             <MiniCard label="Lucro bruto estimado" value={formatCurrency(data.rentabilidade.resumo.lucroBruto)} />
             <MiniCard label="Margem bruta" value={`${data.rentabilidade.resumo.margemPercentual.toFixed(1)}%`} />
           </div>
