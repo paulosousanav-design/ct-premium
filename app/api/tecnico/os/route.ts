@@ -105,6 +105,7 @@ export async function GET(request: NextRequest) {
     const osPagasPorDocumento = await carregarOsPagasPorDocumento(supabase, tecnicoId)
     const ordensData = (data ?? []) as unknown as Record<string, unknown>[]
     const ordensNormalizadas = ordensData
+      .map(ocultarValoresDasPecas)
       .map((ordem) => normalizarPagamentoTecnico(ordem, osPagasPorDocumento))
 
     if (osId) {
@@ -229,7 +230,7 @@ export async function PATCH(request: NextRequest) {
 
     const { data: osAtual, error: osAtualError } = await supabase
       .from('ordens_servico')
-      .select('id, status, prioridade, parceiro_id')
+      .select('id, status, prioridade, parceiro_id, pecas_utilizadas')
       .eq('id', osId)
       .eq('parceiro_id', tecnicoId)
       .maybeSingle()
@@ -261,8 +262,12 @@ export async function PATCH(request: NextRequest) {
       status,
       diagnostico_tecnico: String(body?.diagnosticoTecnico ?? '').trim() || null,
       servico_executado: String(body?.servicoExecutado ?? '').trim() || null,
-      pecas_utilizadas: String(body?.pecasUtilizadas ?? '').trim() || null,
       observacao_tecnica: String(body?.observacaoTecnica ?? '').trim() || null,
+    }
+    const pecasInformadas = String(body?.pecasUtilizadas ?? '').trim()
+    const pecasAtuaisSemValores = removerValoresDoTextoDePecas(osAtual.pecas_utilizadas)
+    if (pecasInformadas !== pecasAtuaisSemValores) {
+      updatePayload.pecas_utilizadas = pecasInformadas || null
     }
 
     const colunasOrcamentoTecnicoExistem = await colunaExiste(supabase, 'ordens_servico', 'tecnico_total')
@@ -337,6 +342,22 @@ export async function PATCH(request: NextRequest) {
 
 function toNumber(value: number | string | null | undefined) {
   return Number(value ?? 0)
+}
+
+function ocultarValoresDasPecas<T extends Record<string, unknown>>(ordem: T) {
+  return {
+    ...ordem,
+    pecas_utilizadas: removerValoresDoTextoDePecas(ordem.pecas_utilizadas),
+  }
+}
+
+function removerValoresDoTextoDePecas(value: unknown) {
+  return String(value ?? '')
+    .replace(/\(\s*(\d+(?:[.,]\d+)?)\s*x\s*R\$\s*[\d.]+(?:,\d{1,2})?\s*\)/gi, '($1x)')
+    .replace(/\s*(?:[-–—]\s*)?R\$\s*[\d.]+(?:,\d{1,2})?/gi, '')
+    .replace(/\(\s*(\d+(?:[.,]\d+)?)\s*x\s*\)/gi, '($1x)')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
 }
 
 function normalizarPagamentoTecnico<T extends Record<string, unknown>>(ordem: T, osPagasPorDocumento: Set<number>) {
