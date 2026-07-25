@@ -72,10 +72,6 @@ export async function GET(request: NextRequest) {
         diagnostico_tecnico,
         servico_executado,
         pecas_utilizadas,
-        valor_pecas,
-        valor_mao_obra,
-        desconto,
-        total,
         ${selectAgendamentoTecnico}
         ${selectOrcamentoTecnico}
         ${selectPagamentoTecnico}
@@ -112,7 +108,6 @@ export async function GET(request: NextRequest) {
     const osPagasPorDocumento = await carregarOsPagasPorDocumento(supabase, tecnicoId)
     const ordensData = (data ?? []) as unknown as Record<string, unknown>[]
     const ordensNormalizadas = ordensData
-      .map(normalizarOrcamentoTecnico)
       .map((ordem) => normalizarPagamentoTecnico(ordem, osPagasPorDocumento))
 
     if (osId) {
@@ -142,14 +137,13 @@ export async function GET(request: NextRequest) {
     ].filter(Boolean).join(', ')
     const { data: resumoData, error: resumoError } = await supabase
       .from('ordens_servico')
-      .select(`id, status, total, status_financeiro${selectResumoTecnico ? `, ${selectResumoTecnico}` : ''}`)
+      .select(`id, status, status_financeiro${selectResumoTecnico ? `, ${selectResumoTecnico}` : ''}`)
       .eq('parceiro_id', tecnicoId)
 
     if (resumoError) throw resumoError
 
     const resumoRows = (resumoData ?? []) as unknown as Record<string, unknown>[]
     const resumoItens = resumoRows
-      .map(normalizarOrcamentoTecnico)
       .map((ordem) => normalizarPagamentoTecnico(ordem, osPagasPorDocumento)) as Parameters<typeof calcularResumo>[0]
     const resumo = calcularResumo(resumoItens)
 
@@ -355,24 +349,6 @@ function toNumber(value: number | string | null | undefined) {
   return Number(value ?? 0)
 }
 
-function normalizarOrcamentoTecnico<T extends Record<string, unknown>>(ordem: T) {
-  const temOrcamentoTecnico =
-    toNumber(ordem.tecnico_valor_pecas as number | string | null | undefined) > 0 ||
-    toNumber(ordem.tecnico_valor_mao_obra as number | string | null | undefined) > 0 ||
-    toNumber(ordem.tecnico_desconto as number | string | null | undefined) > 0 ||
-    toNumber(ordem.tecnico_total as number | string | null | undefined) > 0
-
-  if (temOrcamentoTecnico) return ordem
-
-  return {
-    ...ordem,
-    tecnico_valor_pecas: ordem.valor_pecas,
-    tecnico_valor_mao_obra: ordem.valor_mao_obra,
-    tecnico_desconto: ordem.desconto,
-    tecnico_total: ordem.total,
-  }
-}
-
 function normalizarPagamentoTecnico<T extends Record<string, unknown>>(ordem: T, osPagasPorDocumento: Set<number>) {
   if (ordem.tecnico_status_pagamento === 'RECEBIDO') return ordem
 
@@ -424,7 +400,6 @@ function calcularResumo(
   ordens: Array<{
     id: number
     status: string | null
-    total: number | string | null
     tecnico_total?: number | string | null
     tecnico_status_pagamento?: string | null
     status_financeiro?: string | null
@@ -451,10 +426,8 @@ function calcularResumo(
   }
 }
 
-function valorTotalTecnico(os: { tecnico_total?: number | string | null; total: number | string | null }) {
-  return os.tecnico_total === null || os.tecnico_total === undefined || os.tecnico_total === ''
-    ? toNumber(os.total)
-    : toNumber(os.tecnico_total)
+function valorTotalTecnico(os: { tecnico_total?: number | string | null }) {
+  return toNumber(os.tecnico_total)
 }
 
 function tecnicoRecebido(os: { tecnico_status_pagamento?: string | null; status_financeiro?: string | null }) {

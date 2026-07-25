@@ -14,7 +14,6 @@ type OSItem = {
   prioridade: string | null
   modelo: string | null
   defeito: string | null
-  total?: number | string | null
   tecnico_total?: number | string | null
   tecnico_status_pagamento?: string | null
   tecnico_pago_em?: string | null
@@ -191,14 +190,6 @@ export default function PainelTecnicoPage() {
         : filtroOperacional === 'AGENDADAS'
           ? 'Atendimentos agendados'
           : 'Meus atendimentos'
-  const agendaItens = ordensAbertas
-    .map((os) => ({
-      os,
-      dataHora: getAgendaDateTime(os, agendaDatas) || defaultAgendaDateTime(os.created_at),
-      agendado: Boolean(getAgendaDateTime(os, agendaDatas)),
-    }))
-    .sort((a, b) => new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime())
-
   async function sair() {
     await fetch('/api/tecnico/login', { method: 'DELETE' }).catch(() => null)
     window.location.href = '/tecnico/login'
@@ -439,7 +430,7 @@ export default function PainelTecnicoPage() {
                       </div>
 
                       <div className="mb-2 rounded-md bg-emerald-50 px-2 py-1.5 sm:mb-3 sm:px-3 sm:py-2">
-                        <p className="text-[9px] font-bold uppercase leading-tight text-emerald-700 sm:text-[10px]">Valor do tecnico</p>
+                        <p className="text-[9px] font-bold uppercase leading-tight text-emerald-700 sm:text-[10px]">Valor do seu serviço</p>
                         <p className="text-base font-black leading-tight text-slate-950 sm:text-lg">{formatCurrency(valorTotalTecnico(os))}</p>
                       </div>
 
@@ -466,12 +457,6 @@ export default function PainelTecnicoPage() {
           </section>
 
           <aside className="space-y-3 xl:space-y-4">
-            {filtroOperacional === 'AGENDADAS' && abaAtiva === 'tratamento' && (
-              <AgendaTecnicoPanel
-                itens={agendaItens}
-                onDataHoraChange={atualizarAgenda}
-              />
-            )}
             <ResumoTecnicoPanel resumo={resumo} />
             {abaAtiva === 'finalizadas' && (
               <DocumentoPagamentoPanel
@@ -599,72 +584,6 @@ function CrachaDigital() {
   return <section className="rounded-xl bg-white p-4 shadow-sm"><div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-base font-black text-slate-950">Meu crachá digital</h2><p className="text-xs font-semibold text-slate-500">Foto profissional sujeita à aprovação administrativa.</p></div><label className="cursor-pointer rounded-lg bg-slate-900 px-3 py-2 text-center text-xs font-bold text-white">{enviando ? 'Enviando...' : cracha.foto_cracha_url ? 'Trocar foto' : 'Enviar foto'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={enviando} onChange={enviarFoto} className="hidden" /></label></div>{mensagem && <p className="mb-3 rounded-lg bg-slate-50 p-2 text-xs font-semibold text-slate-700">{mensagem}</p>}<div className="mx-auto grid max-w-[620px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md sm:grid-cols-[180px_1fr]"><div className="flex min-h-[210px] items-center justify-center bg-slate-950 p-4">{cracha.foto_cracha_url ? <img src={cracha.foto_cracha_url} alt={`Foto de ${nome}`} className="h-40 w-32 rounded-lg border-4 border-white object-cover" /> : <div className="flex h-40 w-32 items-center justify-center rounded-lg border-2 border-dashed border-slate-500 text-center text-xs font-bold text-slate-300">Foto pendente</div>}</div><div className="relative p-4"><Image src="/logo-ct.png" alt="Chame o Técnico" width={100} height={44} className="h-auto w-[90px]" /><span className={`absolute right-4 top-4 rounded-full px-2 py-1 text-[9px] font-black ${aprovado ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{aprovado ? 'ATIVO' : cracha.cracha_status === 'REPROVADO' ? 'REPROVADO' : 'AGUARDANDO APROVAÇÃO'}</span><p className="mt-4 text-xl font-black text-slate-950">{nome}</p><p className="text-xs font-bold uppercase tracking-wide text-orange-600">{cracha.tipo_vinculo === 'PROPRIO' ? 'Técnico próprio' : 'Técnico credenciado'}</p><p className="mt-2 text-xs text-slate-600">{(cracha.especialidades ?? []).join(' • ') || 'Assistência técnica'}</p><p className="mt-1 text-[11px] font-semibold text-slate-500">{[cracha.cidade, cracha.estado].filter(Boolean).join(' / ')}</p><div className="mt-3 flex items-end justify-between gap-3"><div className="text-[9px] font-bold text-slate-500"><p>ID #{String(cracha.id).padStart(5, '0')}</p><p>Validade: {cracha.cracha_validade ? new Date(`${cracha.cracha_validade}T12:00:00`).toLocaleDateString('pt-BR') : 'A definir'}</p></div>{qr && aprovado && <img src={qr} alt="QR Code de validação" className="h-20 w-20" />}</div></div></div></section>
 }
 
-function AgendaTecnicoPanel({
-  itens,
-  onDataHoraChange,
-}: {
-  itens: Array<{ os: OSItem; dataHora: string; agendado: boolean }>
-  onDataHoraChange: (osId: number, dataHora: string) => void | Promise<void>
-}) {
-  return (
-    <section className="rounded-xl bg-white p-3 shadow-sm">
-      <div className="mb-2 flex items-center justify-between gap-2 sm:mb-3">
-        <div>
-          <h2 className="text-base font-bold text-slate-950">Agenda</h2>
-          <p className="text-xs text-slate-500">Atendimentos em aberto e sincronizacao com Google.</p>
-        </div>
-        <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-black text-orange-700">
-          {itens.length}
-        </span>
-      </div>
-
-      {itens.length ? (
-        <div className="space-y-2">
-          {itens.slice(0, 5).map(({ os, dataHora, agendado }) => {
-            const alerta = getStatusAlerta(os.status)
-
-            return (
-            <article key={os.id} className={`relative overflow-hidden rounded-xl border bg-white p-2 shadow-sm sm:p-2.5 ${agendado ? 'border-slate-200' : 'border-amber-200'}`}>
-              <div className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: alerta.accentColor }} />
-              <div className="mb-1.5 flex items-start justify-between gap-2 sm:mb-2">
-                <div className="min-w-0 pl-2">
-                  <p className="text-[11px] font-black text-orange-600">{os.numero_os ?? `OS #${os.id}`}</p>
-                  <h3 className="truncate text-xs font-bold text-slate-950 sm:text-sm">{os.clientes?.nome ?? 'Cliente'}</h3>
-                  <p className={`mt-0.5 text-[10px] font-black uppercase ${agendado ? 'text-emerald-700' : 'text-amber-700'}`}>
-                    {agendado ? 'Agendado' : 'Pendente de agenda'}
-                  </p>
-                </div>
-                <StatusBadge status={os.status ?? 'NOVA'} compact />
-              </div>
-
-              <input
-                type="datetime-local"
-                value={dataHora}
-                onChange={(event) => void onDataHoraChange(os.id, event.target.value)}
-                className="mb-1.5 h-8 w-full rounded-lg border border-slate-300 px-2 text-xs font-semibold text-slate-700 outline-none focus:border-orange-500 sm:mb-2 sm:h-9"
-              />
-
-              <p className="mb-1.5 line-clamp-1 text-[11px] text-slate-600 sm:mb-2 sm:line-clamp-2 sm:text-xs">{formatarEndereco(os)}</p>
-
-              <a
-                href={criarGoogleCalendarUrl(os, dataHora)}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => void onDataHoraChange(os.id, dataHora)}
-                className={`block rounded-lg px-3 py-1.5 text-center text-xs font-bold text-white transition sm:py-2 ${agendado ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-900 hover:bg-slate-800'}`}
-              >
-                {agendado ? 'Sincronizar Google' : 'Salvar e sincronizar'}
-              </a>
-            </article>
-          )})}
-        </div>
-      ) : (
-        <p className="text-xs text-slate-500">Nenhuma OS aberta para agendar.</p>
-      )}
-    </section>
-  )
-}
-
 function Info({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
   return (
     <div className={`rounded-md bg-white ${compact ? 'px-2 py-1 sm:py-1.5' : 'px-3 py-2'}`}>
@@ -692,8 +611,8 @@ function ResumoTecnicoPanel({ resumo }: { resumo: ResumoTecnico }) {
     <>
       <section className="rounded-xl bg-white p-3 shadow-sm sm:p-4">
         <div className="mb-3">
-          <h2 className="text-base font-bold text-slate-950">Resumo do tecnico</h2>
-          <p className="text-xs text-slate-500">Servicos, recebidos e valores em aberto</p>
+          <h2 className="text-base font-bold text-slate-950">Resumo do técnico</h2>
+          <p className="text-xs text-slate-500">Serviços executados e em andamento</p>
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -705,8 +624,8 @@ function ResumoTecnicoPanel({ resumo }: { resumo: ResumoTecnico }) {
 
       <section className="rounded-xl bg-white p-3 shadow-sm sm:p-4">
         <div className="mb-3">
-          <h3 className="text-sm font-bold text-slate-950">Valores</h3>
-          <p className="text-xs text-slate-500">Total, recebido e saldo a receber</p>
+          <h3 className="text-sm font-bold text-slate-950">Valores dos seus serviços</h3>
+          <p className="text-xs text-slate-500">Somente os valores cadastrados para o técnico</p>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
@@ -1108,7 +1027,7 @@ function formatarEndereco(os: OSItem) {
 }
 
 function valorTotalTecnico(os: OSItem) {
-  return Number(os.tecnico_total ?? 0) || Number(os.total ?? 0)
+  return Number(os.tecnico_total ?? 0)
 }
 
 function tecnicoPago(os: OSItem) {
@@ -1174,32 +1093,4 @@ function toDateTimeLocalValue(date: Date) {
   const hora = String(date.getHours()).padStart(2, '0')
   const minuto = String(date.getMinutes()).padStart(2, '0')
   return `${ano}-${mes}-${dia}T${hora}:${minuto}`
-}
-
-function criarGoogleCalendarUrl(os: OSItem, dataHora: string) {
-  const inicio = new Date(dataHora)
-  const inicioSeguro = Number.isNaN(inicio.getTime()) ? new Date() : inicio
-  const fim = new Date(inicioSeguro.getTime() + 90 * 60 * 1000)
-  const titulo = `${os.numero_os ?? `OS #${os.id}`} - ${os.clientes?.nome ?? 'Cliente'}`
-  const detalhes = [
-    `Cliente: ${os.clientes?.nome ?? '-'}`,
-    os.clientes?.whatsapp ? `WhatsApp: ${os.clientes.whatsapp}` : '',
-    `Equipamento: ${formatarEquipamento(os)}`,
-    `Defeito: ${os.defeito ?? '-'}`,
-    `Status: ${os.status ?? '-'}`,
-  ].filter(Boolean).join('\n')
-
-  const params = new URLSearchParams({
-    action: 'TEMPLATE',
-    text: titulo,
-    dates: `${formatGoogleCalendarDate(inicioSeguro)}/${formatGoogleCalendarDate(fim)}`,
-    details: detalhes,
-    location: formatarEndereco(os),
-  })
-
-  return `https://calendar.google.com/calendar/render?${params.toString()}`
-}
-
-function formatGoogleCalendarDate(date: Date) {
-  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
 }

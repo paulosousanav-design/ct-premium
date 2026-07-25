@@ -421,16 +421,10 @@ function toNumber(value: number | string | null | undefined) {
 }
 
 function valoresOrcamentoTecnico(item: OSDetalhe) {
-  const temValorTecnico =
-    toNumber(item.tecnico_valor_pecas) > 0 ||
-    toNumber(item.tecnico_valor_mao_obra) > 0 ||
-    toNumber(item.tecnico_desconto) > 0 ||
-    toNumber(item.tecnico_total) > 0
-
   return {
-    valorPecas: temValorTecnico ? toNumber(item.tecnico_valor_pecas) : toNumber(item.valor_pecas),
-    valorMaoObra: temValorTecnico ? toNumber(item.tecnico_valor_mao_obra) : toNumber(item.valor_mao_obra),
-    desconto: temValorTecnico ? toNumber(item.tecnico_desconto) : toNumber(item.desconto),
+    valorPecas: toNumber(item.tecnico_valor_pecas),
+    valorMaoObra: toNumber(item.tecnico_valor_mao_obra),
+    desconto: toNumber(item.tecnico_desconto),
   }
 }
 
