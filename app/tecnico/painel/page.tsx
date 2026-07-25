@@ -64,6 +64,11 @@ type DocumentoTecnico = {
   criado_em: string | null
 }
 
+type AlertaAcademia = {
+  novos: number
+  obrigatorios: number
+}
+
 type FiltroOperacional = 'TODOS' | 'SEM_AGENDA' | 'PENDENCIAS' | 'AGUARDANDO_EQUIPE' | 'AGENDADAS'
 
 export default function PainelTecnicoPage() {
@@ -72,6 +77,7 @@ export default function PainelTecnicoPage() {
   const [ordens, setOrdens] = useState<OSItem[]>([])
   const [documentos, setDocumentos] = useState<DocumentoTecnico[]>([])
   const [documentosPendentes, setDocumentosPendentes] = useState(false)
+  const [alertaAcademia, setAlertaAcademia] = useState<AlertaAcademia>({ novos: 0, obrigatorios: 0 })
   const [resumo, setResumo] = useState<ResumoTecnico>({
     executados: 0,
     abertas: 0,
@@ -117,6 +123,32 @@ export default function PainelTecnicoPage() {
     setDocumentosPendentes(Boolean(data?.tabelaPendente))
   }, [tecnicoId])
 
+  const carregarAlertaAcademia = useCallback(async () => {
+    if (tecnicoId) return
+
+    try {
+      const response = await fetch('/api/tecnico/academia', { cache: 'no-store' })
+      const data = await response.json().catch(() => null)
+      if (!response.ok || data?.tabelaPendente) return
+
+      const progressos = new Map<number, { visualizado_em?: string | null; confirmado_em?: string | null }>(
+        (data?.progresso ?? []).map((item: { conteudo_id: number; visualizado_em?: string | null; confirmado_em?: string | null }) => [
+          Number(item.conteudo_id),
+          item,
+        ])
+      )
+      const conteudos = (data?.conteudos ?? []) as Array<{ id: number; obrigatorio?: boolean }>
+      const obrigatorios = conteudos.filter((item) => item.obrigatorio && !progressos.get(Number(item.id))?.confirmado_em).length
+      const novos = conteudos.filter((item) => {
+        const progresso = progressos.get(Number(item.id))
+        return item.obrigatorio ? !progresso?.confirmado_em : !progresso?.visualizado_em
+      }).length
+      setAlertaAcademia({ novos, obrigatorios })
+    } catch {
+      setAlertaAcademia({ novos: 0, obrigatorios: 0 })
+    }
+  }, [tecnicoId])
+
   const carregarOrdens = useCallback(async () => {
     setLoading(true)
     setErro('')
@@ -143,13 +175,13 @@ export default function PainelTecnicoPage() {
         return proximos
       })
       setResumo((data?.resumo ?? resumoInicial()) as ResumoTecnico)
-      await carregarDocumentos()
+      await Promise.all([carregarDocumentos(), carregarAlertaAcademia()])
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Erro ao carregar OS.')
     } finally {
       setLoading(false)
     }
-  }, [carregarDocumentos, carregarSessao, tecnicoId])
+  }, [carregarAlertaAcademia, carregarDocumentos, carregarSessao, tecnicoId])
 
   useEffect(() => {
     void Promise.resolve().then(carregarOrdens)
@@ -257,12 +289,39 @@ export default function PainelTecnicoPage() {
             <PortalNavButton label="Atendimentos" active={!mostrarCracha && abaAtiva === 'tratamento' && filtroOperacional !== 'AGENDADAS'} onClick={() => { setMostrarCracha(false); abrirFiltro('TODOS') }} />
             <PortalNavButton label="Agenda" active={!mostrarCracha && filtroOperacional === 'AGENDADAS'} onClick={() => { setMostrarCracha(false); abrirFiltro('AGENDADAS') }} />
             <PortalNavButton label="Pagamentos" active={!mostrarCracha && abaAtiva === 'finalizadas'} onClick={() => { setMostrarCracha(false); abrirFinalizadas() }} />
-            {!tecnicoId && <Link href="/tecnico/academia" className="whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold text-slate-300 transition hover:bg-slate-800 hover:text-white">Academia</Link>}
+            {!tecnicoId && <Link href="/tecnico/academia" className={`relative inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold transition hover:bg-slate-800 hover:text-white ${alertaAcademia.novos ? 'bg-orange-500 text-white shadow-sm animate-pulse' : 'text-slate-300'}`}>Academia{alertaAcademia.novos > 0 && <span className="min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-black text-white ring-2 ring-slate-950">{alertaAcademia.novos}</span>}</Link>}
             {!tecnicoId && <button type="button" onClick={() => setMostrarCracha((atual) => !atual)} className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold transition ${mostrarCracha ? 'bg-orange-500 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>Crachá digital</button>}
           </nav>
         </header>
 
         {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{erro}</div>}
+
+        {!tecnicoId && alertaAcademia.novos > 0 && (
+          <Link
+            href="/tecnico/academia"
+            aria-live="polite"
+            className={`relative flex items-center justify-between gap-3 overflow-hidden rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${alertaAcademia.obrigatorios ? 'border-red-300 bg-red-50' : 'border-orange-300 bg-orange-50'}`}
+          >
+            <span className={`absolute left-0 top-0 h-full w-1.5 ${alertaAcademia.obrigatorios ? 'bg-red-600' : 'bg-orange-500'}`} />
+            <span className="flex min-w-0 items-center gap-3 pl-2">
+              <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-lg shadow-sm">
+                <span className={`absolute inset-0 rounded-full ${alertaAcademia.obrigatorios ? 'bg-red-400' : 'bg-orange-400'} opacity-30 animate-ping`} />
+                <span className="relative" aria-hidden="true">🔔</span>
+              </span>
+              <span className="min-w-0">
+                <span className={`block text-sm font-black ${alertaAcademia.obrigatorios ? 'text-red-800' : 'text-orange-800'}`}>
+                  {alertaAcademia.obrigatorios
+                    ? `${alertaAcademia.obrigatorios} leitura(s) obrigatória(s) pendente(s)`
+                    : `${alertaAcademia.novos} novidade(s) na Academia Técnica`}
+                </span>
+                <span className="mt-0.5 block text-xs font-semibold text-slate-600">
+                  {alertaAcademia.obrigatorios ? 'Abra e confirme que leu e compreendeu.' : 'Toque para acessar os novos conteúdos.'}
+                </span>
+              </span>
+            </span>
+            <span className="shrink-0 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white">Abrir</span>
+          </Link>
+        )}
 
         <section className="overflow-hidden rounded-xl bg-gradient-to-br from-white via-white to-orange-50 p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
