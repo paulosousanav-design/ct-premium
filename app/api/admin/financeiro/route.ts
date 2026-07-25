@@ -134,6 +134,12 @@ export async function GET(request: NextRequest) {
         tecnico_status_pagamento: 'RECEBIDO',
       }
     })
+    const visaoDre = auth.permissoes.includes('dre')
+    const recebimentosPorForma = await carregarRecebimentosPorForma(
+      supabase,
+      ordensComPagamentoTecnico,
+      vendasResumo.porForma
+    )
 
     return NextResponse.json({
       ordens: ordensComPagamentoTecnico,
@@ -145,7 +151,11 @@ export async function GET(request: NextRequest) {
       historicoPendente: historico.tabelaPendente,
       descontoRecebimentoPendente: !temDescontoRecebimentoCliente,
       acrescimosRecebimentoPendente: !temAcrescimosRecebimento,
-      vendasResumo,
+      visaoDre,
+      recebimentosPorForma,
+      vendasResumo: visaoDre
+        ? { total: vendasResumo.total, totalMes: vendasResumo.totalMes, quantidade: vendasResumo.quantidade }
+        : { total: 0, totalMes: 0, quantidade: 0 },
     })
   } catch (error) {
     console.error('Erro ao carregar financeiro admin:', error)
@@ -573,19 +583,111 @@ async function carregarHistoricoFinanceiro(supabase: ReturnType<typeof getSupaba
 }
 
 async function carregarResumoVendas(supabase: ReturnType<typeof getSupabaseAdmin>, unidadeId: number | null, unidadesPermitidas: number[]) {
-  let query = supabase.from('vendas').select('total, criado_em').eq('status', 'PAGO')
+  let query = supabase.from('vendas').select('total, forma_recebimento, criado_em').eq('status', 'PAGO')
   query = unidadeId ? query.eq('unidade_id', unidadeId) : query.in('unidade_id', unidadesPermitidas)
   const { data, error } = await query
   if (error) {
-    if (String(error.code) === '42P01' || String(error.code) === 'PGRST205') return { total: 0, totalMes: 0, quantidade: 0 }
+    if (String(error.code) === '42P01' || String(error.code) === 'PGRST205') {
+      return { total: 0, totalMes: 0, quantidade: 0, porForma: resumoFormasVazio() }
+    }
     throw error
   }
   const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0)
+  const porForma = resumoFormasVazio()
+  for (const venda of data ?? []) adicionarForma(porForma, venda.forma_recebimento, toNumber(venda.total))
   return {
     total: (data ?? []).reduce((acc, venda) => acc + toNumber(venda.total), 0),
     totalMes: (data ?? []).filter((venda) => venda.criado_em && new Date(venda.criado_em) >= inicioMes).reduce((acc, venda) => acc + toNumber(venda.total), 0),
     quantidade: data?.length ?? 0,
+    porForma,
   }
+}
+
+type ResumoFormas = {
+  PIX: number
+  CARTAO: number
+  DINHEIRO: number
+  BOLETO: number
+  DEPOSITO: number
+  OUTROS: number
+  total: number
+}
+
+async function carregarRecebimentosPorForma(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  ordens: OrdemFinanceiro[],
+  vendasPorForma: ResumoFormas
+) {
+  const resumo = { ...vendasPorForma }
+  const osIds = ordens.map((item) => Number(item.id)).filter(Boolean)
+  if (!osIds.length) return resumo
+
+  const temValorLiquido = await colunaExiste(supabase, 'financeiro_historico', 'valor_liquido')
+  const camposExtras = temValorLiquido ? ', valor_principal, juros, multa, valor_liquido' : ''
+  const { data, error } = await supabase
+    .from('financeiro_historico')
+    .select(`os_id, tipo, status_novo, valor, descricao${camposExtras}`)
+    .eq('tipo', 'RECEBIMENTO_OS')
+    .in('os_id', osIds)
+    .limit(5000)
+
+  const recebidoHistoricoPorOs = new Map<number, number>()
+  if (!error) {
+    for (const item of (data ?? []) as unknown as Array<Record<string, unknown>>) {
+      const forma = extrairFormaHistorico(item.descricao)
+      const osId = Number(item.os_id)
+      if (!forma || !osId) continue
+      const valorLiquido = temValorLiquido && item.valor_liquido !== null
+        ? toNumber(item.valor_liquido as never)
+        : item.valor_principal !== undefined && item.valor_principal !== null
+          ? toNumber(item.valor_principal as never) + toNumber(item.juros as never) + toNumber(item.multa as never)
+          : toNumber(item.valor as never)
+      if (valorLiquido <= 0) continue
+      adicionarForma(resumo, forma, valorLiquido)
+      recebidoHistoricoPorOs.set(osId, (recebidoHistoricoPorOs.get(osId) ?? 0) + valorLiquido)
+    }
+  }
+
+  for (const ordem of ordens) {
+    const recebidoAcumulado = valorCaixaRecebidoOrdem(ordem)
+    const recebidoComFormaNoHistorico = recebidoHistoricoPorOs.get(ordem.id) ?? 0
+    const diferencaSemHistorico = Math.max(recebidoAcumulado - recebidoComFormaNoHistorico, 0)
+    if (diferencaSemHistorico > 0.009) {
+      adicionarForma(resumo, ordem.forma_recebimento, diferencaSemHistorico)
+    }
+  }
+
+  return resumo
+}
+
+function resumoFormasVazio(): ResumoFormas {
+  return { PIX: 0, CARTAO: 0, DINHEIRO: 0, BOLETO: 0, DEPOSITO: 0, OUTROS: 0, total: 0 }
+}
+
+function adicionarForma(resumo: ResumoFormas, forma: unknown, valor: number) {
+  const normalizada = normalizarFormaResumo(forma)
+  resumo[normalizada] += valor
+  resumo.total += valor
+}
+
+function normalizarFormaResumo(value: unknown): Exclude<keyof ResumoFormas, 'total'> {
+  const forma = String(value ?? '').trim().toUpperCase()
+  if (forma === 'PIX') return 'PIX'
+  if (forma === 'CARTAO' || forma === 'CARTÃO' || forma.includes('CREDITO') || forma.includes('CRÉDITO') || forma.includes('DEBITO') || forma.includes('DÉBITO')) return 'CARTAO'
+  if (forma === 'DINHEIRO') return 'DINHEIRO'
+  if (forma === 'BOLETO') return 'BOLETO'
+  if (forma === 'DEPOSITO' || forma === 'DEPÓSITO' || forma.includes('TRANSFERENCIA') || forma.includes('TRANSFERÊNCIA')) return 'DEPOSITO'
+  return 'OUTROS'
+}
+
+function extrairFormaHistorico(descricao: unknown) {
+  const texto = String(descricao ?? '').toUpperCase()
+  const correspondencia = texto.match(/\sVIA\s(PIX|CARTAO|CARTÃO|DEPOSITO|DEPÓSITO|BOLETO|DINHEIRO|TRANSFERENCIA|TRANSFERÊNCIA)(?:,|\.|\s|$)/)
+  return correspondencia?.[1] ?? ''
+}
+
+function valorCaixaRecebidoOrdem(ordem: Record<string, unknown>) {
+  return valorRecebidoCliente(ordem) + toNumber(ordem.juros_recebidos_cliente as never) + toNumber(ordem.multa_recebida_cliente as never)
 }
 
 async function registrarHistoricoFinanceiro(

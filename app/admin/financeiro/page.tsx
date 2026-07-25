@@ -7,6 +7,15 @@ import { adminFetch } from '@/lib/admin-fetch'
 type AbaFinanceiro = 'receber' | 'tecnicos' | 'contas'
 type FiltroFinanceiro = 'TODOS' | 'PENDENTE' | 'FATURADO' | 'PARCIAL' | 'RECEBIDO'
 type FiltroOrigemRecebimento = 'GERAL' | 'CLIENTE' | 'GARANTIDOR'
+type RecebimentosPorForma = {
+  total: number
+  PIX: number
+  CARTAO: number
+  DINHEIRO: number
+  BOLETO: number
+  DEPOSITO: number
+  OUTROS: number
+}
 
 type RelacaoNome = { nome?: string | null; responsavel?: string | null; nome_fantasia?: string | null; razao_social?: string | null; tipo_vinculo?: string | null }
 
@@ -150,6 +159,10 @@ export default function FinanceiroPage() {
   const [busca, setBusca] = useState('')
   const [contaForm, setContaForm] = useState<ContaForm>(contaInicial)
   const [vendasResumo, setVendasResumo] = useState({ total: 0, totalMes: 0, quantidade: 0 })
+  const [visaoDre, setVisaoDre] = useState(false)
+  const [recebimentosPorForma, setRecebimentosPorForma] = useState<RecebimentosPorForma>({
+    total: 0, PIX: 0, CARTAO: 0, DINHEIRO: 0, BOLETO: 0, DEPOSITO: 0, OUTROS: 0,
+  })
 
   const carregarDados = useCallback(async () => {
     setLoading(true)
@@ -171,6 +184,10 @@ export default function FinanceiroPage() {
       setDescontoRecebimentoPendente(Boolean(data?.descontoRecebimentoPendente))
       setAcrescimosRecebimentoPendente(Boolean(data?.acrescimosRecebimentoPendente))
       setVendasResumo(data?.vendasResumo ?? { total: 0, totalMes: 0, quantidade: 0 })
+      setVisaoDre(Boolean(data?.visaoDre))
+      setRecebimentosPorForma(data?.recebimentosPorForma ?? {
+        total: 0, PIX: 0, CARTAO: 0, DINHEIRO: 0, BOLETO: 0, DEPOSITO: 0, OUTROS: 0,
+      })
     } catch (error) {
       setErro(formatarErro(error, 'Erro ao carregar financeiro.'))
     } finally {
@@ -477,6 +494,7 @@ export default function FinanceiroPage() {
       contas: contasFiltradas,
       historico,
       documentos,
+      incluirResumoGerencial: visaoDre,
     })
     const html = montarHtmlRelatorioFinanceiro(secoes, { formato: 'excel' })
     baixarArquivo(html, `relatorio-financeiro-${formatDateFile(new Date())}.xls`, 'application/vnd.ms-excel;charset=utf-8')
@@ -490,6 +508,7 @@ export default function FinanceiroPage() {
       contas: contasFiltradas,
       historico,
       documentos,
+      incluirResumoGerencial: visaoDre,
     })
     const janela = window.open('', '_blank', 'width=1100,height=800')
     if (!janela) return
@@ -532,21 +551,47 @@ export default function FinanceiroPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
-        <Card titulo="Caixa geral" valor={formatCurrency(resumo.caixaGeral)} cor="blue" destaque />
-        <Card titulo="Recebido cliente" valor={formatCurrency(resumo.recebidoCliente)} cor="green" destaque />
-        <Card titulo="Vendas de balcão" valor={formatCurrency(vendasResumo.total)} cor="green" />
-        <Card titulo="A receber cliente" valor={formatCurrency(resumo.receberCliente)} cor="orange" />
-        <Card titulo="A receber garantidor/seguradora" valor={formatCurrency(resumo.receberGarantidor)} cor="orange" />
-        <Card titulo="Recebido garantidor/seguradora" valor={formatCurrency(resumo.recebidoGarantidor)} cor="green" />
-        <Card titulo="Descontos concedidos" valor={formatCurrency(resumo.descontosTotal)} cor="orange" />
-        <Card titulo="A pagar tecnico" valor={formatCurrency(resumo.pagarTecnico)} cor="blue" />
-        <Card titulo="Pago tecnico" valor={formatCurrency(resumo.pagoTecnico)} cor="slate" />
-        <Card titulo="Contas a pagar" valor={formatCurrency(resumo.contasPendentes)} cor="orange" />
-        <Card titulo="Contas pagas" valor={formatCurrency(resumo.contasPagas)} cor="slate" />
-      </div>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3">
+          <p className="text-xs font-black uppercase tracking-wide text-emerald-700">Operação financeira</p>
+          <h2 className="text-lg font-black text-slate-950">Recebimentos confirmados por forma</h2>
+          <p className="text-xs text-slate-500">Acumulado da unidade, considerando baixas de OS e vendas de balcão.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+          <Card titulo="Total recebido" valor={formatCurrency(recebimentosPorForma.total)} cor="green" destaque />
+          <Card titulo="PIX" valor={formatCurrency(recebimentosPorForma.PIX)} cor="green" />
+          <Card titulo="Cartão" valor={formatCurrency(recebimentosPorForma.CARTAO)} cor="blue" />
+          <Card titulo="Dinheiro" valor={formatCurrency(recebimentosPorForma.DINHEIRO)} cor="slate" />
+          <Card titulo="Boleto" valor={formatCurrency(recebimentosPorForma.BOLETO)} cor="orange" />
+          <Card titulo="Depósito/transferência" valor={formatCurrency(recebimentosPorForma.DEPOSITO)} cor="blue" />
+          {recebimentosPorForma.OUTROS > 0 && <Card titulo="Outras formas" valor={formatCurrency(recebimentosPorForma.OUTROS)} cor="slate" />}
+        </div>
+      </section>
 
-      <MonthlyFinancePanel data={visaoMensal} />
+      {visaoDre && (
+        <>
+          <section>
+            <div className="mb-2 flex items-center gap-2">
+              <h2 className="text-sm font-black uppercase tracking-wide text-slate-700">Indicadores gerenciais</h2>
+              <span className="rounded-full bg-indigo-100 px-2 py-1 text-[10px] font-black text-indigo-700">Acesso DRE</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+              <Card titulo="Caixa geral" valor={formatCurrency(resumo.caixaGeral)} cor="blue" destaque />
+              <Card titulo="Recebido cliente" valor={formatCurrency(resumo.recebidoCliente)} cor="green" destaque />
+              <Card titulo="Vendas de balcão" valor={formatCurrency(vendasResumo.total)} cor="green" />
+              <Card titulo="A receber cliente" valor={formatCurrency(resumo.receberCliente)} cor="orange" />
+              <Card titulo="A receber garantidor/seguradora" valor={formatCurrency(resumo.receberGarantidor)} cor="orange" />
+              <Card titulo="Recebido garantidor/seguradora" valor={formatCurrency(resumo.recebidoGarantidor)} cor="green" />
+              <Card titulo="Descontos concedidos" valor={formatCurrency(resumo.descontosTotal)} cor="orange" />
+              <Card titulo="A pagar técnico" valor={formatCurrency(resumo.pagarTecnico)} cor="blue" />
+              <Card titulo="Pago técnico" valor={formatCurrency(resumo.pagoTecnico)} cor="slate" />
+              <Card titulo="Contas a pagar" valor={formatCurrency(resumo.contasPendentes)} cor="orange" />
+              <Card titulo="Contas pagas" valor={formatCurrency(resumo.contasPagas)} cor="slate" />
+            </div>
+          </section>
+          <MonthlyFinancePanel data={visaoMensal} />
+        </>
+      )}
 
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1606,6 +1651,7 @@ function montarSecoesFinanceiro({
   contas,
   historico,
   documentos,
+  incluirResumoGerencial,
 }: {
   resumo: {
     receberCliente: number
@@ -1625,9 +1671,10 @@ function montarSecoesFinanceiro({
   contas: ContaPagar[]
   historico: HistoricoFinanceiro[]
   documentos: DocumentoTecnico[]
+  incluirResumoGerencial: boolean
 }): SecaoRelatorioFinanceiro[] {
   return [
-    {
+    ...(incluirResumoGerencial ? [{
       titulo: 'Resumo financeiro',
       headers: ['Indicador', 'Valor'],
       rows: [
@@ -1643,7 +1690,7 @@ function montarSecoesFinanceiro({
         ['Contas a pagar', formatCurrency(resumo.contasPendentes)],
         ['Contas pagas', formatCurrency(resumo.contasPagas)],
       ],
-    },
+    }] : []),
     {
       titulo: 'Recebimentos',
       headers: ['OS', 'Cliente', 'Valor cliente', 'Recebido', 'Desconto', 'Saldo', 'Status', 'Forma', 'NF'],
