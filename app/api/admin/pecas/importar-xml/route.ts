@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
+import { registrarEventoSistema } from '@/lib/monitoramento'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -146,6 +147,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const texto = mensagem(error, 'Erro ao importar XML da NF-e.')
     const status = /XML|NF-e|item|parcela|chave|modelo|autorizada|importada/i.test(texto) ? 400 : 500
+    if (status === 500) {
+      await registrarEventoSistema({ error, modulo: 'IMPORTACAO_XML', gravidade: 'CRITICO', request })
+    }
     return NextResponse.json({ error: texto }, { status })
   }
 }

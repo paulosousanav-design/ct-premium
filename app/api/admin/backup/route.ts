@@ -32,6 +32,7 @@ const tabelasBackup = [
   'contas_pagar',
   'financeiro_historico',
   'auditoria_eventos',
+  'sistema_eventos',
   'tecnico_documentos',
   'admin_usuarios',
   'chat_conversas',

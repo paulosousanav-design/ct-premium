@@ -20,7 +20,7 @@ type MenuItem = {
   label: string
   href: string
   permissao: string
-  contador?: boolean
+  contador?: 'chat' | 'monitoramento'
 }
 
 type UnidadeAcesso = {
@@ -64,10 +64,11 @@ const menu: MenuItem[] = [
   { label: 'Matriz e Filiais', href: '/admin/unidades', permissao: 'unidades' },
   { label: 'Usuarios', href: '/admin/usuarios', permissao: 'usuarios' },
   { label: 'Auditoria', href: '/admin/auditoria', permissao: 'usuarios' },
+  { label: 'Monitoramento', href: '/admin/monitoramento', permissao: 'usuarios', contador: 'monitoramento' },
   { label: 'Relatorios', href: '/admin/relatorios', permissao: 'relatorios' },
   { label: 'Academia Tecnica', href: '/admin/academia', permissao: 'academia' },
   { label: 'Documentos Tecnicos', href: '/admin/documentos', permissao: 'documentos' },
-  { label: 'Chat interno', href: '/admin/chat', permissao: 'chat', contador: true },
+  { label: 'Chat interno', href: '/admin/chat', permissao: 'chat', contador: 'chat' },
   { label: 'Configuracoes', href: '/admin/configuracoes', permissao: 'configuracoes' },
 ]
 
@@ -80,6 +81,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [unidadeSelecionadaId, setUnidadeSelecionada] = useState<number | null>(null)
   const [escopoGerencial, setEscopoGerencialState] = useState(ESCOPO_CONSOLIDADO)
   const [chatNaoLidas, setChatNaoLidas] = useState(0)
+  const [monitoramentoAbertos, setMonitoramentoAbertos] = useState(0)
+  const [monitoramentoCriticos, setMonitoramentoCriticos] = useState(0)
   const [chatAlerta, setChatAlerta] = useState<ChatAlerta | null>(null)
   const [chatSomAtivo, setChatSomAtivo] = useState(true)
   const chatNaoLidasAnterior = useRef<number | null>(null)
@@ -193,6 +196,31 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     }
   }, [chatSomAtivo, isLoginPage, pathname, permissoes])
 
+  useEffect(() => {
+    if (!permissoes?.includes('usuarios') || isLoginPage) return
+    let ativo = true
+
+    const carregarMonitoramento = async () => {
+      try {
+        const response = await adminFetch('/api/admin/monitoramento?resumo=1', { cache: 'no-store' })
+        const data = await response.json().catch(() => null)
+        if (ativo && response.ok) {
+          setMonitoramentoAbertos(Number(data?.resumo?.abertos ?? 0))
+          setMonitoramentoCriticos(Number(data?.resumo?.criticos ?? 0))
+        }
+      } catch {
+        // O menu continua funcional mesmo se o resumo estiver temporariamente indisponivel.
+      }
+    }
+
+    void carregarMonitoramento()
+    const timer = window.setInterval(() => void carregarMonitoramento(), 30000)
+    return () => {
+      ativo = false
+      window.clearInterval(timer)
+    }
+  }, [isLoginPage, permissoes])
+
   const menuVisivel = useMemo(() => {
     if (permissoes === null) return []
     if (usuarioInativo) return []
@@ -303,6 +331,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <ul className="space-y-2">
               {menuVisivel.map((item) => {
                 const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
+                const contador = item.contador === 'chat'
+                  ? chatNaoLidas
+                  : item.contador === 'monitoramento'
+                    ? monitoramentoAbertos
+                    : 0
 
                 return (
                   <li key={item.href}>
@@ -313,7 +346,20 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                       }`}
                     >
                       <span>{item.label}</span>
-                      {item.contador && chatNaoLidas > 0 && <span className="rounded-full bg-orange-600 px-2 py-0.5 text-[11px] font-black text-white">{chatNaoLidas > 99 ? '99+' : chatNaoLidas}</span>}
+                      {contador > 0 && (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-black text-white ${
+                            item.contador === 'monitoramento' && monitoramentoCriticos > 0
+                              ? 'animate-pulse bg-red-600'
+                              : 'bg-orange-600'
+                          }`}
+                          title={item.contador === 'monitoramento' && monitoramentoCriticos > 0
+                            ? `${monitoramentoCriticos} alerta(s) critico(s)`
+                            : undefined}
+                        >
+                          {contador > 99 ? '99+' : contador}
+                        </span>
+                      )}
                     </Link>
                   </li>
                 )

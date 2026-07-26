@@ -8,6 +8,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const verificacoes = [
   ['clientes', true], ['ordens_servico', true], ['os_historico', true],
   ['admin_usuarios', true], ['unidades', true], ['financeiro_historico', true],
+  ['auditoria_eventos', true], ['sistema_eventos', true],
   ['chat_mensagens', false], ['seguranca_rate_limits', false],
 ] as const
 

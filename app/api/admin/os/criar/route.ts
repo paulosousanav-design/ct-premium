@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
+import { registrarEventoSistema } from '@/lib/monitoramento'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -247,6 +248,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, id: osCriada.id, numeroOS })
   } catch (error) {
     console.error('Erro ao criar OS:', error)
+    await registrarEventoSistema({ error, modulo: 'ORDEM_SERVICO', gravidade: 'CRITICO', request })
     return NextResponse.json(
       { error: formatarErro(error, 'Erro ao criar a OS.') },
       { status: 500 }

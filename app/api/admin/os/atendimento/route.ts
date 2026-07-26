@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
 import { calcularRentabilidade } from '@/lib/calculos-rentabilidade'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
+import { registrarEventoSistema } from '@/lib/monitoramento'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -917,6 +918,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Erro ao salvar atendimento da OS:', error)
+    await registrarEventoSistema({ error, modulo: 'ATENDIMENTO_OS', gravidade: 'CRITICO', request })
     return NextResponse.json(
       { error: formatarErro(error, 'Erro ao salvar atendimento tecnico.') },
       { status: 500 }

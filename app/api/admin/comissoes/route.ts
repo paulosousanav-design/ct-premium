@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
 import { calcularComissao } from '@/lib/calculos-comissoes'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
+import { registrarEventoSistema } from '@/lib/monitoramento'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -154,6 +155,7 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ ok: true, id: fechamento.id })
   } catch (error) {
+    await registrarEventoSistema({ error, modulo: 'COMISSOES', gravidade: 'CRITICO', request })
     return NextResponse.json({ error: formatarErro(error, 'Erro ao atualizar comissoes.') }, { status: 500 })
   }
 }

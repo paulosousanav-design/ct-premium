@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
 import { calcularRateioDespesas } from '@/lib/calculos-rotas'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
+import { registrarEventoSistema } from '@/lib/monitoramento'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -237,6 +238,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Acao invalida.' }, { status: 400 })
   } catch (error) {
+    await registrarEventoSistema({ error, modulo: 'GESTAO_ROTAS', gravidade: 'CRITICO', request })
     return NextResponse.json({ error: formatarErro(error, 'Erro ao atualizar gestao de rotas.') }, { status: 500 })
   }
 }

@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
+import { registrarEventoSistema } from '@/lib/monitoramento'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -84,6 +85,7 @@ export async function POST(request: NextRequest) {
     await historico(supabase, { osId, ator, tipo: 'PARCELAMENTO_CRIADO', statusAnterior: os.status_financeiro, statusNovo: 'FATURADO', valor: saldoCentavos / 100, descricao: `${os.numero_os}: parcelamento em ${quantidade} boletos com intervalo de ${intervaloDias} dias criado.` })
     return NextResponse.json({ ok: true })
   } catch (error) {
+    await registrarEventoSistema({ error, modulo: 'PARCELAMENTOS', gravidade: 'CRITICO', request })
     return NextResponse.json({ error: erro(error, 'Erro ao criar parcelamento.') }, { status: 500 })
   }
 }
@@ -174,6 +176,7 @@ export async function PATCH(request: NextRequest) {
     })
     return NextResponse.json({ ok: true })
   } catch (error) {
+    await registrarEventoSistema({ error, modulo: 'PARCELAMENTOS', gravidade: 'CRITICO', request })
     return NextResponse.json({ error: erro(error, 'Erro ao atualizar parcela.') }, { status: 500 })
   }
 }

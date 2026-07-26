@@ -4,6 +4,7 @@ import { requireAdminPermission } from '@/lib/admin-auth'
 import { requireAdminEscopoGerencial } from '@/lib/admin-unidade'
 import { calcularBaixaRecebimento } from '@/lib/calculos-financeiros'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
+import { registrarEventoSistema } from '@/lib/monitoramento'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -225,6 +226,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, data })
   } catch (error) {
     console.error('Erro ao criar conta a pagar:', error)
+    await registrarEventoSistema({ error, modulo: 'FINANCEIRO', gravidade: 'CRITICO', request })
     return NextResponse.json(
       { error: formatarErro(error, 'Erro ao criar conta a pagar.') },
       { status: 500 }
@@ -567,6 +569,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Erro ao atualizar financeiro admin:', error)
+    await registrarEventoSistema({ error, modulo: 'FINANCEIRO', gravidade: 'CRITICO', request })
     return NextResponse.json(
       { error: formatarErro(error, 'Erro ao atualizar financeiro.') },
       { status: 500 }

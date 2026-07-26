@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
+import { registrarEventoSistema } from '@/lib/monitoramento'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -53,7 +54,12 @@ export async function POST(request: NextRequest) {
     for (const item of itens) { if (!item.peca) continue; const anterior = numero(item.peca.estoque); const posterior = anterior - item.quantidade; const { data: atualizada, error } = await supabase.from('pecas').update({ estoque: posterior }).eq('id', item.peca.id).eq('unidade_id', auth.unidadeId).eq('estoque', anterior).select('id').maybeSingle(); if (error || !atualizada) throw error ?? new Error(`Estoque de ${item.peca.descricao} foi alterado por outra operação.`); processados.push({ id: item.peca.id, estoque: anterior }); const { error: movError } = await supabase.from('pecas_movimentacoes').insert({ peca_id: item.peca.id, venda_id: venda.id, unidade_id: auth.unidadeId, tipo: 'SAIDA_VENDA', quantidade: item.quantidade, estoque_anterior: anterior, estoque_posterior: posterior, observacao: `${numeroVenda} • ${ator}` }); if (movError) throw movError }
     await historico(supabase, venda.id, 'VENDA_REALIZADA', null, 'PAGO', total, `${numeroVenda} recebida via ${forma}.`, ator)
     return NextResponse.json({ ok: true, id: venda.id, numeroVenda })
-  } catch (error) { for (const item of processados) await supabase.from('pecas').update({ estoque: item.estoque }).eq('id', item.id).eq('unidade_id', auth.unidadeId); await supabase.from('vendas').delete().eq('numero_venda', numeroVenda).eq('unidade_id', auth.unidadeId); return NextResponse.json({ error: mensagem(error, 'Erro ao finalizar venda.') }, { status: 500 }) }
+  } catch (error) {
+    for (const item of processados) await supabase.from('pecas').update({ estoque: item.estoque }).eq('id', item.id).eq('unidade_id', auth.unidadeId)
+    await supabase.from('vendas').delete().eq('numero_venda', numeroVenda).eq('unidade_id', auth.unidadeId)
+    await registrarEventoSistema({ error, modulo: 'VENDAS', gravidade: 'CRITICO', request })
+    return NextResponse.json({ error: mensagem(error, 'Erro ao finalizar venda.') }, { status: 500 })
+  }
 }
 
 export async function PATCH(request: NextRequest) {
@@ -67,7 +73,10 @@ export async function PATCH(request: NextRequest) {
     const { error } = await supabase.from('vendas').update({ status: 'CANCELADA', cancelado_por_nome: auth.nome, cancelado_por_email: auth.email, cancelado_em: new Date().toISOString(), cancelamento_motivo: motivo }).eq('id', id).eq('unidade_id', auth.unidadeId); if (error) throw error
     await historico(supabase, id, 'VENDA_CANCELADA', 'PAGO', 'CANCELADA', numero(venda.total), `${venda.numero_venda} cancelada: ${motivo}`, ator)
     return NextResponse.json({ ok: true })
-  } catch (error) { return NextResponse.json({ error: mensagem(error, 'Erro ao cancelar venda.') }, { status: 500 }) }
+  } catch (error) {
+    await registrarEventoSistema({ error, modulo: 'VENDAS', gravidade: 'CRITICO', request })
+    return NextResponse.json({ error: mensagem(error, 'Erro ao cancelar venda.') }, { status: 500 })
+  }
 }
 
 async function historico(supabase: ReturnType<typeof db>, vendaId: number, tipo: string, anterior: string | null, novo: string, valor: number, descricao: string, ator: string) { const { error } = await supabase.from('financeiro_historico').insert({ tipo, status_anterior: anterior, status_novo: novo, valor, descricao, responsavel: ator }); if (error && !['42P01', 'PGRST205'].includes(String(error.code))) throw error; void vendaId }

@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
+import { registrarEventoSistema } from '@/lib/monitoramento'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -332,6 +333,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Erro ao atribuir tecnico:', error)
+    await registrarEventoSistema({ error, modulo: 'TRIAGEM_OS', gravidade: 'CRITICO', request })
     return NextResponse.json(
       { error: formatarErro(error, 'Erro ao atribuir tecnico.') },
       { status: 500 }
