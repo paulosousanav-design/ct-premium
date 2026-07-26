@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
+import { cabecalhosAuditoria } from '@/lib/auditoria-contexto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -41,6 +42,7 @@ export async function POST(request: NextRequest) {
         persistSession: false,
         autoRefreshToken: false,
       },
+      global: { headers: cabecalhosAuditoria(request, auth) },
     })
 
     const { data: ordemAtualizada, error: updateError } = await supabase

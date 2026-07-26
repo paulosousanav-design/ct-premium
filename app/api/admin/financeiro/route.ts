@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
 import { requireAdminEscopoGerencial } from '@/lib/admin-unidade'
+import { calcularBaixaRecebimento } from '@/lib/calculos-financeiros'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -23,7 +25,7 @@ type ContaPagar = {
   forma_pagamento?: string | null
 }
 
-function getSupabaseAdmin() {
+function getSupabaseAdmin(request?: NextRequest, ator?: AtorAuditoria) {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error('Configuracao do Supabase ausente no servidor.')
   }
@@ -33,6 +35,7 @@ function getSupabaseAdmin() {
       persistSession: false,
       autoRefreshToken: false,
     },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
   })
 }
 
@@ -183,7 +186,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Informe descricao e valor da conta.' }, { status: 400 })
     }
 
-    const supabase = getSupabaseAdmin()
+    const supabase = getSupabaseAdmin(request, auth)
     const temClassificacaoDre = await colunaExiste(supabase, 'contas_pagar', 'classificacao_dre')
     const selectConta = temClassificacaoDre
       ? 'id, descricao, fornecedor, categoria, classificacao_dre, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em'
@@ -237,7 +240,7 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json().catch(() => null)
     const tipo = String(body?.tipo ?? '').trim().toUpperCase()
     const id = Number(body?.id)
-    const supabase = getSupabaseAdmin()
+    const supabase = getSupabaseAdmin(request, auth)
 
     if (!id || !['OS', 'DOCUMENTO', 'TECNICO', 'CONTA', 'CONTA_CLASSIFICACAO'].includes(tipo)) {
       return NextResponse.json({ error: 'Dados invalidos para atualizar financeiro.' }, { status: 400 })
@@ -364,23 +367,6 @@ export async function PATCH(request: NextRequest) {
       const issRetidoLancado = toNumber(body?.issRetido)
       const agora = new Date().toISOString()
       const issRetidoAtual = toNumber(ordemAtual?.iss_retido_cliente)
-      const saldoAtual = Math.max(totalCliente - recebidoAtual - descontoAtual - issRetidoAtual, 0)
-      const proximoDesconto = pagamento ? Math.min(totalCliente, descontoAtual + descontoLancado) : status === 'PENDENTE' ? 0 : descontoAtual
-      const proximoIssRetido = pagamento ? Math.min(totalCliente, issRetidoAtual + issRetidoLancado) : status === 'PENDENTE' ? 0 : issRetidoAtual
-      const proximoRecebido = pagamento
-        ? Math.min(totalCliente, recebidoAtual + valorLancado)
-        : status === 'PENDENTE'
-          ? 0
-          : recebidoAtual
-      const statusFinal = pagamento
-        ? proximoRecebido + proximoDesconto + proximoIssRetido >= totalCliente
-          ? 'RECEBIDO'
-          : 'PARCIAL'
-        : status
-
-      if (pagamento && totalCliente <= 0) {
-        return NextResponse.json({ error: 'OS sem valor para recebimento.' }, { status: 400 })
-      }
 
       if (pagamento && !temValorRecebidoCliente) {
         return NextResponse.json(
@@ -403,9 +389,32 @@ export async function PATCH(request: NextRequest) {
         )
       }
 
-      if (pagamento && ([valorLancado, descontoLancado, jurosLancados, multaLancada, issRetidoLancado].some((valor) => valor < 0) || valorLancado + descontoLancado + issRetidoLancado <= 0 || valorLancado + descontoLancado + issRetidoLancado > saldoAtual + 0.009)) {
-        return NextResponse.json({ error: 'Informe principal, desconto e ISS retido validos para o saldo da OS.' }, { status: 400 })
+      let baixa: ReturnType<typeof calcularBaixaRecebimento> | null = null
+      if (pagamento) {
+        try {
+          baixa = calcularBaixaRecebimento({
+            total: totalCliente,
+            recebidoAtual,
+            descontoAtual,
+            issRetidoAtual,
+            principal: valorLancado,
+            desconto: descontoLancado,
+            juros: jurosLancados,
+            multa: multaLancada,
+            issRetido: issRetidoLancado,
+          })
+        } catch (error) {
+          return NextResponse.json(
+            { error: error instanceof Error ? error.message : 'Valores de recebimento invalidos.' },
+            { status: 400 }
+          )
+        }
       }
+
+      const proximoDesconto = baixa?.desconto ?? (status === 'PENDENTE' ? 0 : descontoAtual)
+      const proximoIssRetido = baixa?.issRetido ?? (status === 'PENDENTE' ? 0 : issRetidoAtual)
+      const proximoRecebido = baixa?.recebido ?? (status === 'PENDENTE' ? 0 : recebidoAtual)
+      const statusFinal = baixa?.status ?? status
 
       const updatePayload: Record<string, unknown> = {
         status_financeiro: statusFinal,
@@ -449,7 +458,7 @@ export async function PATCH(request: NextRequest) {
         issRetido: pagamento ? issRetidoLancado : undefined,
         valorLiquido: pagamento ? valorLancado + jurosLancados + multaLancada : undefined,
         descricao: pagamento
-          ? `${ordemAtual?.numero_os ?? `OS #${id}`} recebeu principal ${formatCurrency(valorLancado)} via ${forma}, juros ${formatCurrency(jurosLancados)}, multa ${formatCurrency(multaLancada)}, desconto ${formatCurrency(descontoLancado)} e ISS retido ${formatCurrency(issRetidoLancado)}. Entrada no caixa: ${formatCurrency(valorLancado + jurosLancados + multaLancada)}. Saldo: ${formatCurrency(Math.max(totalCliente - proximoRecebido - proximoDesconto - proximoIssRetido, 0))}.`
+          ? `${ordemAtual?.numero_os ?? `OS #${id}`} recebeu principal ${formatCurrency(valorLancado)} via ${forma}, juros ${formatCurrency(jurosLancados)}, multa ${formatCurrency(multaLancada)}, desconto ${formatCurrency(descontoLancado)} e ISS retido ${formatCurrency(issRetidoLancado)}. Entrada no caixa: ${formatCurrency(baixa?.entradaCaixa ?? 0)}. Saldo: ${formatCurrency(baixa?.saldoRestante ?? 0)}.`
           : `${ordemAtual?.numero_os ?? `OS #${id}`} marcada como ${statusFinal}.`,
       })
       return NextResponse.json({ ok: true })

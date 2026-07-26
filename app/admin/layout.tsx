@@ -63,6 +63,7 @@ const menu: MenuItem[] = [
   { label: 'Clientes', href: '/admin/clientes', permissao: 'clientes' },
   { label: 'Matriz e Filiais', href: '/admin/unidades', permissao: 'unidades' },
   { label: 'Usuarios', href: '/admin/usuarios', permissao: 'usuarios' },
+  { label: 'Auditoria', href: '/admin/auditoria', permissao: 'usuarios' },
   { label: 'Relatorios', href: '/admin/relatorios', permissao: 'relatorios' },
   { label: 'Academia Tecnica', href: '/admin/academia', permissao: 'academia' },
   { label: 'Documentos Tecnicos', href: '/admin/documentos', permissao: 'documentos' },

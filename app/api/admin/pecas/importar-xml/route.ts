@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -19,9 +20,12 @@ type ItemXml = {
   valorTotal: number
 }
 
-function db() {
+function db(request?: NextRequest, ator?: AtorAuditoria) {
   if (!supabaseUrl || !serviceRoleKey) throw new Error('Configuracao do Supabase ausente no servidor.')
-  return createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
+  })
 }
 
 async function estruturaExiste(supabase: ReturnType<typeof db>) {
@@ -60,7 +64,7 @@ export async function POST(request: NextRequest) {
     const nfe = interpretarNfe(xml)
     validarNfe(nfe)
 
-    const supabase = db()
+    const supabase = db(request, auth)
     if (!(await estruturaExiste(supabase))) {
       return NextResponse.json({ error: 'Rode o arquivo supabase-add-importacao-xml-nfe.sql antes de importar.' }, { status: 400 })
     }

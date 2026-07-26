@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
+import { calcularRentabilidade } from '@/lib/calculos-rentabilidade'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -73,7 +75,7 @@ type Parceiro = {
   comissao_mao_obra_percentual?: number | string | null
 }
 
-function getSupabaseAdmin() {
+function getSupabaseAdmin(request?: NextRequest, ator?: AtorAuditoria) {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error('Configuracao do Supabase ausente no servidor.')
   }
@@ -83,6 +85,7 @@ function getSupabaseAdmin() {
       persistSession: false,
       autoRefreshToken: false,
     },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
   })
 }
 
@@ -619,28 +622,17 @@ function calcularRentabilidadeOrdem(
   const receitaMaoObra = valorPreferencial(ordem.cliente_valor_mao_obra, ordem.valor_mao_obra)
   const receita = valorPreferencial(ordem.cliente_total, ordem.total)
   const tecnicoProprio = String(parceiro?.tipo_vinculo ?? '').toUpperCase() === 'PROPRIO'
-  const custoTecnico = tecnicoProprio
-    ? receitaPecas * toNumber(parceiro?.comissao_pecas_percentual) / 100
-      + receitaMaoObra * toNumber(parceiro?.comissao_mao_obra_percentual) / 100
-    : toNumber(ordem.tecnico_total)
-  const terceirizadoComCustoCompleto = !tecnicoProprio && custoTecnico > 0
-  const custoPecasReconhecido = terceirizadoComCustoCompleto ? 0 : custoPecasInformado
-  const custosDiretos = custoPecasReconhecido + custoTecnico + custoRota
-  const lucroBruto = receita - custosDiretos
-
-  return {
+  return calcularRentabilidade({
     receita,
     receitaPecas,
     receitaMaoObra,
     custoPecas: custoPecasInformado,
-    custoPecasReconhecido,
-    custoTecnico,
+    tecnicoTotal: toNumber(ordem.tecnico_total),
+    tecnicoProprio,
+    comissaoPecasPercentual: toNumber(parceiro?.comissao_pecas_percentual),
+    comissaoMaoObraPercentual: toNumber(parceiro?.comissao_mao_obra_percentual),
     custoRota,
-    custosDiretos,
-    lucroBruto,
-    margemPercentual: receita > 0 ? (lucroBruto / receita) * 100 : 0,
-    terceirizadoComCustoCompleto,
-  }
+  })
 }
 
 async function carregarCustosRotas(
@@ -705,7 +697,7 @@ export async function PATCH(request: NextRequest) {
     const osId = Number(body?.osId)
     const statusFinal = String(body?.status ?? '').trim().toUpperCase()
     const prioridade = String(body?.prioridade ?? 'NORMAL').trim()
-    const supabase = getSupabaseAdmin()
+    const supabase = getSupabaseAdmin(request, auth)
 
     if (body?.acao === 'TECNICO_AVULSO') {
       return salvarTecnicoAvulso(supabase, body, `${auth.nome} (${auth.email})`, auth.unidadeId)

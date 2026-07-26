@@ -1,13 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-function db() {
+function db(request?: NextRequest, ator?: AtorAuditoria) {
   if (!supabaseUrl || !serviceRoleKey) throw new Error('Supabase nao configurado.')
-  return createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -45,7 +49,7 @@ export async function POST(request: NextRequest) {
     if (!osId || quantidade < 2 || quantidade > 60 || intervaloDias < 1 || intervaloDias > 365 || !/^\d{4}-\d{2}-\d{2}$/.test(primeiroVencimento)) {
       return NextResponse.json({ error: 'Informe OS, quantidade, intervalo em dias e primeiro vencimento validos.' }, { status: 400 })
     }
-    const supabase = db()
+    const supabase = db(request, auth)
     const { data: os, error: osError } = await supabase.from('ordens_servico').select('id, numero_os, status, status_financeiro, total, cliente_total, valor_recebido_cliente, desconto_recebimento_cliente, iss_retido_cliente').eq('id', osId).maybeSingle()
     if (osError || !os || os.status !== 'FINALIZADA') return NextResponse.json({ error: 'Somente OS finalizadas podem ser parceladas.' }, { status: 400 })
     const { count } = await supabase.from('recebimento_parcelas').select('*', { count: 'exact', head: true }).eq('os_id', osId).in('status', ['PENDENTE', 'RECEBIDO'])
@@ -92,7 +96,7 @@ export async function PATCH(request: NextRequest) {
     const id = Number(body?.id)
     const acao = String(body?.acao ?? '').toUpperCase()
     if (!id || !['RECEBER', 'CANCELAR', 'EDITAR'].includes(acao)) return NextResponse.json({ error: 'Parcela ou acao invalida.' }, { status: 400 })
-    const supabase = db()
+    const supabase = db(request, auth)
     const ator = `${auth.nome} (${auth.email})`
     const { data: parcela, error: parcelaError } = await supabase.from('recebimento_parcelas').select('id, os_id, numero_parcela, total_parcelas, valor, status').eq('id', id).maybeSingle()
     if (parcelaError || !parcela || parcela.status !== 'PENDENTE') return NextResponse.json({ error: 'Parcela nao localizada ou ja baixada.' }, { status: 400 })

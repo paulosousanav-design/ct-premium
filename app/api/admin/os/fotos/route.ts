@@ -1,15 +1,19 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const MAX_FOTOS = 10
 const MAX_BYTES = 8 * 1024 * 1024
 
-function db() {
+function db(request?: NextRequest, ator?: AtorAuditoria) {
   if (!supabaseUrl || !serviceRoleKey) throw new Error('Configuracao do Supabase ausente no servidor.')
-  return createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
+  })
 }
 
 export async function POST(request: NextRequest) {
@@ -26,7 +30,7 @@ export async function POST(request: NextRequest) {
     const invalida = arquivos.find((arquivo) => !arquivo.type.startsWith('image/') || arquivo.size > MAX_BYTES)
     if (invalida) return NextResponse.json({ error: 'Cada arquivo deve ser uma imagem de ate 8 MB.' }, { status: 400 })
 
-    const supabase = db()
+    const supabase = db(request, auth)
     const { data: ordem, error: ordemError } = await supabase.from('ordens_servico')
       .select('id').eq('id', osId).eq('unidade_id', auth.unidadeId).maybeSingle()
     if (ordemError) throw ordemError

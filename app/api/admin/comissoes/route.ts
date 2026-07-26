@@ -1,13 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
+import { calcularComissao } from '@/lib/calculos-comissoes'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-function getSupabaseAdmin() {
+function getSupabaseAdmin(request?: NextRequest, ator?: AtorAuditoria) {
   if (!supabaseUrl || !serviceRoleKey) throw new Error('Configuracao do Supabase ausente no servidor.')
-  return createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -78,7 +83,7 @@ export async function POST(request: NextRequest) {
     if (!auth.ok) return auth.response
     const body = await request.json().catch(() => null)
     const acao = String(body?.acao ?? '').toUpperCase()
-    const supabase = getSupabaseAdmin()
+    const supabase = getSupabaseAdmin(request, auth)
 
     if (acao === 'PAGAR') {
       const id = Number(body?.id)
@@ -158,9 +163,10 @@ function calcularItem(os: Record<string, unknown>, tecnico: Record<string, unkno
   const maoObra = valor(os.cliente_valor_mao_obra, os.valor_mao_obra)
   const percentualPecas = Number(tecnico.comissao_pecas_percentual ?? 0) || 0
   const percentualMaoObra = Number(tecnico.comissao_mao_obra_percentual ?? 0) || 0
+  const comissao = calcularComissao(pecas, maoObra, percentualPecas, percentualMaoObra)
   return { os_id: Number(os.id), numero_os: String(os.numero_os ?? `OS #${os.id}`), parceiro_id: Number(os.parceiro_id), data_pagamento: os.data_pagamento,
-    valor_pecas_venda: pecas, valor_mao_obra_venda: maoObra, percentual_pecas: percentualPecas, percentual_mao_obra: percentualMaoObra,
-    comissao_pecas: arredondar(pecas * percentualPecas / 100), comissao_mao_obra: arredondar(maoObra * percentualMaoObra / 100) }
+    valor_pecas_venda: comissao.valorPecas, valor_mao_obra_venda: comissao.valorMaoObra, percentual_pecas: comissao.percentualPecas, percentual_mao_obra: comissao.percentualMaoObra,
+    comissao_pecas: comissao.comissaoPecas, comissao_mao_obra: comissao.comissaoMaoObra }
 }
 
 function somarItens(itens: ReturnType<typeof calcularItem>[]) {

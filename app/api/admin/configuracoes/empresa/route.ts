@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -33,7 +34,7 @@ const empresaPadrao = {
   ativa: true,
 }
 
-function getSupabaseAdmin() {
+function getSupabaseAdmin(request?: NextRequest, ator?: AtorAuditoria) {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error('Configuracao do Supabase ausente no servidor.')
   }
@@ -43,6 +44,7 @@ function getSupabaseAdmin() {
       persistSession: false,
       autoRefreshToken: false,
     },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
   })
 }
 
@@ -83,7 +85,7 @@ export async function PUT(request: NextRequest) {
     if (!auth.ok) return auth.response
 
     const body = await request.json().catch(() => null)
-    const supabase = getSupabaseAdmin()
+    const supabase = getSupabaseAdmin(request, auth)
     const tabelaExiste = await empresasExiste(supabase)
     if (!tabelaExiste) {
       return NextResponse.json(

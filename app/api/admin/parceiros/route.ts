@@ -2,11 +2,12 @@ import { createClient } from '@supabase/supabase-js'
 import { hashTecnicoPin } from '@/lib/tecnico-auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-function getSupabaseAdmin() {
+function getSupabaseAdmin(request?: NextRequest, ator?: AtorAuditoria) {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error('Configuracao do Supabase ausente no servidor.')
   }
@@ -16,6 +17,7 @@ function getSupabaseAdmin() {
       persistSession: false,
       autoRefreshToken: false,
     },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
   })
 }
 
@@ -66,7 +68,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const supabase = getSupabaseAdmin()
+    const supabase = getSupabaseAdmin(request, auth)
     const empresa = String(body?.empresa ?? '').trim()
     const chavePix = String(body?.chavePix ?? '').trim()
     const portalPin = String(body?.portalPin ?? '').trim()
@@ -185,7 +187,7 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    const supabase = getSupabaseAdmin()
+    const supabase = getSupabaseAdmin(request, auth)
     const updatePayload: Record<string, unknown> = {}
 
     if (crachaAcao === 'APROVAR') {

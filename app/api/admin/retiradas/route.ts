@@ -1,14 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const MEIOS_AVISO = new Set(['WHATSAPP', 'TELEFONE', 'PRESENCIAL', 'EMAIL'])
 
-function db() {
+function db(request?: NextRequest, ator?: AtorAuditoria) {
   if (!supabaseUrl || !serviceRoleKey) throw new Error('Configuracao do Supabase ausente no servidor.')
-  return createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
+  })
 }
 
 async function estruturaExiste(supabase: ReturnType<typeof db>) {
@@ -69,7 +73,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Informe o nome de quem recebeu o equipamento.' }, { status: 400 })
     }
 
-    const supabase = db()
+    const supabase = db(request, auth)
     if (!(await estruturaExiste(supabase))) {
       return NextResponse.json({ error: 'Rode o arquivo supabase-add-controle-retirada.sql antes de continuar.' }, { status: 400 })
     }

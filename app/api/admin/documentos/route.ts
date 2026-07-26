@@ -1,14 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY
 const tiposDocumento = new Set(['LAUDO', 'ORCAMENTO'])
 
-function db() {
+function db(request?: NextRequest, ator?: AtorAuditoria) {
   if (!url || !key) throw new Error('Supabase não configurado.')
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -37,9 +41,9 @@ export async function POST(request: NextRequest) {
     if (!auth.ok) return auth.response
     const body = await request.json().catch(() => null)
     const entidade = texto(body?.entidade).toUpperCase()
-    if (entidade === 'EMISSOR') return salvarEmissor(body, auth)
-    if (entidade === 'CARIMBO') return salvarCarimbo(body, auth)
-    if (entidade === 'DOCUMENTO') return salvarDocumento(body, auth)
+    if (entidade === 'EMISSOR') return salvarEmissor(body, auth, request)
+    if (entidade === 'CARIMBO') return salvarCarimbo(body, auth, request)
+    if (entidade === 'DOCUMENTO') return salvarDocumento(body, auth, request)
     return NextResponse.json({ error: 'Operação inválida.' }, { status: 400 })
   } catch (error) { return NextResponse.json({ error: mensagem(error, 'Erro ao salvar.') }, { status: 500 }) }
 }
@@ -52,7 +56,7 @@ export async function PATCH(request: NextRequest) {
     const id = Number(body?.id)
     const status = texto(body?.status).toUpperCase()
     if (!id || status !== 'CANCELADO') return NextResponse.json({ error: 'Solicitação inválida.' }, { status: 400 })
-    const supabase = db(); const agora = new Date().toISOString()
+    const supabase = db(request, auth); const agora = new Date().toISOString()
     const { error } = await supabase.from('documentos_tecnicos').update({ status, cancelado_em: agora, atualizado_em: agora, atualizado_por_nome: auth.nome, atualizado_por_email: auth.email }).eq('id', id)
     if (error) throw error
     await historico(supabase, id, 'CANCELADO', texto(body?.motivo) || 'Documento cancelado.', auth)
@@ -60,29 +64,29 @@ export async function PATCH(request: NextRequest) {
   } catch (error) { return NextResponse.json({ error: mensagem(error, 'Erro ao cancelar documento.') }, { status: 500 }) }
 }
 
-async function salvarEmissor(body: Record<string, unknown> | null, auth: { nome: string; email: string }) {
+async function salvarEmissor(body: Record<string, unknown> | null, auth: AtorAuditoria, request: NextRequest) {
   const id = Number(body?.id) || null; const nome = texto(body?.nomeRazaoSocial); const cpfCnpj = texto(body?.cpfCnpj)
   if (!nome || !cpfCnpj) return NextResponse.json({ error: 'Informe nome/razão social e CPF/CNPJ.' }, { status: 400 })
   const payload = { tipo_pessoa: texto(body?.tipoPessoa) === 'PF' ? 'PF' : 'PJ', nome_razao_social: nome, nome_fantasia: texto(body?.nomeFantasia) || null, cpf_cnpj: cpfCnpj, inscricao_estadual: texto(body?.inscricaoEstadual) || null, telefone: texto(body?.telefone) || null, email: texto(body?.email) || null, endereco: texto(body?.endereco) || null, cidade: texto(body?.cidade) || null, estado: texto(body?.estado) || null, logo_url: urlSegura(body?.logoUrl), ativo: body?.ativo !== false, atualizado_em: new Date().toISOString() }
-  const supabase = db(); const query = id ? supabase.from('documento_emissores').update(payload).eq('id', id) : supabase.from('documento_emissores').insert(payload)
+  const supabase = db(request, auth); const query = id ? supabase.from('documento_emissores').update(payload).eq('id', id) : supabase.from('documento_emissores').insert(payload)
   const { data, error } = await query.select('id').single(); if (error) throw error
   return NextResponse.json({ ok: true, id: data.id, responsavel: auth.nome })
 }
 
-async function salvarCarimbo(body: Record<string, unknown> | null, auth: { nome: string; email: string }) {
+async function salvarCarimbo(body: Record<string, unknown> | null, auth: AtorAuditoria, request: NextRequest) {
   const id = Number(body?.id) || null; const nome = texto(body?.nome)
   if (!nome) return NextResponse.json({ error: 'Informe o nome do carimbo.' }, { status: 400 })
   const tipo = texto(body?.tipo) === 'TECNICO' ? 'TECNICO' : 'CNPJ'; const conselhoInformado = texto(body?.conselho).toUpperCase(); const conselho = tipo === 'TECNICO' && ['CREA', 'CFT', 'OUTRO'].includes(conselhoInformado) ? conselhoInformado : null
   const payload = { tipo, nome, linha_1: texto(body?.linha1) || null, linha_2: texto(body?.linha2) || null, linha_3: texto(body?.linha3) || null, linha_4: texto(body?.linha4) || null, cpf_cnpj: texto(body?.cpfCnpj) || null, conselho, registro_conselho: texto(body?.registroConselho) || null, imagem_url: urlSegura(body?.imagemUrl), ativo: body?.ativo !== false, atualizado_em: new Date().toISOString() }
-  const supabase = db(); const query = id ? supabase.from('documento_carimbos').update(payload).eq('id', id) : supabase.from('documento_carimbos').insert(payload)
+  const supabase = db(request, auth); const query = id ? supabase.from('documento_carimbos').update(payload).eq('id', id) : supabase.from('documento_carimbos').insert(payload)
   const { data, error } = await query.select('id').single(); if (error) throw error
   return NextResponse.json({ ok: true, id: data.id, responsavel: auth.nome })
 }
 
-async function salvarDocumento(body: Record<string, unknown> | null, auth: { nome: string; email: string }) {
+async function salvarDocumento(body: Record<string, unknown> | null, auth: AtorAuditoria, request: NextRequest) {
   const id = Number(body?.id) || null; const tipo = tiposDocumento.has(texto(body?.tipo)) ? texto(body?.tipo) : 'LAUDO'; const titulo = texto(body?.titulo)
   if (!titulo) return NextResponse.json({ error: 'Informe o título do documento.' }, { status: 400 })
-  const supabase = db(); const status = texto(body?.status) === 'EMITIDO' ? 'EMITIDO' : 'RASCUNHO'; const emissorId = Number(body?.emissorId) || null; const carimboIds = Array.isArray(body?.carimboIds) ? [...new Set(body.carimboIds.map(Number).filter(Boolean))] : []
+  const supabase = db(request, auth); const status = texto(body?.status) === 'EMITIDO' ? 'EMITIDO' : 'RASCUNHO'; const emissorId = Number(body?.emissorId) || null; const carimboIds = Array.isArray(body?.carimboIds) ? [...new Set(body.carimboIds.map(Number).filter(Boolean))] : []
   const { data: emissor } = emissorId ? await supabase.from('documento_emissores').select('*').eq('id', emissorId).maybeSingle() : { data: null }
   const { data: carimbos } = carimboIds.length ? await supabase.from('documento_carimbos').select('*').in('id', carimboIds) : { data: [] }
   if (!emissor) return NextResponse.json({ error: 'Selecione um emissor válido.' }, { status: 400 })

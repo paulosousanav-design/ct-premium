@@ -8,8 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:coverage": "node --experimental-strip-types --test --experimental-test-coverage tests/*.test.ts",
     "security:check": "node scripts/security-check.mjs",
-    "verify": "npm run lint && npm run typecheck && npm run security:check"
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run security:check"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",

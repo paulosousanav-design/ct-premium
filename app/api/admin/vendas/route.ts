@@ -1,13 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY
 type PecaVenda = { id: number; codigo?: string | null; descricao: string; valor_custo?: number | string | null; valor_venda?: number | string | null; estoque?: number | string | null; ativo?: boolean | null }
 type ItemCalculado = { peca: PecaVenda | null; descricao: string; codigo: string | null; custo: number; quantidade: number; valorUnitario: number; desconto: number; total: number }
 type ItemEntrada = { pecaId?: unknown; descricao?: unknown; quantidade?: unknown; valorUnitario?: unknown; desconto?: unknown }
-function db() { if (!url || !key) throw new Error('Supabase não configurado.'); return createClient(url, key, { auth: { persistSession: false } }) }
+function db(request?: NextRequest, ator?: AtorAuditoria) { if (!url || !key) throw new Error('Supabase não configurado.'); return createClient(url, key, { auth: { persistSession: false }, global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined }) }
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
   const auth = await requireAdminUnidade(request, 'vendas'); if (!auth.ok) return auth.response
   const body = await request.json().catch(() => null); const itensBody = Array.isArray(body?.itens) ? body.itens : []; const descontoVenda = dinheiro(body?.desconto)
   if (!itensBody.length) return NextResponse.json({ error: 'Adicione ao menos um produto.' }, { status: 400 })
-  const supabase = db(); const ids = [...new Set(itensBody.map((i: ItemEntrada) => Number(i.pecaId)).filter((id: number) => id > 0))]
+  const supabase = db(request, auth); const ids = [...new Set(itensBody.map((i: ItemEntrada) => Number(i.pecaId)).filter((id: number) => id > 0))]
   const { data: pecas, error: pecasError } = await supabase.from('pecas').select('id, codigo, descricao, valor_custo, valor_venda, estoque, ativo').in('id', ids).eq('unidade_id', auth.unidadeId)
   if (pecasError) return NextResponse.json({ error: mensagem(pecasError, 'Erro ao consultar estoque.') }, { status: 500 })
   const mapa = new Map((pecas ?? []).map((p) => [Number(p.id), p as PecaVenda])); let itens: ItemCalculado[]
@@ -60,7 +61,7 @@ export async function PATCH(request: NextRequest) {
     const auth = await requireAdminUnidade(request, 'vendas'); if (!auth.ok) return auth.response
     const body = await request.json().catch(() => null); const id = Number(body?.id); const motivo = texto(body?.motivo)
     if (!id || !motivo) return NextResponse.json({ error: 'Informe venda e motivo do cancelamento.' }, { status: 400 })
-    const supabase = db(); const { data: venda } = await supabase.from('vendas').select('id, numero_venda, status, total').eq('id', id).eq('unidade_id', auth.unidadeId).maybeSingle(); if (!venda || venda.status === 'CANCELADA') return NextResponse.json({ error: 'Venda não localizada ou já cancelada.' }, { status: 400 })
+    const supabase = db(request, auth); const { data: venda } = await supabase.from('vendas').select('id, numero_venda, status, total').eq('id', id).eq('unidade_id', auth.unidadeId).maybeSingle(); if (!venda || venda.status === 'CANCELADA') return NextResponse.json({ error: 'Venda não localizada ou já cancelada.' }, { status: 400 })
     const { data: itens, error: itensError } = await supabase.from('venda_itens').select('peca_id, quantidade').eq('venda_id', id); if (itensError) throw itensError; const ator = `${auth.nome} (${auth.email})`
     for (const item of itens ?? []) { if (!item.peca_id) continue; const { data: peca } = await supabase.from('pecas').select('estoque').eq('id', item.peca_id).eq('unidade_id', auth.unidadeId).maybeSingle(); const anterior = numero(peca?.estoque); const posterior = anterior + numero(item.quantidade); const { error } = await supabase.from('pecas').update({ estoque: posterior }).eq('id', item.peca_id).eq('unidade_id', auth.unidadeId); if (error) throw error; await supabase.from('pecas_movimentacoes').insert({ peca_id: item.peca_id, venda_id: id, unidade_id: auth.unidadeId, tipo: 'ENTRADA_CANCELAMENTO_VENDA', quantidade: item.quantidade, estoque_anterior: anterior, estoque_posterior: posterior, observacao: `${venda.numero_venda} cancelada • ${ator}` }) }
     const { error } = await supabase.from('vendas').update({ status: 'CANCELADA', cancelado_por_nome: auth.nome, cancelado_por_email: auth.email, cancelado_em: new Date().toISOString(), cancelamento_motivo: motivo }).eq('id', id).eq('unidade_id', auth.unidadeId); if (error) throw error

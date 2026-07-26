@@ -1,13 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-function db() {
+function db(request?: NextRequest, ator?: AtorAuditoria) {
   if (!supabaseUrl || !serviceRoleKey) throw new Error('Configuracao do Supabase ausente no servidor.')
-  return createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -29,7 +33,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => null)
     const payload = validarPayload(body)
     if (!payload.nome) return NextResponse.json({ error: 'Informe o nome do garantidor.' }, { status: 400 })
-    const { error } = await db().from('garantidores').insert(payload)
+    const { error } = await db(request, auth).from('garantidores').insert(payload)
     if (error) throw error
     return NextResponse.json({ ok: true }, { status: 201 })
   } catch (error) {
@@ -50,7 +54,7 @@ export async function PATCH(request: NextRequest) {
     if (!body?.somenteStatus && !('nome' in payload && payload.nome)) {
       return NextResponse.json({ error: 'Informe o nome do garantidor.' }, { status: 400 })
     }
-    const { data, error } = await db().from('garantidores').update(payload).eq('id', id).select('id').maybeSingle()
+    const { data, error } = await db(request, auth).from('garantidores').update(payload).eq('id', id).select('id').maybeSingle()
     if (error) throw error
     if (!data) return NextResponse.json({ error: 'Garantidor nao encontrado.' }, { status: 404 })
     return NextResponse.json({ ok: true })

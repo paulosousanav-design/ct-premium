@@ -1,14 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY
 const tipos = new Set(['COMUNICADO', 'BOLETIM', 'VIDEO', 'CURSO'])
 
-function db() {
+function db(request?: NextRequest, ator?: AtorAuditoria) {
   if (!url || !key) throw new Error('Supabase não configurado.')
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -60,7 +64,7 @@ export async function POST(request: NextRequest) {
       publicado_em: body?.publicado ? agora : null,
       atualizado_em: agora,
     }
-    const supabase = db()
+    const supabase = db(request, auth)
     const query = id
       ? supabase.from('academia_conteudos').update(payload).eq('id', id)
       : supabase.from('academia_conteudos').insert({ ...payload, criado_por_nome: auth.nome, criado_por_email: auth.email })
@@ -84,7 +88,7 @@ export async function DELETE(request: NextRequest) {
     if (!auth.ok) return auth.response
     const id = Number(request.nextUrl.searchParams.get('id'))
     if (!id) return NextResponse.json({ error: 'Conteúdo inválido.' }, { status: 400 })
-    const { error } = await db().from('academia_conteudos').delete().eq('id', id)
+    const { error } = await db(request, auth).from('academia_conteudos').delete().eq('id', id)
     if (error) throw error
     return NextResponse.json({ ok: true })
   } catch (error) {

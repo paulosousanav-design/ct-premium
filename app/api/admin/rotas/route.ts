@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
+import { calcularRateioDespesas } from '@/lib/calculos-rotas'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -9,9 +11,12 @@ const STATUS = new Set(['PLANEJADA', 'EM_ANDAMENTO', 'CONCLUIDA', 'CANCELADA'])
 const TIPOS_DESPESA = new Set(['COMBUSTIVEL', 'PEDAGIO', 'ALIMENTACAO', 'HOSPEDAGEM', 'ESTACIONAMENTO', 'OUTRA'])
 const FINALIDADES = new Set(['COLETA', 'ATENDIMENTO', 'ENTREGA', 'RETORNO', 'OUTRA'])
 
-function getSupabaseAdmin() {
+function getSupabaseAdmin(request?: NextRequest, ator?: AtorAuditoria) {
   if (!supabaseUrl || !serviceRoleKey) throw new Error('Configuracao do Supabase ausente no servidor.')
-  return createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -88,7 +93,7 @@ export async function POST(request: NextRequest) {
     if (!auth.ok) return auth.response
     const body = await request.json().catch(() => null)
     const acao = String(body?.acao ?? '').toUpperCase()
-    const supabase = getSupabaseAdmin()
+    const supabase = getSupabaseAdmin(request, auth)
 
     if (!(await tabelaExiste(supabase, 'rotas'))) {
       return NextResponse.json({ error: 'Execute o arquivo supabase-add-gestao-rotas.sql no Supabase.' }, { status: 400 })
@@ -261,28 +266,19 @@ async function recalcularRateio(supabase: ReturnType<typeof getSupabaseAdmin>, r
     Number(item.id),
     dinheiro(item.cliente_total ?? item.total),
   ]))
-  const totalCentavos = Math.round((despesas ?? []).reduce((acc, item) => acc + Number(item.valor ?? 0), 0) * 100)
+  const totalDespesas = (despesas ?? []).reduce((acc, item) => acc + Number(item.valor ?? 0), 0)
   const pesos = vinculos.map((item) => metodo === 'QUILOMETRAGEM'
     ? numeroNaoNegativo(item.km_referencia)
     : metodo === 'RECEITA'
       ? receitasAtuais.get(Number(item.os_id)) ?? numeroNaoNegativo(item.receita_referencia)
       : 1)
-  const totalPesos = pesos.reduce((acc, item) => acc + item, 0)
-  const pesosValidos = totalPesos > 0 ? pesos : vinculos.map(() => 1)
-  const divisor = pesosValidos.reduce((acc, item) => acc + item, 0)
-  let centavosDistribuidos = 0
+  const rateio = calcularRateioDespesas(totalDespesas, pesos)
 
   for (let index = 0; index < vinculos.length; index += 1) {
-    const ultimo = index === vinculos.length - 1
-    const centavos = ultimo
-      ? totalCentavos - centavosDistribuidos
-      : Math.round(totalCentavos * pesosValidos[index] / divisor)
-    centavosDistribuidos += centavos
-    const percentual = divisor > 0 ? pesosValidos[index] / divisor * 100 : 0
     const { error } = await supabase.from('rota_ordens').update({
       receita_referencia: receitasAtuais.get(Number(vinculos[index].os_id)) ?? numeroNaoNegativo(vinculos[index].receita_referencia),
-      percentual_rateio: Math.round(percentual * 1_000_000) / 1_000_000,
-      custo_rateado: centavos / 100,
+      percentual_rateio: rateio[index].percentual,
+      custo_rateado: rateio[index].valor,
     }).eq('id', vinculos[index].id)
     if (error) throw error
   }

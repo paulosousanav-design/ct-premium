@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -19,7 +20,7 @@ type MovimentoPeca = {
   ordens_servico?: { numero_os?: string | null } | { numero_os?: string | null }[] | null
 }
 
-function getSupabaseAdmin() {
+function getSupabaseAdmin(request?: NextRequest, ator?: AtorAuditoria) {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error('Configuracao do Supabase ausente no servidor.')
   }
@@ -29,6 +30,7 @@ function getSupabaseAdmin() {
       persistSession: false,
       autoRefreshToken: false,
     },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
   })
 }
 
@@ -79,7 +81,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Informe a descricao da peca.' }, { status: 400 })
     }
 
-    const supabase = getSupabaseAdmin()
+    const supabase = getSupabaseAdmin(request, auth)
     const tabelaExiste = await pecasExiste(supabase)
     if (!tabelaExiste) {
       return NextResponse.json(
@@ -121,7 +123,7 @@ export async function PATCH(request: NextRequest) {
     const tipo = texto(body?.tipo).toUpperCase()
     const id = Number(body?.id)
     const descricao = texto(body?.descricao)
-    const supabase = getSupabaseAdmin()
+    const supabase = getSupabaseAdmin(request, auth)
 
     if (tipo === 'MOVIMENTACAO') {
       const resultado = await movimentarEstoque(supabase, body, auth.unidadeId)

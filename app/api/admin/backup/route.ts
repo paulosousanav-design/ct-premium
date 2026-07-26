@@ -31,6 +31,7 @@ const tabelasBackup = [
   'nfe_importacao_itens',
   'contas_pagar',
   'financeiro_historico',
+  'auditoria_eventos',
   'tecnico_documentos',
   'admin_usuarios',
   'chat_conversas',

@@ -1,20 +1,24 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
+import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-function db() {
+function db(request?: NextRequest, ator?: AtorAuditoria) {
   if (!url || !key) throw new Error('Supabase não configurado.')
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: request && ator ? { headers: cabecalhosAuditoria(request, ator) } : undefined,
+  })
 }
 
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'unidades')
     if (!auth.ok) return auth.response
-    const supabase = db()
+    const supabase = db(request, auth)
     const { error: tabelaError } = await supabase.from('unidades').select('id').limit(0)
     if (tabelaError) return NextResponse.json({ tabelaPendente: true, data: [], vinculos: [] })
     const [{ data, error }, { data: vinculos }] = await Promise.all([
@@ -40,7 +44,7 @@ async function salvar(request: NextRequest, editando: boolean) {
     const codigo = normalizarCodigo(body?.codigo || nomeFantasia)
     if (!nomeFantasia || !codigo || (editando && !id)) return NextResponse.json({ error: 'Informe código e nome da unidade.' }, { status: 400 })
     const payload = { codigo, tipo, nome_fantasia: nomeFantasia, razao_social: texto(body?.razaoSocial) || null, cnpj: texto(body?.cnpj) || null, telefone: texto(body?.telefone) || null, whatsapp: texto(body?.whatsapp) || null, email: texto(body?.email) || null, cep: texto(body?.cep) || null, logradouro: texto(body?.logradouro) || null, numero: texto(body?.numero) || null, bairro: texto(body?.bairro) || null, cidade: texto(body?.cidade) || null, estado: texto(body?.estado).toUpperCase() || null, complemento: texto(body?.complemento) || null, ativa: body?.ativa !== false, atualizado_em: new Date().toISOString() }
-    const supabase = db()
+    const supabase = db(request, auth)
     if (editando) {
       const { data: atual } = await supabase.from('unidades').select('tipo').eq('id', id).maybeSingle()
       if (atual?.tipo === 'MATRIZ' && tipo !== 'MATRIZ') return NextResponse.json({ error: 'A unidade Matriz não pode ser transformada em Filial.' }, { status: 400 })
