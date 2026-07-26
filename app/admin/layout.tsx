@@ -65,6 +65,7 @@ const menu: MenuItem[] = [
   { label: 'Usuarios', href: '/admin/usuarios', permissao: 'usuarios' },
   { label: 'Auditoria', href: '/admin/auditoria', permissao: 'usuarios' },
   { label: 'Monitoramento', href: '/admin/monitoramento', permissao: 'usuarios', contador: 'monitoramento' },
+  { label: 'Central de Backups', href: '/admin/backups', permissao: 'usuarios' },
   { label: 'Relatorios', href: '/admin/relatorios', permissao: 'relatorios' },
   { label: 'Academia Tecnica', href: '/admin/academia', permissao: 'academia' },
   { label: 'Documentos Tecnicos', href: '/admin/documentos', permissao: 'documentos' },
