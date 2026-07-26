@@ -9,6 +9,7 @@ const verificacoes = [
   ['clientes', true], ['ordens_servico', true], ['os_historico', true],
   ['admin_usuarios', true], ['unidades', true], ['financeiro_historico', true],
   ['auditoria_eventos', true], ['sistema_eventos', true], ['backup_execucoes', true],
+  ['backup_configuracoes', true], ['backup_storage_arquivos', false],
   ['chat_mensagens', false], ['seguranca_rate_limits', false],
 ] as const
 

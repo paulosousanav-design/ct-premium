@@ -16,6 +16,8 @@ const verificacoes = [
   ['auditoria_eventos', true],
   ['sistema_eventos', true],
   ['backup_execucoes', true],
+  ['backup_configuracoes', true],
+  ['backup_storage_arquivos', false],
   ['chat_mensagens', false],
   ['seguranca_rate_limits', false],
 ] as const

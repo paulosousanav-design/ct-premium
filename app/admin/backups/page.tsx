@@ -17,6 +17,9 @@ type ExecucaoBackup = {
   gerado_por_nome?: string | null
   gerado_por_email?: string | null
   erro?: string | null
+  destino?: string | null
+  google_link?: string | null
+  arquivos_storage_enviados?: number | null
   criado_em: string
 }
 
@@ -28,6 +31,23 @@ type ResumoBackup = {
   ultimaExecucao?: string | null
 }
 
+type GoogleConfig = {
+  estruturaPendente: boolean
+  ambienteConfigurado: boolean
+  cronConfigurado: boolean
+  redirectUri?: string
+  conectado: boolean
+  configuracao?: {
+    google_email?: string | null
+    google_conectado_em?: string | null
+    automatico_ativo?: boolean
+    retencao_dias?: number
+    ultimo_backup_automatico_em?: string | null
+    ultimo_backup_automatico_status?: string | null
+    ultimo_backup_automatico_erro?: string | null
+  } | null
+}
+
 export default function BackupsPage() {
   const [execucoes, setExecucoes] = useState<ExecucaoBackup[]>([])
   const [resumo, setResumo] = useState<ResumoBackup>({ situacao: 'SEM_BACKUP', prazoDias: 7 })
@@ -36,6 +56,9 @@ export default function BackupsPage() {
   const [gerando, setGerando] = useState(false)
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
+  const [google, setGoogle] = useState<GoogleConfig | null>(null)
+  const [processandoGoogle, setProcessandoGoogle] = useState(false)
+  const [retencaoDias, setRetencaoDias] = useState(30)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -54,9 +77,27 @@ export default function BackupsPage() {
     }
   }, [])
 
+  const carregarGoogle = useCallback(async () => {
+    try {
+      const response = await adminFetch('/api/admin/backup/google', { cache: 'no-store' })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error ?? 'Erro ao verificar Google Drive.')
+      setGoogle(data as GoogleConfig)
+      setRetencaoDias(Number(data?.configuracao?.retencao_dias ?? 30))
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Erro ao verificar Google Drive.')
+    }
+  }, [])
+
   useEffect(() => {
     void Promise.resolve().then(carregar)
-  }, [carregar])
+    void Promise.resolve().then(carregarGoogle)
+    const params = new URLSearchParams(window.location.search)
+    void Promise.resolve().then(() => {
+      if (params.get('google') === 'conectado') setMensagem('Google Drive conectado. Ative a rotina automática após executar o teste.')
+      if (params.get('googleErro')) setErro(params.get('googleErro') ?? 'Erro ao conectar Google Drive.')
+    })
+  }, [carregar, carregarGoogle])
 
   async function gerarBackup() {
     setGerando(true)
@@ -86,6 +127,57 @@ export default function BackupsPage() {
       setErro(error instanceof Error ? error.message : 'Erro ao gerar backup.')
     } finally {
       setGerando(false)
+    }
+  }
+
+  async function conectarGoogle() {
+    setProcessandoGoogle(true)
+    setErro('')
+    try {
+      const response = await adminFetch('/api/admin/backup/google?acao=autorizar', { cache: 'no-store' })
+      const data = await response.json().catch(() => null)
+      if (!response.ok || !data?.url) throw new Error(data?.error ?? 'Erro ao iniciar autorização do Google.')
+      window.location.href = String(data.url)
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Erro ao conectar Google Drive.')
+      setProcessandoGoogle(false)
+    }
+  }
+
+  async function testarGoogle() {
+    setProcessandoGoogle(true)
+    setErro('')
+    setMensagem('')
+    try {
+      const response = await adminFetch('/api/admin/backup/google', { method: 'POST' })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error ?? 'Erro no teste do Google Drive.')
+      setMensagem(`Backup enviado ao Google Drive.${data?.resultado?.storageEnviados ? ` ${data.resultado.storageEnviados} arquivo(s) do Storage copiado(s).` : ''}`)
+      await Promise.all([carregar(), carregarGoogle()])
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Erro no teste do Google Drive.')
+    } finally {
+      setProcessandoGoogle(false)
+    }
+  }
+
+  async function salvarGoogle(automaticoAtivo: boolean) {
+    setProcessandoGoogle(true)
+    setErro('')
+    try {
+      const response = await adminFetch('/api/admin/backup/google', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ automaticoAtivo, retencaoDias }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error ?? 'Erro ao salvar automação.')
+      setMensagem(automaticoAtivo ? 'Backup automático diário ativado.' : 'Backup automático pausado.')
+      await carregarGoogle()
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Erro ao salvar automação.')
+    } finally {
+      setProcessandoGoogle(false)
     }
   }
 
@@ -125,6 +217,49 @@ export default function BackupsPage() {
         </Aviso>
       )}
 
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wide text-blue-600">Cópia externa</p>
+            <h2 className="mt-1 text-xl font-black text-slate-950">Google Drive automático</h2>
+            <p className="mt-1 text-sm text-slate-600">Banco diário às 04h de Cuiabá, retenção configurável e cópia incremental de fotos e documentos.</p>
+          </div>
+          <span className={`rounded-full px-3 py-1 text-xs font-black ${google?.conectado ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>
+            {google?.conectado ? `Conectado · ${google.configuracao?.google_email ?? 'Google'}` : 'Não conectado'}
+          </span>
+        </div>
+
+        {google?.estruturaPendente ? (
+          <Aviso classe="mt-4 border-amber-200 bg-amber-50 text-amber-900">Execute <b>supabase-add-backup-google-drive.sql</b> no Supabase.</Aviso>
+        ) : !google?.ambienteConfigurado ? (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            <p className="font-black">Configuração da hospedagem pendente</p>
+            <p className="mt-2">Cadastre no ambiente de produção: <b>GOOGLE_DRIVE_CLIENT_ID</b>, <b>GOOGLE_DRIVE_CLIENT_SECRET</b> e <b>CRON_SECRET</b>.</p>
+            {google?.redirectUri && <p className="mt-2 break-all rounded-lg bg-white px-3 py-2 font-mono text-xs">Redirect URI: {google.redirectUri}</p>}
+          </div>
+        ) : google?.conectado ? (
+          <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_220px_220px] lg:items-end">
+            <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
+              <p><b>Última rotina:</b> {google.configuracao?.ultimo_backup_automatico_em ? dataHora(google.configuracao.ultimo_backup_automatico_em) : 'Ainda não executada'}</p>
+              <p className="mt-1"><b>Status:</b> {google.configuracao?.ultimo_backup_automatico_status || 'Aguardando teste'}</p>
+              {google.configuracao?.ultimo_backup_automatico_erro && <p className="mt-2 text-red-700">{google.configuracao.ultimo_backup_automatico_erro}</p>}
+            </div>
+            <CampoGoogle label="Retenção do banco">
+              <select value={retencaoDias} onChange={(event) => setRetencaoDias(Number(event.target.value))} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-bold">
+                <option value={15}>15 dias</option><option value={30}>30 dias</option><option value={60}>60 dias</option><option value={90}>90 dias</option>
+              </select>
+            </CampoGoogle>
+            <button type="button" onClick={() => void testarGoogle()} disabled={processandoGoogle} className="rounded-xl border border-blue-300 bg-blue-50 px-4 py-3 text-sm font-black text-blue-800 disabled:opacity-50">{processandoGoogle ? 'Processando...' : 'Testar envio agora'}</button>
+            <div className="flex flex-wrap gap-2 lg:col-span-3">
+              <button type="button" onClick={() => void salvarGoogle(!google.configuracao?.automatico_ativo)} disabled={processandoGoogle} className={`rounded-xl px-4 py-3 text-sm font-black text-white ${google.configuracao?.automatico_ativo ? 'bg-amber-600' : 'bg-emerald-600'}`}>{google.configuracao?.automatico_ativo ? 'Pausar automação' : 'Ativar backup diário'}</button>
+              <button type="button" onClick={() => void salvarGoogle(Boolean(google.configuracao?.automatico_ativo))} disabled={processandoGoogle} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700">Salvar retenção</button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={() => void conectarGoogle()} disabled={processandoGoogle || !google} className="mt-4 rounded-xl bg-blue-600 px-5 py-3 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50">{processandoGoogle ? 'Abrindo Google...' : 'Conectar meu Google Drive'}</button>
+        )}
+      </section>
+
       <section className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
@@ -146,10 +281,10 @@ export default function BackupsPage() {
                     <tr key={item.id} className="align-top">
                       <td className="px-4 py-4 font-bold text-slate-900">{dataHora(item.criado_em)}<p className="mt-1 text-xs font-normal text-slate-500">{item.tipo === 'MANUAL' ? 'Manual' : 'Automático'}</p></td>
                       <td className="px-4 py-4"><Status item={item} />{item.erro && <p className="mt-2 max-w-xs text-xs text-red-700">{item.erro}</p>}</td>
-                      <td className="px-4 py-4 text-slate-700">{Number(item.total_registros).toLocaleString('pt-BR')} registros<p className="mt-1 text-xs text-slate-500">{item.total_tabelas} tabelas{item.tabelas_ignoradas > 0 ? ` · ${item.tabelas_ignoradas} ignorada(s)` : ''}</p></td>
+                      <td className="px-4 py-4 text-slate-700">{Number(item.total_registros).toLocaleString('pt-BR')} registros<p className="mt-1 text-xs text-slate-500">{item.total_tabelas} tabelas{item.tabelas_ignoradas > 0 ? ` · ${item.tabelas_ignoradas} ignorada(s)` : ''}{Number(item.arquivos_storage_enviados) > 0 ? ` · ${item.arquivos_storage_enviados} arquivo(s)` : ''}</p></td>
                       <td className="px-4 py-4 font-bold text-slate-700">{formatarBytes(Number(item.tamanho_bytes))}</td>
                       <td className="px-4 py-4 text-slate-700">{item.gerado_por_nome || item.gerado_por_email || 'Sistema'}<p className="mt-1 text-xs text-slate-500">{item.gerado_por_email}</p></td>
-                      <td className="px-4 py-4"><p className="max-w-[180px] truncate font-mono text-xs text-slate-600" title={item.checksum_sha256 ?? ''}>{item.checksum_sha256 ? `SHA-256 ${item.checksum_sha256}` : '—'}</p></td>
+                      <td className="px-4 py-4"><p className="max-w-[180px] truncate font-mono text-xs text-slate-600" title={item.checksum_sha256 ?? ''}>{item.checksum_sha256 ? `SHA-256 ${item.checksum_sha256}` : '—'}</p>{item.google_link && <a href={item.google_link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-black text-blue-700">Abrir no Drive</a>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -184,6 +319,10 @@ function Card({ label, valor, classe = 'border-slate-200 bg-white text-slate-950
 
 function Aviso({ classe, children }: { classe: string; children: React.ReactNode }) {
   return <div className={`rounded-2xl border p-4 text-sm font-bold ${classe}`}>{children}</div>
+}
+
+function CampoGoogle({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label><span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-600">{label}</span>{children}</label>
 }
 
 function Status({ item }: { item: ExecucaoBackup }) {
