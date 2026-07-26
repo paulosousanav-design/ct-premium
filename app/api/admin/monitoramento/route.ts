@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
-import { registrarEventoSistema } from '@/lib/monitoramento'
+import { criarFingerprint, registrarEventoSistema } from '@/lib/monitoramento'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -91,19 +91,40 @@ export async function GET(request: NextRequest) {
       verificarSaude(supabase),
     ])
 
-    for (const falha of [...saude.verificacoes.filter((item) => !item.ok), ...saude.storage.filter((item) => !item.ok)]) {
-      await registrarEventoSistema({
-        tipo: 'SAUDE',
-        gravidade: 'critica' in falha && falha.critica ? 'CRITICO' : 'ATENCAO',
-        modulo: 'INFRAESTRUTURA',
-        origem: 'SAUDE',
-        mensagem: 'tabela' in falha
-          ? `Falha na verificacao da tabela ${falha.tabela}.`
-          : `Storage ${falha.nome} indisponivel.`,
-        codigo: 'SAUDE_COMPONENTE',
-        detalhes: falha,
-        request,
-      })
+    for (const componente of [...saude.verificacoes, ...saude.storage]) {
+      const mensagem = 'tabela' in componente
+        ? `Falha na verificacao da tabela ${componente.tabela}.`
+        : `Storage ${componente.nome} indisponivel.`
+      if (!componente.ok) {
+        await registrarEventoSistema({
+          tipo: 'SAUDE',
+          gravidade: componente.critica ? 'CRITICO' : 'ATENCAO',
+          modulo: 'INFRAESTRUTURA',
+          origem: 'SAUDE',
+          mensagem,
+          codigo: 'SAUDE_COMPONENTE',
+          detalhes: componente,
+          request,
+        })
+      } else {
+        const fingerprint = criarFingerprint({
+          modulo: 'INFRAESTRUTURA',
+          origem: 'SAUDE',
+          rota: request.nextUrl.pathname,
+          codigo: 'SAUDE_COMPONENTE',
+          mensagem,
+        })
+        await supabase
+          .from('sistema_eventos')
+          .update({
+            status: 'RESOLVIDO',
+            resolvido_em: new Date().toISOString(),
+            resolvido_por_nome: 'Sistema',
+            resolucao_observacao: 'Componente recuperado automaticamente.',
+          })
+          .eq('fingerprint', fingerprint)
+          .eq('status', 'ABERTO')
+      }
     }
 
     return NextResponse.json({
@@ -191,7 +212,7 @@ export async function PATCH(request: NextRequest) {
 
 async function verificarSaude(supabase: ReturnType<typeof db>) {
   const resultados = await Promise.all(verificacoes.map(async ([tabela, critica]) => {
-    const { error } = await supabase.from(tabela).select('id').limit(0)
+    const { error } = await supabase.from(tabela).select('*').limit(0)
     return { tabela, critica, ok: !error, erro: error ? String(error.message) : null }
   }))
   const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets()

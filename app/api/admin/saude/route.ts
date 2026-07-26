@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
     const resultados = await Promise.all(verificacoes.map(async ([tabela, critica]) => {
-      const { error } = await supabase.from(tabela).select('id').limit(0)
+      const { error } = await supabase.from(tabela).select('*').limit(0)
       return { tabela, critica, ok: !error, erro: error ? String(error.message) : null }
     }))
     const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets()
