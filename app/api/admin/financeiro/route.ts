@@ -118,7 +118,12 @@ export async function GET(request: NextRequest) {
 
     const ordensIds = new Set(((ordens ?? []) as Array<{ id?: number }>).map((item) => Number(item.id)).filter(Boolean))
     const documentosBase = await carregarDocumentosTecnicos(supabase)
-    const documentos = { ...documentosBase, data: documentosBase.data.filter((item: { os_id?: number | null }) => item.os_id && ordensIds.has(Number(item.os_id))) }
+    const documentos = {
+      ...documentosBase,
+      data: documentosBase.data.filter((item: { os_id?: number | null; os_ids?: number[] }) =>
+        idsOsDoDocumento(item).some((osId) => ordensIds.has(osId))
+      ),
+    }
     const contasPagar = await carregarContasPagar(supabase, auth.unidadeId, auth.unidadesPermitidas)
     const contasIds = new Set(contasPagar.data.map((item) => Number(item.id)))
     const historicoBase = await carregarHistoricoFinanceiro(supabase)
@@ -127,8 +132,8 @@ export async function GET(request: NextRequest) {
     const ordensData = (ordens ?? []) as unknown as OrdemFinanceiro[]
     const ordensComPagamentoTecnico = ordensData.map((ordem) => {
       const documentoPago = documentos.data.some(
-        (doc: { os_id?: number | null; status?: string | null }) =>
-          doc.os_id === ordem.id && doc.status === 'PAGO'
+        (doc: { os_id?: number | null; os_ids?: number[]; status?: string | null }) =>
+          documentoIncluiOs(doc, ordem.id) && doc.status === 'PAGO'
       )
 
       if (!documentoPago || ordem.tecnico_status_pagamento === 'RECEBIDO') return ordem
@@ -482,9 +487,10 @@ export async function PATCH(request: NextRequest) {
       }
 
       const documentos = await carregarDocumentosTecnicos(supabase)
-      const documentoRecebido = documentos.data.some(
-        (doc: { os_id?: number | null }) => doc.os_id === id
-      )
+      const documentosRecebidos = documentos.data.filter(
+        (doc: { os_id?: number | null; os_ids?: number[] }) => documentoIncluiOs(doc, id)
+      ) as Array<{ id?: number; os_id?: number | null; os_ids?: number[] }>
+      const documentoRecebido = documentosRecebidos.length > 0
 
       if (!documentoRecebido) {
         return NextResponse.json(
@@ -492,6 +498,11 @@ export async function PATCH(request: NextRequest) {
           { status: 400 }
         )
       }
+
+      const idsOsPagamento = Array.from(new Set(
+        documentosRecebidos.flatMap((doc: { os_id?: number | null; os_ids?: number[] }) => idsOsDoDocumento(doc))
+      ))
+      if (!idsOsPagamento.includes(id)) idsOsPagamento.push(id)
 
       if (temPagamentoTecnico) {
         const { error } = await supabase
@@ -502,15 +513,15 @@ export async function PATCH(request: NextRequest) {
             ...((await colunaExiste(supabase, 'ordens_servico', 'forma_pagamento_tecnico')) ? { forma_pagamento_tecnico: forma } : {}),
             status_financeiro: ordemAtual?.status_financeiro ?? null,
           })
-          .eq('id', id)
+          .in('id', idsOsPagamento)
 
         if (error) throw error
       }
 
-      const { error: documentoError } = await supabase
-        .from('tecnico_documentos')
-        .update({ status: 'PAGO', pago_em: pagoEm })
-        .eq('os_id', id)
+      const idsDocumentosPagamento = documentosRecebidos.map((doc) => Number(doc.id)).filter(Boolean)
+      const { error: documentoError } = idsDocumentosPagamento.length
+        ? await supabase.from('tecnico_documentos').update({ status: 'PAGO', pago_em: pagoEm }).in('id', idsDocumentosPagamento)
+        : await supabase.from('tecnico_documentos').update({ status: 'PAGO', pago_em: pagoEm }).eq('os_id', id)
 
       if (documentoError && String(documentoError.code) !== '42703' && String(documentoError.code) !== '42P01') {
         throw documentoError
@@ -543,21 +554,22 @@ export async function PATCH(request: NextRequest) {
 
     if (error) throw error
 
-    if (documento?.os_id && await colunaExiste(supabase, 'ordens_servico', 'tecnico_status_pagamento')) {
+    const osIdsDocumento = await carregarOsIdsDocumento(supabase, id, Number(documento?.os_id) || null)
+    if (osIdsDocumento.length > 0 && await colunaExiste(supabase, 'ordens_servico', 'tecnico_status_pagamento')) {
       const { error: osError } = await supabase
         .from('ordens_servico')
         .update({
           tecnico_status_pagamento: 'RECEBIDO',
           tecnico_pago_em: pagoEm,
         })
-        .eq('id', documento.os_id)
+        .in('id', osIdsDocumento)
 
       if (osError) throw osError
     }
 
     await registrarHistoricoFinanceiro(supabase, {
       responsavel: `${auth.nome} (${auth.email})`,
-      osId: documento?.os_id ?? null,
+      osId: osIdsDocumento[0] ?? documento?.os_id ?? null,
       documentoId: id,
       tipo: 'DOCUMENTO_TECNICO',
       statusAnterior: documento?.status ?? null,
@@ -811,7 +823,57 @@ async function carregarDocumentosTecnicos(supabase: ReturnType<typeof getSupabas
     throw error
   }
 
-  return { data: data ?? [], tabelaPendente: false }
+  const documentos = (data ?? []) as Array<Record<string, unknown>>
+  const documentosIds = documentos.map((doc) => Number(doc.id)).filter(Boolean)
+  const { data: vinculos, error: vinculosError } = documentosIds.length
+    ? await supabase.from('tecnico_documentos_os').select('documento_id, os_id').in('documento_id', documentosIds)
+    : { data: [], error: null }
+
+  if (vinculosError && String(vinculosError.code) !== '42P01') throw vinculosError
+
+  const osIdsPorDocumento = new Map<number, number[]>()
+  for (const vinculo of vinculos ?? []) {
+    const documentoId = Number((vinculo as { documento_id?: number }).documento_id)
+    const osId = Number((vinculo as { os_id?: number }).os_id)
+    if (!documentoId || !osId) continue
+    osIdsPorDocumento.set(documentoId, [...(osIdsPorDocumento.get(documentoId) ?? []), osId])
+  }
+
+  return {
+    data: documentos.map((doc) => ({
+      ...doc,
+      os_ids: osIdsPorDocumento.get(Number(doc.id)) ?? (Number(doc.os_id) ? [Number(doc.os_id)] : []),
+    })),
+    tabelaPendente: false,
+  }
+}
+
+function idsOsDoDocumento(documento: { os_id?: number | null; os_ids?: number[] }) {
+  if (Array.isArray(documento.os_ids) && documento.os_ids.length > 0) {
+    return documento.os_ids.map(Number).filter(Boolean)
+  }
+  const osId = Number(documento.os_id)
+  return osId ? [osId] : []
+}
+
+function documentoIncluiOs(documento: { os_id?: number | null; os_ids?: number[] }, osId: number) {
+  return idsOsDoDocumento(documento).includes(Number(osId))
+}
+
+async function carregarOsIdsDocumento(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  documentoId: number,
+  osIdLegado: number | null
+) {
+  const { data, error } = await supabase
+    .from('tecnico_documentos_os')
+    .select('os_id')
+    .eq('documento_id', documentoId)
+
+  if (error && String(error.code) !== '42P01') throw error
+  const ids = (data ?? []).map((item) => Number((item as { os_id?: number }).os_id)).filter(Boolean)
+  if (ids.length > 0) return ids
+  return osIdLegado ? [osIdLegado] : []
 }
 
 async function carregarContasPagar(supabase: ReturnType<typeof getSupabaseAdmin>, unidadeId: number | null, unidadesPermitidas: number[]) {

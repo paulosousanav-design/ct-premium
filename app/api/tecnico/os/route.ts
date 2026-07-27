@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
         status,
         prioridade,
         garantia,
+        referencia_garantidor,
         modelo,
         numero_serie,
         defeito,
@@ -248,9 +249,9 @@ export async function PATCH(request: NextRequest) {
 
       if (fotosCountError) throw fotosCountError
 
-      if ((fotosCount ?? 0) < 3) {
+      if ((fotosCount ?? 0) < 4) {
         return NextResponse.json(
-          { error: 'Para enviar o orçamento ao admin, anexe no mínimo 3 fotos da OS.' },
+          { error: 'Para enviar o orçamento ao admin, anexe no mínimo 4 fotos da OS.' },
           { status: 400 }
         )
       }
@@ -379,15 +380,32 @@ async function carregarOsPagasPorDocumento(
   const ids = new Set<number>()
   const { data, error } = await supabase
     .from('tecnico_documentos')
-    .select('os_id, status')
+    .select('id, os_id, status')
     .eq('parceiro_id', tecnicoId)
     .eq('status', 'PAGO')
 
   if (error) return ids
 
+  const documentosIds: number[] = []
   for (const doc of data ?? []) {
+    const documentoId = Number((doc as { id?: number }).id)
+    if (documentoId) documentosIds.push(documentoId)
     const osId = Number((doc as { os_id?: number | null }).os_id)
     if (osId) ids.add(osId)
+  }
+
+  if (documentosIds.length > 0) {
+    const { data: vinculos, error: vinculosError } = await supabase
+      .from('tecnico_documentos_os')
+      .select('os_id')
+      .in('documento_id', documentosIds)
+
+    if (!vinculosError) {
+      for (const vinculo of vinculos ?? []) {
+        const osId = Number((vinculo as { os_id?: number }).os_id)
+        if (osId) ids.add(osId)
+      }
+    }
   }
 
   return ids
@@ -416,8 +434,8 @@ function calcularResumo(
     status_financeiro?: string | null
   }>
 ) {
-  const executados = ordens.filter((os) => os.status === 'FINALIZADA').length
-  const abertas = ordens.filter((os) => !['FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(os.status))).length
+  const executados = ordens.filter((os) => ['PRONTO_AGUARDANDO_ENTREGA', 'FINALIZADA'].includes(String(os.status))).length
+  const abertas = ordens.filter((os) => !['PRONTO_AGUARDANDO_ENTREGA', 'FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(os.status))).length
   const emRevisao = ordens.filter((os) => os.status === 'AGUARDANDO_REVISAO').length
   const recebido = ordens
     .filter(tecnicoRecebido)

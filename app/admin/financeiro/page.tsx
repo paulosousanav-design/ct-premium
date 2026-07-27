@@ -53,6 +53,7 @@ type OrdemFinanceira = {
 type DocumentoTecnico = {
   id: number
   os_id?: number | null
+  os_ids?: number[]
   parceiro_id: number | null
   tipo: string | null
   valor: number | string | null
@@ -1455,8 +1456,8 @@ function ehGarantidorOuSeguradora(os: OrdemFinanceira) {
 
 function documentoMaisRecente(documentos: DocumentoTecnico[], os: OrdemFinanceira) {
   return (
-    documentos.find((doc) => doc.os_id === os.id) ??
-    documentos.find((doc) => doc.parceiro_id === os.parceiro_id && !doc.os_id) ??
+    documentos.find((doc) => (doc.os_ids?.length ? doc.os_ids.includes(os.id) : doc.os_id === os.id)) ??
+    documentos.find((doc) => doc.parceiro_id === os.parceiro_id && !doc.os_id && !doc.os_ids?.length) ??
     null
   )
 }

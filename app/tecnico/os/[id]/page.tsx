@@ -127,7 +127,10 @@ export default function AtendimentoTecnicoPage() {
     const selecionadas = Array.from(event.target.files ?? [])
     if (selecionadas.length === 0) return
 
-    setNovasFotos((prev) => [...prev, ...selecionadas])
+    setNovasFotos((prev) => {
+      const espacosDisponiveis = Math.max(0, 6 - fotos.length - prev.length)
+      return [...prev, ...selecionadas.slice(0, espacosDisponiveis)]
+    })
     event.target.value = ''
   }
 
@@ -163,8 +166,8 @@ export default function AtendimentoTecnicoPage() {
       const statusFinal = statusOverride ?? form.status
       const totalFotosAposSelecao = fotos.length + novasFotos.length
 
-      if (statusFinal === 'AGUARDANDO_REVISAO' && totalFotosAposSelecao < 3) {
-        throw new Error('Para enviar o orcamento ao admin, anexe no minimo 3 fotos da OS.')
+      if (statusFinal === 'AGUARDANDO_REVISAO' && totalFotosAposSelecao < 4) {
+        throw new Error('Para enviar o orcamento ao admin, anexe no minimo 4 fotos da OS.')
       }
 
       const fotosEnviadas = await uploadFotos()
@@ -197,7 +200,7 @@ export default function AtendimentoTecnicoPage() {
 
   const equipamento = os ? [os.categorias?.nome, os.marcas?.nome, os.modelo].filter(Boolean).join(' / ') : '-'
   const totalFotos = fotos.length + novasFotos.length
-  const podeEnviarRevisao = totalFotos >= 3
+  const podeEnviarRevisao = totalFotos >= 4
 
   return (
     <main className="min-h-screen bg-[#c7d3cf] px-4 py-5">
@@ -263,58 +266,85 @@ export default function AtendimentoTecnicoPage() {
                   <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h3 className="text-sm font-bold text-slate-900">Fotos obrigatorias</h3>
-                      <p className="text-xs text-slate-500">Minimo de 3 fotos para enviar o orcamento ao admin.</p>
+                      <p className="text-xs text-slate-500">Preencha no minimo 4 dos 6 espacos para enviar o orcamento ao admin.</p>
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-bold ${podeEnviarRevisao ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                      {totalFotos}/3 fotos
+                      {Math.min(totalFotos, 6)}/4 obrigatorias
                     </span>
                   </div>
 
                   <input
                     type="file"
                     accept="image/*"
-                    multiple
                     onChange={handleFotosChange}
+                    disabled={totalFotos >= 6}
                     className="block w-full text-sm text-slate-600"
                   />
 
                   <p className="mt-2 text-xs font-semibold text-slate-600">
-                    Voce pode escolher uma foto por vez. Elas ficam acumuladas aqui ate enviar.
+                    Adicione uma foto por vez. Cada espaco concluido sera marcado em verde.
                   </p>
 
-                  {novasFotos.length > 0 && (
-                    <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-                      <p className="mb-2 text-xs font-bold uppercase text-slate-500">
-                        Fotos selecionadas para envio ({novasFotos.length})
-                      </p>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {novasFotos.map((foto, index) => (
-                          <div key={`${foto.name}-${index}`} className="flex items-center justify-between gap-2 rounded-md bg-slate-50 px-3 py-2 text-xs">
-                            <span className="min-w-0 truncate font-semibold text-slate-700">{foto.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => removerFotoSelecionada(index)}
-                              className="rounded-md bg-red-50 px-2 py-1 font-bold text-red-600"
-                            >
-                              Remover
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {Array.from({ length: 6 }).map((_, index) => {
+                      const fotoSalva = fotos[index]
+                      const novaFotoIndex = index - fotos.length
+                      const fotoNova = novaFotoIndex >= 0 ? novasFotos[novaFotoIndex] : undefined
+                      const preenchido = Boolean(fotoSalva || fotoNova)
 
-                  {fotos.length > 0 && (
-                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                      {fotos.slice(0, 6).map((foto) => (
-                        <a key={foto.id} href={foto.url ?? '#'} target="_blank" rel="noreferrer" className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                          <div className="aspect-video bg-slate-200">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={foto.url ?? ''} alt={foto.nome_arquivo ?? 'Foto da OS'} className="h-full w-full object-cover" />
+                      return (
+                        <div
+                          key={`espaco-foto-${index}`}
+                          className={`relative min-h-28 overflow-hidden rounded-xl border-2 p-3 transition ${
+                            preenchido
+                              ? 'border-emerald-300 bg-emerald-50'
+                              : 'border-dashed border-slate-300 bg-white'
+                          }`}
+                        >
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <span className={`text-[10px] font-black uppercase ${index < 4 ? 'text-orange-600' : 'text-slate-400'}`}>
+                              {index < 4 ? 'Obrigatoria' : 'Opcional'}
+                            </span>
+                            <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-black ${
+                              preenchido ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'
+                            }`}>
+                              {preenchido ? '✓' : index + 1}
+                            </span>
                           </div>
-                        </a>
-                      ))}
-                    </div>
+
+                          {fotoSalva ? (
+                            <a href={fotoSalva.url ?? '#'} target="_blank" rel="noreferrer" className="block">
+                              <div className="aspect-video overflow-hidden rounded-lg bg-slate-200">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={fotoSalva.url ?? ''} alt={fotoSalva.nome_arquivo ?? 'Foto da OS'} className="h-full w-full object-cover" />
+                              </div>
+                              <p className="mt-1 truncate text-[10px] font-bold text-emerald-800">Foto enviada</p>
+                            </a>
+                          ) : fotoNova ? (
+                            <div>
+                              <p className="line-clamp-2 text-xs font-bold text-emerald-800">{fotoNova.name}</p>
+                              <button
+                                type="button"
+                                onClick={() => removerFotoSelecionada(novaFotoIndex)}
+                                className="mt-2 rounded-md bg-white px-2 py-1 text-[10px] font-bold text-red-600 shadow-sm"
+                              >
+                                Remover
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex min-h-14 items-center justify-center text-center text-xs font-semibold text-slate-400">
+                              Aguardando foto
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {totalFotos >= 6 && (
+                    <p className="mt-3 rounded-lg bg-emerald-100 px-3 py-2 text-xs font-bold text-emerald-700">
+                      Todos os 6 espacos foram preenchidos.
+                    </p>
                   )}
                 </div>
 

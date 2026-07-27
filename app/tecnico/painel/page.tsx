@@ -12,8 +12,15 @@ type OSItem = {
   created_at: string
   status: string | null
   prioridade: string | null
+  garantia?: boolean | string | null
+  referencia_garantidor?: string | null
   modelo: string | null
+  numero_serie?: string | null
   defeito: string | null
+  diagnostico_tecnico?: string | null
+  servico_executado?: string | null
+  pecas_utilizadas?: string | null
+  observacao_tecnica?: string | null
   tecnico_valor_mao_obra?: number | string | null
   tecnico_status_pagamento?: string | null
   tecnico_pago_em?: string | null
@@ -55,6 +62,8 @@ type TecnicoLogado = {
 
 type DocumentoTecnico = {
   id: number
+  os_id?: number | null
+  os_ids?: number[]
   tipo: string | null
   valor: number | string | null
   nome_arquivo: string | null
@@ -62,6 +71,7 @@ type DocumentoTecnico = {
   observacao: string | null
   status: string | null
   criado_em: string | null
+  pago_em?: string | null
 }
 
 type AlertaAcademia = {
@@ -70,6 +80,8 @@ type AlertaAcademia = {
 }
 
 type FiltroOperacional = 'TODOS' | 'SEM_AGENDA' | 'PENDENCIAS' | 'AGUARDANDO_EQUIPE' | 'AGENDADAS'
+type AbaPortal = 'tratamento' | 'executados' | 'pagamentos'
+type FiltroPagamento = 'TODOS' | 'PENDENTE' | 'AGUARDANDO_NF' | 'A_RECEBER' | 'PAGO'
 
 export default function PainelTecnicoPage() {
   const [tecnicoId] = useState(() => getTecnicoId())
@@ -88,10 +100,13 @@ export default function PainelTecnicoPage() {
   })
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
-  const [abaAtiva, setAbaAtiva] = useState<'tratamento' | 'finalizadas'>('tratamento')
+  const [abaAtiva, setAbaAtiva] = useState<AbaPortal>('tratamento')
   const [filtroOperacional, setFiltroOperacional] = useState<FiltroOperacional>('TODOS')
+  const [filtroPagamento, setFiltroPagamento] = useState<FiltroPagamento>('TODOS')
+  const [buscaPortal, setBuscaPortal] = useState('')
   const [mostrarCracha, setMostrarCracha] = useState(false)
-  const [osDocumentoId, setOsDocumentoId] = useState('')
+  const [osDocumentoIds, setOsDocumentoIds] = useState<string[]>([])
+  const [osParaIniciar, setOsParaIniciar] = useState<OSItem | null>(null)
   const [agendaDatas, setAgendaDatas] = useState<Record<string, string>>(() => carregarAgendaLocal(tecnicoId))
 
   const carregarSessao = useCallback(async () => {
@@ -193,9 +208,24 @@ export default function PainelTecnicoPage() {
   }, [agendaDatas, tecnicoId])
 
   const tecnicoNome = tecnicoLogado?.nome || getNomeTecnico(ordens[0])
-  const ordensAbertas = ordens.filter((os) => !['FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(os.status)))
+  const statusExecutado = (os: OSItem) => ['PRONTO_AGUARDANDO_ENTREGA', 'FINALIZADA'].includes(String(os.status))
+  const ordensAbertas = ordens.filter((os) => !['PRONTO_AGUARDANDO_ENTREGA', 'FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(os.status)))
+  const ordensExecutadas = ordens.filter(statusExecutado)
   const ordensFinalizadas = ordens.filter((os) => os.status === 'FINALIZADA')
-  const ordensAReceber = ordensFinalizadas.filter((os) => !tecnicoPago(os))
+  const documentoNFPorOs = new Map<number, DocumentoTecnico>()
+  documentos
+    .filter((documento) => String(documento.tipo).toUpperCase() === 'NF')
+    .forEach((documento) => {
+      const osIds = documento.os_ids?.length ? documento.os_ids : [Number(documento.os_id)].filter(Boolean)
+      for (const osId of osIds) {
+        if (!documentoNFPorOs.has(osId)) documentoNFPorOs.set(osId, documento)
+      }
+    })
+  const ordensPagamentoPendente = ordensExecutadas.filter((os) => os.status === 'PRONTO_AGUARDANDO_ENTREGA')
+  const ordensAguardandoNF = ordensFinalizadas.filter((os) => !tecnicoPago(os) && !documentoNFPorOs.has(os.id))
+  const ordensAReceber = ordensFinalizadas.filter((os) => !tecnicoPago(os) && documentoNFPorOs.has(os.id))
+  const ordensPagas = ordensFinalizadas.filter(tecnicoPago)
+  const ordensExecutadasAtivas = ordensExecutadas.filter((os) => !tecnicoPago(os))
   const ordensSemAgenda = ordensAbertas.filter((os) => !getAgendaDateTime(os, agendaDatas))
   const ordensPendentes = ordensAbertas.filter((os) =>
     ['EM_ATENDIMENTO', 'CRITICA', 'AGUARDANDO_PECA'].includes(String(os.status))
@@ -213,6 +243,18 @@ export default function PainelTecnicoPage() {
         : filtroOperacional === 'AGENDADAS'
           ? ordensAgendadas
           : ordensAbertas
+  const buscaNormalizada = buscaPortal.trim().toLocaleLowerCase('pt-BR')
+  const ordensExecutadasExibidas = ordensExecutadasAtivas.filter((os) => correspondeBusca(os, buscaNormalizada))
+  const ordensPagamentoBase = filtroPagamento === 'PENDENTE'
+    ? ordensPagamentoPendente
+    : filtroPagamento === 'AGUARDANDO_NF'
+      ? ordensAguardandoNF
+      : filtroPagamento === 'A_RECEBER'
+        ? ordensAReceber
+        : filtroPagamento === 'PAGO'
+          ? ordensPagas
+          : [...ordensPagamentoPendente, ...ordensAguardandoNF, ...ordensAReceber]
+  const ordensPagamentoExibidas = ordensPagamentoBase.filter((os) => correspondeBusca(os, buscaNormalizada))
   const tituloLista = filtroOperacional === 'SEM_AGENDA'
     ? 'OS para agendar'
     : filtroOperacional === 'PENDENCIAS'
@@ -233,10 +275,90 @@ export default function PainelTecnicoPage() {
     window.setTimeout(() => document.getElementById('minhas-os')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
   }
 
-  function abrirFinalizadas() {
-    setAbaAtiva('finalizadas')
+  function abrirExecutados() {
+    setAbaAtiva('executados')
     setFiltroOperacional('TODOS')
     window.setTimeout(() => document.getElementById('minhas-os')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+  }
+
+  function abrirPagamentos(filtro: FiltroPagamento = 'TODOS') {
+    setAbaAtiva('pagamentos')
+    setFiltroPagamento(filtro)
+    setMostrarCracha(false)
+    window.setTimeout(() => document.getElementById('minhas-os')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+  }
+
+  function imprimirOS(os: OSItem, executada: boolean) {
+    const popup = window.open('', '_blank', 'width=900,height=720')
+    if (!popup) {
+      setErro('O navegador bloqueou a janela de impressão. Libere pop-ups e tente novamente.')
+      return
+    }
+
+    const garantia = emGarantia(os.garantia) ? 'Serviço dentro da garantia' : 'Serviço fora da garantia'
+    const data = new Date(os.created_at).toLocaleDateString('pt-BR')
+    const logo = `${window.location.origin}/logo-ct.png`
+    const tituloDocumento = executada ? 'Ordem de serviço executada' : 'Ordem de serviço'
+    popup.document.write(`<!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(os.numero_os ?? `OS #${os.id}`)}</title>
+          <style>
+            *{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#0f172a;margin:0;padding:20px 24px;background:#fff}
+            .cabecalho{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0f172a;padding-bottom:10px}
+            .logo{width:105px;height:auto}.titulo{text-align:right}.titulo h1{font-size:19px;margin:0}.titulo p{font-size:10px;color:#64748b;margin:4px 0 0}
+            .selo{display:inline-block;margin-top:10px;border-radius:999px;background:#ecfdf5;color:#047857;padding:5px 10px;font-size:10px;font-weight:700}
+            .grupo{margin-top:9px;border:1px solid #cbd5e1;border-radius:10px;overflow:hidden;break-inside:avoid}.grupo-titulo{background:#f1f5f9;border-bottom:1px solid #cbd5e1;padding:6px 10px;font-size:9px;text-transform:uppercase;font-weight:800;color:#334155}
+            .grid{display:grid;grid-template-columns:1fr 1fr;gap:0}.campo{min-height:46px;padding:8px 10px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}
+            .campo.anotacao{min-height:76px}
+            .campo:nth-child(even){border-right:0}.campo.largo{grid-column:1/-1;border-right:0}.grid .campo:last-child{border-bottom:0}.rotulo{font-size:9px;text-transform:uppercase;font-weight:700;color:#64748b}.valor{font-size:12px;font-weight:600;margin-top:5px;white-space:pre-wrap}
+            .assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:36px;margin-top:44px}.linha{border-top:1px solid #334155;text-align:center;padding-top:6px;font-size:9px}
+            .rodape{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:8px;text-align:center;font-size:9px;line-height:1.5;color:#64748b}
+            .contato{font-weight:700;color:#334155}
+            @media print{@page{size:A4;margin:8mm}body{padding:0}.no-print{display:none}}
+          </style>
+        </head>
+        <body>
+          <div class="cabecalho">
+            <img class="logo" src="${logo}" alt="Chame o Técnico" />
+            <div class="titulo"><h1>${tituloDocumento}</h1><p>${escapeHtml(os.numero_os ?? `OS #${os.id}`)} • ${data}</p></div>
+          </div>
+          <span class="selo">${garantia}</span>
+          ${grupoImpressao('Dados do cliente', [
+            campoImpressao('Cliente', os.clientes?.nome),
+            campoImpressao('Contato', os.clientes?.whatsapp),
+            campoImpressao('Endereço completo', formatarEndereco(os), true),
+          ])}
+          ${grupoImpressao('Dados do equipamento', [
+            campoImpressao('Equipamento', formatarEquipamento(os)),
+            campoImpressao('Número de série', os.numero_serie),
+            ...(emGarantia(os.garantia) || os.referencia_garantidor?.trim()
+              ? [
+                  campoImpressao('Condição do atendimento', garantia),
+                  campoImpressao('OS/Sinistro do garantidor', os.referencia_garantidor),
+                ]
+              : [campoImpressao('Condição do atendimento', garantia, true)]),
+            campoImpressao('Defeito informado', os.defeito, true),
+          ])}
+          ${grupoImpressao('Atendimento técnico', [
+            campoImpressao('Diagnóstico técnico', executada ? os.diagnostico_tecnico : '', true, !executada),
+            campoImpressao('Serviço executado', executada ? os.servico_executado : '', true, !executada),
+            campoImpressao('Peças utilizadas', executada ? os.pecas_utilizadas : '', true, !executada),
+          ])}
+          ${grupoImpressao('Responsáveis', [
+            campoImpressao('Técnico responsável', tecnicoNome),
+            campoImpressao('Data do documento', data),
+          ])}
+          <div class="assinaturas"><div class="linha">Assinatura do cliente</div><div class="linha">Assinatura do técnico</div></div>
+          <div class="rodape">
+            <div class="contato">www.chameotecnico.com.br | atendimento@chameotecnico.com.br</div>
+            <div>Documento técnico sem valores • Chame o Técnico</div>
+          </div>
+          <script>window.onload=()=>{window.print()}</script>
+        </body>
+      </html>`)
+    popup.document.close()
   }
 
   async function atualizarAgenda(osId: number, dataHora: string) {
@@ -267,7 +389,7 @@ export default function PainelTecnicoPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#c7d3cf] px-4 py-5">
+    <main className="min-h-screen bg-[#eef3f6] px-3 py-3 pb-24 sm:px-4 sm:py-5 sm:pb-5">
       <div className="mx-auto max-w-7xl space-y-4">
         <header className="overflow-hidden rounded-xl bg-slate-950 shadow-sm">
           <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
@@ -288,7 +410,8 @@ export default function PainelTecnicoPage() {
           <nav className="flex gap-1 overflow-x-auto border-t border-slate-800 px-3 py-2 sm:px-5">
             <PortalNavButton label="Atendimentos" active={!mostrarCracha && abaAtiva === 'tratamento' && filtroOperacional !== 'AGENDADAS'} onClick={() => { setMostrarCracha(false); abrirFiltro('TODOS') }} />
             <PortalNavButton label="Agenda" active={!mostrarCracha && filtroOperacional === 'AGENDADAS'} onClick={() => { setMostrarCracha(false); abrirFiltro('AGENDADAS') }} />
-            <PortalNavButton label="Pagamentos" active={!mostrarCracha && abaAtiva === 'finalizadas'} onClick={() => { setMostrarCracha(false); abrirFinalizadas() }} />
+            <PortalNavButton label="Serviços executados" active={!mostrarCracha && abaAtiva === 'executados'} onClick={() => { setMostrarCracha(false); abrirExecutados() }} />
+            <PortalNavButton label="Pagamentos" active={!mostrarCracha && abaAtiva === 'pagamentos'} onClick={() => abrirPagamentos()} />
             {!tecnicoId && <Link href="/tecnico/academia" className={`relative inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold transition hover:bg-slate-800 hover:text-white ${alertaAcademia.novos ? 'bg-orange-500 text-white shadow-sm animate-pulse' : 'text-slate-300'}`}>Academia{alertaAcademia.novos > 0 && <span className="min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-black text-white ring-2 ring-slate-950">{alertaAcademia.novos}</span>}</Link>}
             {!tecnicoId && <button type="button" onClick={() => setMostrarCracha((atual) => !atual)} className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold transition ${mostrarCracha ? 'bg-orange-500 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>Crachá digital</button>}
           </nav>
@@ -350,7 +473,7 @@ export default function PainelTecnicoPage() {
             <PortalActionCard label="Aguardando equipe" detail="Em análise interna" count={ordensAguardandoEquipe.length} tone="slate" icon="hourglass" active={filtroOperacional === 'AGUARDANDO_EQUIPE' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('AGUARDANDO_EQUIPE')} />
             <PortalActionCard label="Agendados" detail="Com data marcada" count={ordensAgendadas.length} tone="blue" icon="check-calendar" active={filtroOperacional === 'AGENDADAS' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('AGENDADAS')} />
             <PortalActionCard label="Meus serviços" detail="Todos em aberto" count={ordensAbertas.length} tone="indigo" icon="services" active={filtroOperacional === 'TODOS' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('TODOS')} />
-            <PortalActionCard label="Finalizados" detail="Histórico e valores" count={ordensFinalizadas.length} tone="green" icon="check" active={abaAtiva === 'finalizadas'} onClick={abrirFinalizadas} />
+            <PortalActionCard label="Serviços executados" detail="Concluídos e não pagos" count={ordensExecutadasAtivas.length} tone="green" icon="check" active={abaAtiva === 'executados'} onClick={abrirExecutados} />
           </div>
         </section>
 
@@ -360,11 +483,19 @@ export default function PainelTecnicoPage() {
           <section id="minhas-os" className="scroll-mt-4 rounded-xl bg-white p-3 shadow-sm sm:p-4 xl:col-span-2">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-lg font-black text-slate-950">{abaAtiva === 'finalizadas' ? 'Serviços finalizados' : tituloLista}</h2>
-                <p className="text-xs text-slate-500">{abaAtiva === 'finalizadas' ? 'Consulte o histórico, valores e documentos.' : `${ordensExibidas.length} OS nesta seleção.`}</p>
+                <h2 className="text-lg font-black text-slate-950">
+                  {abaAtiva === 'executados' ? 'Serviços executados' : abaAtiva === 'pagamentos' ? 'Carteira de pagamentos' : tituloLista}
+                </h2>
+                <p className="text-xs text-slate-500">
+                  {abaAtiva === 'executados'
+                    ? 'Histórico técnico e impressão da OS sem valores.'
+                    : abaAtiva === 'pagamentos'
+                      ? 'Acompanhe nota fiscal, valores a receber e pagamentos.'
+                      : `${ordensExibidas.length} OS nesta seleção.`}
+                </p>
               </div>
 
-              <div className="inline-flex w-full rounded-lg bg-slate-100 p-1 sm:w-auto">
+              <div className="inline-flex w-full overflow-x-auto rounded-lg bg-slate-100 p-1 sm:w-auto">
                 <button
                   type="button"
                   onClick={() => { setAbaAtiva('tratamento'); setFiltroOperacional('TODOS') }}
@@ -376,15 +507,36 @@ export default function PainelTecnicoPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={abrirFinalizadas}
+                  onClick={abrirExecutados}
                   className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-black transition sm:flex-none sm:px-3 sm:text-xs ${
-                    abaAtiva === 'finalizadas' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                    abaAtiva === 'executados' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  Finalizadas ({ordensFinalizadas.length})
+                  Executados ({ordensExecutadasAtivas.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => abrirPagamentos()}
+                  className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-black transition sm:flex-none sm:px-3 sm:text-xs ${
+                    abaAtiva === 'pagamentos' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Pagamentos
                 </button>
               </div>
             </div>
+
+            {abaAtiva !== 'tratamento' && (
+              <label className="mb-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <span className="text-slate-400" aria-hidden="true">⌕</span>
+                <input
+                  value={buscaPortal}
+                  onChange={(event) => setBuscaPortal(event.target.value)}
+                  className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none"
+                  placeholder="Buscar por OS, cliente ou equipamento..."
+                />
+              </label>
+            )}
 
             {loading ? (
               <p className="text-sm text-slate-500">Carregando...</p>
@@ -441,12 +593,22 @@ export default function PainelTecnicoPage() {
                         )}
 
                         {agendado ? (
-                          <Link
-                            href={tecnicoId ? `/tecnico/os/${os.id}?tecnico=${encodeURIComponent(tecnicoId)}` : `/tecnico/os/${os.id}`}
-                            className="block rounded-lg bg-slate-900 px-3 py-1.5 text-center text-xs font-bold text-white transition hover:bg-slate-800 sm:py-2"
-                          >
-                            Abrir atendimento
-                          </Link>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => imprimirOS(os, false)}
+                              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-center text-xs font-bold text-white transition hover:bg-emerald-700 sm:py-2"
+                            >
+                              Imprimir OS
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setOsParaIniciar(os)}
+                              className="rounded-lg bg-slate-900 px-3 py-1.5 text-center text-xs font-bold text-white transition hover:bg-slate-800 sm:py-2"
+                            >
+                              Iniciar atendimento
+                            </button>
+                          </div>
                         ) : (
                           <button
                             type="button"
@@ -466,72 +628,317 @@ export default function PainelTecnicoPage() {
                 <p className="text-sm font-bold text-slate-700">Nada pendente nesta opção.</p>
                 <button type="button" onClick={() => abrirFiltro('TODOS')} className="mt-2 text-xs font-black text-orange-600">Ver todos os atendimentos</button>
               </div>
-            ) : ordensFinalizadas.length ? (
-              <>
-                <div className="mb-2 flex justify-end sm:mb-3">
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700 sm:text-xs">
-                    {ordensAReceber.length} a receber
-                  </span>
-                </div>
+            ) : abaAtiva === 'executados' ? (
+              ordensExecutadasExibidas.length ? (
                 <div className="grid gap-2 md:grid-cols-2">
-                  {ordensFinalizadas.map((os) => (
-                    <article key={os.id} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-3">
-                      <div className="absolute inset-y-0 left-0 w-1 bg-emerald-600 sm:w-1.5" />
-                      <div className="mb-1.5 flex items-start justify-between gap-2 sm:mb-2">
-                        <div className="min-w-0 pl-2">
-                          <p className="text-[10px] font-black leading-tight text-emerald-700 sm:text-xs">{os.numero_os ?? `OS #${os.id}`}</p>
-                          <h3 className="truncate text-sm font-black leading-tight text-slate-950 sm:text-base">{os.clientes?.nome ?? 'Cliente'}</h3>
-                          <p className="line-clamp-1 text-[10px] leading-tight text-slate-500 sm:text-[11px]">{formatarEquipamento(os)}</p>
-                        </div>
-                        <span className="shrink-0 rounded-md bg-emerald-600 px-1.5 py-1 text-[9px] font-bold text-white sm:px-2 sm:text-[10px]">
-                          {tecnicoPago(os) ? 'PAGO' : 'A RECEBER'}
-                        </span>
-                      </div>
-
-                      <div className="mb-2 rounded-md bg-emerald-50 px-2 py-1.5 sm:mb-3 sm:px-3 sm:py-2">
-                        <p className="text-[9px] font-bold uppercase leading-tight text-emerald-700 sm:text-[10px]">Valor do seu serviço</p>
-                        <p className="text-base font-black leading-tight text-slate-950 sm:text-lg">{formatCurrency(valorTotalTecnico(os))}</p>
-                      </div>
-
-                      <Link
-                        href={tecnicoId ? `/tecnico/os/${os.id}?tecnico=${encodeURIComponent(tecnicoId)}` : `/tecnico/os/${os.id}`}
-                        className="block rounded-lg bg-slate-900 px-3 py-1.5 text-center text-xs font-bold text-white transition hover:bg-slate-800 sm:py-2"
-                      >
-                        Abrir OS finalizada
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => setOsDocumentoId(String(os.id))}
-                        className="mt-1.5 block w-full rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-center text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 sm:mt-2 sm:py-2"
-                      >
-                        Enviar nota fiscal
-                      </button>
-                    </article>
+                  {ordensExecutadasExibidas.map((os) => (
+                    <OSExecutadaCard
+                      key={os.id}
+                      os={os}
+                      tecnicoId={tecnicoId}
+                      onPrint={() => imprimirOS(os, true)}
+                    />
                   ))}
                 </div>
-              </>
+              ) : (
+                <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm font-bold text-slate-600">
+                  Nenhum serviço executado localizado.
+                </p>
+              )
             ) : (
-              <p className="text-sm text-slate-500">Nenhuma OS finalizada ainda.</p>
+              <CarteiraPagamentos
+                filtro={filtroPagamento}
+                onFiltro={setFiltroPagamento}
+                pendentes={ordensPagamentoPendente}
+                aguardandoNF={ordensAguardandoNF}
+                aReceber={ordensAReceber}
+                pagas={ordensPagas}
+                ordens={ordensPagamentoExibidas}
+                documentosPorOs={documentoNFPorOs}
+                onEnviarNF={(osId) => {
+                  setOsDocumentoIds([String(osId)])
+                  window.setTimeout(() => document.getElementById('nota-fiscal')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+                }}
+              />
             )}
           </section>
 
           <aside className="space-y-3 xl:space-y-4">
-            <ResumoTecnicoPanel resumo={resumo} />
-            {abaAtiva === 'finalizadas' && (
+            {abaAtiva !== 'pagamentos' && <ResumoTecnicoPanel resumo={resumo} />}
+            {abaAtiva === 'pagamentos' && (
               <DocumentoPagamentoPanel
                 tecnicoId={tecnicoId}
                 documentos={documentos}
                 tabelaPendente={documentosPendentes}
                 ordensFinalizadas={ordensFinalizadas}
-                osSelecionadaId={osDocumentoId}
-                onOsSelecionada={setOsDocumentoId}
+                osSelecionadasIds={osDocumentoIds}
+                onOsSelecionadas={setOsDocumentoIds}
                 onUploaded={carregarDocumentos}
               />
             )}
           </aside>
         </div>
+
+        {osParaIniciar && (
+          <ConfirmarInicioAtendimento
+            os={osParaIniciar}
+            tecnicoId={tecnicoId}
+            onClose={() => setOsParaIniciar(null)}
+          />
+        )}
+
+        <MobilePortalNav
+          aba={abaAtiva}
+          alertaAcademia={alertaAcademia.novos}
+          onAtendimentos={() => { setMostrarCracha(false); abrirFiltro('TODOS') }}
+          onExecutados={() => { setMostrarCracha(false); abrirExecutados() }}
+          onPagamentos={() => abrirPagamentos()}
+        />
       </div>
     </main>
+  )
+}
+
+function OSExecutadaCard({
+  os,
+  tecnicoId,
+  onPrint,
+}: {
+  os: OSItem
+  tecnicoId: string
+  onPrint: () => void
+}) {
+  const aguardandoEncerramento = os.status === 'PRONTO_AGUARDANDO_ENTREGA'
+
+  return (
+    <article className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="absolute inset-y-0 left-0 w-1.5 bg-emerald-600" />
+      <div className="flex items-start justify-between gap-2 pl-2">
+        <div className="min-w-0">
+          <p className="text-xs font-black text-emerald-700">{os.numero_os ?? `OS #${os.id}`}</p>
+          <h3 className="truncate text-base font-black text-slate-950">{os.clientes?.nome ?? 'Cliente'}</h3>
+          <p className="line-clamp-1 text-xs text-slate-500">{formatarEquipamento(os)}</p>
+        </div>
+        <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black ${aguardandoEncerramento ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+          {aguardandoEncerramento ? 'AGUARDANDO ADMIN' : 'FINALIZADA'}
+        </span>
+      </div>
+
+      <div className="mt-3 rounded-lg bg-slate-50 p-3">
+        <div className="mb-2 flex flex-wrap gap-2">
+          <span className={`rounded-full px-2 py-1 text-[10px] font-black ${emGarantia(os.garantia) ? 'bg-blue-100 text-blue-700' : 'bg-violet-100 text-violet-700'}`}>
+            {emGarantia(os.garantia) ? 'DENTRO DA GARANTIA' : 'FORA DA GARANTIA'}
+          </span>
+        </div>
+        <p className="text-[10px] font-black uppercase text-slate-500">Serviço executado</p>
+        <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-xs font-semibold leading-relaxed text-slate-700">
+          {os.servico_executado?.trim() || 'Serviço executado ainda não descrito.'}
+        </p>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Link
+          href={tecnicoId ? `/tecnico/os/${os.id}?tecnico=${encodeURIComponent(tecnicoId)}` : `/tecnico/os/${os.id}`}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-center text-xs font-black text-slate-700 transition hover:bg-slate-50"
+        >
+          Ver detalhes
+        </Link>
+        <button
+          type="button"
+          onClick={onPrint}
+          className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-black text-white transition hover:bg-slate-800"
+        >
+          Imprimir OS
+        </button>
+      </div>
+    </article>
+  )
+}
+
+function CarteiraPagamentos({
+  filtro,
+  onFiltro,
+  pendentes,
+  aguardandoNF,
+  aReceber,
+  pagas,
+  ordens,
+  documentosPorOs,
+  onEnviarNF,
+}: {
+  filtro: FiltroPagamento
+  onFiltro: (filtro: FiltroPagamento) => void
+  pendentes: OSItem[]
+  aguardandoNF: OSItem[]
+  aReceber: OSItem[]
+  pagas: OSItem[]
+  ordens: OSItem[]
+  documentosPorOs: Map<number, DocumentoTecnico>
+  onEnviarNF: (osId: number) => void
+}) {
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <CarteiraResumoCard label="Pendente" detail="Aguardando conclusão admin" ordens={pendentes} tone="amber" active={filtro === 'PENDENTE'} onClick={() => onFiltro(filtro === 'PENDENTE' ? 'TODOS' : 'PENDENTE')} />
+        <CarteiraResumoCard label="Aguardando NF" detail="Nota fiscal não enviada" ordens={aguardandoNF} tone="rose" active={filtro === 'AGUARDANDO_NF'} onClick={() => onFiltro(filtro === 'AGUARDANDO_NF' ? 'TODOS' : 'AGUARDANDO_NF')} />
+        <CarteiraResumoCard label="A receber" detail="NF enviada para conferência" ordens={aReceber} tone="blue" active={filtro === 'A_RECEBER'} onClick={() => onFiltro(filtro === 'A_RECEBER' ? 'TODOS' : 'A_RECEBER')} />
+        <CarteiraResumoCard label="Histórico pago" detail="Fora das filas do técnico" ordens={pagas} tone="emerald" active={filtro === 'PAGO'} onClick={() => onFiltro(filtro === 'PAGO' ? 'TODOS' : 'PAGO')} />
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {ordens.length ? ordens.map((os) => {
+          const pagamento = getPagamentoInfo(os, documentosPorOs.get(os.id))
+          const documento = documentosPorOs.get(os.id)
+
+          return (
+            <article key={os.id} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-500">{os.numero_os ?? `OS #${os.id}`}</p>
+                  <h3 className="truncate text-sm font-black text-slate-950">{os.clientes?.nome ?? 'Cliente'}</h3>
+                  <p className="truncate text-xs text-slate-500">{formatarEquipamento(os)}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <span className={`inline-block rounded-full px-2 py-1 text-[9px] font-black ${pagamento.classe}`}>{pagamento.label}</span>
+                  <p className="mt-1 text-sm font-black text-slate-950">{formatCurrency(valorTotalTecnico(os))}</p>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                <p className="text-[11px] font-semibold text-slate-500">{pagamento.orientacao}</p>
+                {pagamento.status === 'AGUARDANDO_NF' && (
+                  <button type="button" onClick={() => onEnviarNF(os.id)} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-black text-white">
+                    Enviar nota fiscal
+                  </button>
+                )}
+                {documento?.url && (
+                  <a href={documento.url} target="_blank" rel="noreferrer" className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">
+                    Ver nota fiscal
+                  </a>
+                )}
+              </div>
+            </article>
+          )
+        }) : (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center">
+            <p className="text-sm font-black text-slate-700">Nenhum pagamento nesta situação.</p>
+            <p className="mt-1 text-xs text-slate-500">Altere o filtro ou faça uma nova busca.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CarteiraResumoCard({
+  label,
+  detail,
+  ordens,
+  tone,
+  active,
+  onClick,
+}: {
+  label: string
+  detail: string
+  ordens: OSItem[]
+  tone: 'amber' | 'rose' | 'blue' | 'emerald'
+  active: boolean
+  onClick: () => void
+}) {
+  const tones = {
+    amber: 'border-amber-200 bg-amber-50 text-amber-800',
+    rose: 'border-rose-200 bg-rose-50 text-rose-800',
+    blue: 'border-blue-200 bg-blue-50 text-blue-800',
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  }
+  const total = ordens.reduce((acc, os) => acc + valorTotalTecnico(os), 0)
+
+  return (
+    <button type="button" onClick={onClick} className={`rounded-xl border p-3 text-left transition ${tones[tone]} ${active ? 'ring-2 ring-slate-900 ring-offset-1' : 'hover:-translate-y-0.5'}`}>
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-xs font-black">{label}</span>
+        <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-black">{ordens.length}</span>
+      </div>
+      <p className="mt-2 text-base font-black sm:text-lg">{formatCurrency(total)}</p>
+      <p className="mt-1 line-clamp-1 text-[9px] font-semibold opacity-75">{detail}</p>
+    </button>
+  )
+}
+
+function ConfirmarInicioAtendimento({
+  os,
+  tecnicoId,
+  onClose,
+}: {
+  os: OSItem
+  tecnicoId: string
+  onClose: () => void
+}) {
+  const href = tecnicoId ? `/tecnico/os/${os.id}?tecnico=${encodeURIComponent(tecnicoId)}` : `/tecnico/os/${os.id}`
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="inicio-atendimento">
+      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-5">
+          <div>
+            <p className="text-xs font-black uppercase text-blue-700">{os.numero_os ?? `OS #${os.id}`}</p>
+            <h2 id="inicio-atendimento" className="mt-1 text-xl font-black text-slate-950">Antes de iniciar o atendimento</h2>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-black text-slate-600" aria-label="Fechar">×</button>
+        </div>
+        <div className="space-y-4 p-5 text-sm leading-relaxed text-slate-700">
+          <p className="font-semibold">Confirme os cuidados necessários para manter o atendimento completo e bem documentado:</p>
+          <ul className="space-y-2">
+            {[
+              'Confirme os dados do cliente e do equipamento.',
+              'Realize os testes técnicos necessários antes e depois do reparo.',
+              'Registre diagnóstico, serviço executado e peças utilizadas.',
+              'Anexe as fotos obrigatórias e mantenha cordialidade no atendimento.',
+            ].map((item) => <li key={item} className="flex gap-2"><span className="font-black text-emerald-600">✓</span><span>{item}</span></li>)}
+          </ul>
+        </div>
+        <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-4">
+          <button type="button" onClick={onClose} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black text-slate-700">Cancelar</button>
+          <Link href={href} className="rounded-xl bg-blue-800 px-4 py-3 text-center text-sm font-black text-white">Continuar</Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MobilePortalNav({
+  aba,
+  alertaAcademia,
+  onAtendimentos,
+  onExecutados,
+  onPagamentos,
+}: {
+  aba: AbaPortal
+  alertaAcademia: number
+  onAtendimentos: () => void
+  onExecutados: () => void
+  onPagamentos: () => void
+}) {
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-slate-200 bg-white px-1 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1 shadow-[0_-4px_18px_rgba(15,23,42,0.08)] sm:hidden">
+      <MobileNavButton label="Atendimentos" icon="⌂" active={aba === 'tratamento'} onClick={onAtendimentos} />
+      <MobileNavButton label="Executados" icon="✓" active={aba === 'executados'} onClick={onExecutados} />
+      <MobileNavButton label="Pagamentos" icon="$" active={aba === 'pagamentos'} onClick={onPagamentos} />
+      <Link href="/tecnico/academia" className="relative flex min-w-0 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[9px] font-bold text-slate-500">
+        <span className="text-lg leading-none">A</span>
+        <span className="truncate">Academia</span>
+        {alertaAcademia > 0 && <span className="absolute right-3 top-0 rounded-full bg-red-600 px-1.5 text-[9px] font-black text-white">{alertaAcademia}</span>}
+      </Link>
+    </nav>
+  )
+}
+
+function MobileNavButton({ label, icon, active, onClick }: { label: string; icon: string; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className={`flex min-w-0 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[9px] font-bold ${active ? 'bg-blue-50 text-blue-800' : 'text-slate-500'}`}>
+      <span className="text-lg leading-none">{icon}</span>
+      <span className="truncate">{label}</span>
+    </button>
   )
 }
 
@@ -735,16 +1142,16 @@ function DocumentoPagamentoPanel({
   documentos,
   tabelaPendente,
   ordensFinalizadas,
-  osSelecionadaId,
-  onOsSelecionada,
+  osSelecionadasIds,
+  onOsSelecionadas,
   onUploaded,
 }: {
   tecnicoId: string
   documentos: DocumentoTecnico[]
   tabelaPendente: boolean
   ordensFinalizadas: OSItem[]
-  osSelecionadaId: string
-  onOsSelecionada: (id: string) => void
+  osSelecionadasIds: string[]
+  onOsSelecionadas: (ids: string[]) => void
   onUploaded: () => Promise<void>
 }) {
   const [valor, setValor] = useState('')
@@ -773,7 +1180,7 @@ function DocumentoPagamentoPanel({
       formData.append('valor', valor || '0')
       formData.append('observacao', observacao)
       formData.append('arquivo', arquivo)
-      if (osSelecionadaId) formData.append('osId', osSelecionadaId)
+      osSelecionadasIds.forEach((osId) => formData.append('osIds', osId))
       if (tecnicoId) formData.append('tecnicoId', tecnicoId)
 
       const response = await fetch('/api/tecnico/documentos', {
@@ -788,7 +1195,7 @@ function DocumentoPagamentoPanel({
       setValor('')
       setObservacao('')
       setArquivo(null)
-      onOsSelecionada('')
+      onOsSelecionadas([])
       await onUploaded()
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Erro ao enviar a nota fiscal.')
@@ -802,7 +1209,7 @@ function DocumentoPagamentoPanel({
   }
 
   return (
-    <section className="rounded-xl bg-white p-3 shadow-sm">
+    <section id="nota-fiscal" className="scroll-mt-4 rounded-xl bg-white p-3 shadow-sm">
       <h3 className="text-sm font-bold text-slate-950">Nota fiscal</h3>
       <p className="text-xs text-slate-500">Envie a nota fiscal vinculada ao serviço para conferência e pagamento.</p>
 
@@ -816,21 +1223,40 @@ function DocumentoPagamentoPanel({
       {mensagem && <div className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">{mensagem}</div>}
 
       <form onSubmit={enviarDocumento} className="mt-3 space-y-2">
-        <label className="block text-xs font-bold text-slate-600">
-          OS vinculada
-          <select
-            value={osSelecionadaId}
-            onChange={(event) => onOsSelecionada(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500"
-          >
-            <option value="">Documento geral</option>
-            {ordensFinalizadas.map((os) => (
-              <option key={os.id} value={os.id}>
-                {os.numero_os ?? `OS #${os.id}`} - {os.clientes?.nome ?? 'Cliente'}
-              </option>
-            ))}
-          </select>
-        </label>
+        <fieldset className="rounded-lg border border-slate-200 p-3">
+          <legend className="px-1 text-xs font-bold text-slate-600">OS incluídas nesta nota fiscal</legend>
+          <p className="mb-2 text-[11px] text-slate-500">Marque uma ou várias OS que serão cobradas na mesma NF.</p>
+          <div className="max-h-44 space-y-1 overflow-y-auto">
+            {ordensFinalizadas.filter((os) => !tecnicoPago(os)).map((os) => {
+              const value = String(os.id)
+              const checked = osSelecionadasIds.includes(value)
+              return (
+                <label key={os.id} className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-xs ${checked ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white'}`}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => onOsSelecionadas(
+                      checked
+                        ? osSelecionadasIds.filter((id) => id !== value)
+                        : [...osSelecionadasIds, value]
+                    )}
+                    className="mt-0.5"
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-black text-slate-800">{os.numero_os ?? `OS #${os.id}`}</span>
+                    <span className="block truncate text-slate-500">{os.clientes?.nome ?? 'Cliente'} • {formatCurrency(valorTotalTecnico(os))}</span>
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+          {osSelecionadasIds.length > 0 && (
+            <div className="mt-2 flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2 text-xs font-black text-white">
+              <span>{osSelecionadasIds.length} OS selecionada(s)</span>
+              <span>{formatCurrency(ordensFinalizadas.filter((os) => osSelecionadasIds.includes(String(os.id))).reduce((acc, os) => acc + valorTotalTecnico(os), 0))}</span>
+            </div>
+          )}
+        </fieldset>
 
         <label className="block text-xs font-bold text-slate-600">
           Valor da nota fiscal
@@ -864,7 +1290,7 @@ function DocumentoPagamentoPanel({
 
         <button
           type="submit"
-          disabled={enviando || tabelaPendente}
+          disabled={enviando || tabelaPendente || osSelecionadasIds.length === 0}
           className="w-full rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {enviando ? 'Enviando...' : 'Enviar nota fiscal'}
@@ -1046,6 +1472,76 @@ function statusStyle(borderColor: string, backgroundColor: string): CSSPropertie
 
 function alertStyle(backgroundColor: string, color: string): CSSProperties {
   return { backgroundColor, color }
+}
+
+function correspondeBusca(os: OSItem, busca: string) {
+  if (!busca) return true
+  return [
+    os.numero_os,
+    os.clientes?.nome,
+    os.modelo,
+    os.categorias?.nome,
+    os.marcas?.nome,
+    os.numero_serie,
+  ].some((valor) => String(valor ?? '').toLocaleLowerCase('pt-BR').includes(busca))
+}
+
+function emGarantia(value: OSItem['garantia']) {
+  if (typeof value === 'boolean') return value
+  return ['SIM', 'TRUE', '1', 'GARANTIA'].includes(String(value ?? '').trim().toUpperCase())
+}
+
+function getPagamentoInfo(os: OSItem, documento?: DocumentoTecnico) {
+  if (tecnicoPago(os)) {
+    return {
+      status: 'PAGO' as const,
+      label: 'PAGO',
+      orientacao: os.tecnico_pago_em
+        ? `Pagamento confirmado em ${new Date(os.tecnico_pago_em).toLocaleDateString('pt-BR')}.`
+        : 'Pagamento confirmado pelo administrativo.',
+      classe: 'bg-emerald-100 text-emerald-700',
+    }
+  }
+  if (os.status === 'PRONTO_AGUARDANDO_ENTREGA') {
+    return {
+      status: 'PENDENTE' as const,
+      label: 'PENDENTE',
+      orientacao: 'Serviço executado; aguardando encerramento da OS pelo administrativo.',
+      classe: 'bg-amber-100 text-amber-700',
+    }
+  }
+  if (!documento) {
+    return {
+      status: 'AGUARDANDO_NF' as const,
+      label: 'AGUARDANDO NF',
+      orientacao: 'Envie a nota fiscal para liberar a conferência do pagamento.',
+      classe: 'bg-rose-100 text-rose-700',
+    }
+  }
+  return {
+    status: 'A_RECEBER' as const,
+    label: 'A RECEBER',
+    orientacao: 'Nota fiscal recebida; pagamento em conferência.',
+    classe: 'bg-blue-100 text-blue-700',
+  }
+}
+
+function campoImpressao(label: string, value: unknown, largo = false, anotacao = false) {
+  return `<div class="campo${largo ? ' largo' : ''}${anotacao ? ' anotacao' : ''}"><div class="rotulo">${escapeHtml(label)}</div><div class="valor">${escapeHtml(String(value ?? '').trim() || '-')}</div></div>`
+}
+
+function grupoImpressao(titulo: string, campos: string[]) {
+  return `<section class="grupo"><div class="grupo-titulo">${escapeHtml(titulo)}</div><div class="grid">${campos.join('')}</div></section>`
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  })[char] ?? char)
 }
 
 function getTecnicoId() {
