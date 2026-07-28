@@ -33,11 +33,12 @@ export async function GET(request: NextRequest) {
     const idsUnidades = auth.unidadeId ? [auth.unidadeId] : auth.unidadesPermitidas
     if (!idsUnidades.length) return NextResponse.json({ error: 'Usuário sem unidade autorizada.' }, { status: 403 })
     const temClassificacaoDre = await colunaExiste(supabase, 'contas_pagar', 'classificacao_dre')
+    const temAcrescimosContas = await colunaExiste(supabase, 'contas_pagar', 'valor_pago')
 
     const [ordens, vendas, contas, recebimentos, pagamentosTecnicos] = await Promise.all([
       carregarOrdens(supabase, idsUnidades, inicioIso, fimIso, base),
       carregarVendas(supabase, idsUnidades, inicioIso, fimIso),
-      carregarContas(supabase, idsUnidades, temClassificacaoDre),
+      carregarContas(supabase, idsUnidades, temClassificacaoDre, temAcrescimosContas),
       base === 'CAIXA' ? carregarHistorico(supabase, 'RECEBIMENTO_OS', inicioIso, fimIso) : Promise.resolve([]),
       base === 'CAIXA' ? carregarHistorico(supabase, 'PAGAMENTO_TECNICO', inicioIso, fimIso) : Promise.resolve([]),
     ])
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
     const descontosVendas = soma(vendas, (item) => numero(item.desconto))
     const recebimentosOs = soma(recebimentosEscopo, (item) => numero(item.valor)) || soma(ordens, recebimentoFallbackNoPeriodo(inicio, fim))
     const issRetidoRecebimentos = base === 'CAIXA' ? soma(recebimentosEscopo, (item) => numero(item.iss_retido)) : 0
-    const receitasFinanceiras = base === 'CAIXA' ? soma(recebimentosEscopo, (item) => numero(item.juros) + numero(item.multa)) : 0
+    const receitasFinanceirasRecebimentos = base === 'CAIXA' ? soma(recebimentosEscopo, (item) => numero(item.juros) + numero(item.multa)) : 0
 
     let receitaServicos = receitaServicosCompetencia
     let receitaPecasOs = receitaPecasOsCompetencia
@@ -103,6 +104,12 @@ export async function GET(request: NextRequest) {
       if (base === 'CAIXA') return String(item.status ?? '').toUpperCase() === 'PAGO' && noPeriodo(item.pago_em, inicio, fim)
       return noPeriodo(item.vencimento ?? item.criado_em, inicio, fim)
     })
+    const ajustesContasPeriodo = contas.filter((item) =>
+      String(item.status ?? '').toUpperCase() === 'PAGO' && noPeriodo(item.pago_em, inicio, fim)
+    )
+    const jurosMultasPagos = soma(ajustesContasPeriodo, (item) => numero(item.juros) + numero(item.multa))
+    const descontosObtidos = soma(ajustesContasPeriodo, (item) => numero(item.desconto))
+    const receitasFinanceiras = receitasFinanceirasRecebimentos + descontosObtidos
     const contasCustosDiretos = contasPeriodo.filter((item) => classificacaoConta(item) === 'CUSTO_DIRETO')
     const contasImpostos = contasPeriodo.filter((item) => classificacaoConta(item) === 'IMPOSTOS_SOBRE_VENDAS')
     const contasFinanceiras = contasPeriodo.filter((item) => classificacaoConta(item) === 'DESPESA_FINANCEIRA')
@@ -113,7 +120,7 @@ export async function GET(request: NextRequest) {
     const despesasOperacionais = despesasCategorias.reduce((total, item) => total + item.valor, 0)
     const custosContas = soma(contasCustosDiretos, (item) => numero(item.valor))
     const impostosSobreVendas = soma(contasImpostos, (item) => numero(item.valor))
-    const despesasFinanceiras = soma(contasFinanceiras, (item) => numero(item.valor))
+    const despesasFinanceiras = soma(contasFinanceiras, (item) => numero(item.valor)) + jurosMultasPagos
     const despesasNaoOperacionais = soma(contasNaoOperacionais, (item) => numero(item.valor))
     const investimentos = soma(contasInvestimentos, (item) => numero(item.valor))
 
@@ -147,9 +154,15 @@ export async function GET(request: NextRequest) {
       if (classificacaoConta(conta) === 'INVESTIMENTO') continue
       adicionarMes(meses, base === 'CAIXA' ? conta.pago_em : conta.vencimento ?? conta.criado_em, classificacaoConta(conta) === 'CUSTO_DIRETO' ? { custos: numero(conta.valor) } : { despesas: numero(conta.valor) })
     }
+    for (const conta of ajustesContasPeriodo) {
+      adicionarMes(meses, conta.pago_em, {
+        receita: numero(conta.desconto),
+        despesas: numero(conta.juros) + numero(conta.multa),
+      })
+    }
 
     const detalhes = montarDetalhes({
-      base, ordens, vendas, contasPeriodo, pecasOs, itensVenda, recebimentosEscopo,
+      base, ordens, vendas, contasPeriodo, ajustesContasPeriodo, pecasOs, itensVenda, recebimentosEscopo,
       pagamentosTecnicosEscopo, comissoesPagas,
       proporcaoServico: receitaServicosCompetencia + receitaPecasOsCompetencia > 0 ? receitaServicosCompetencia / (receitaServicosCompetencia + receitaPecasOsCompetencia) : 1,
       custoPecaOsReconhecido,
@@ -210,10 +223,15 @@ async function carregarVendas(supabase: ReturnType<typeof db>, unidades: number[
   return (data ?? []) as unknown as Registro[]
 }
 
-async function carregarContas(supabase: ReturnType<typeof db>, unidades: number[], temClassificacaoDre: boolean) {
-  const selectConta = temClassificacaoDre
-    ? 'id, unidade_id, descricao, fornecedor, categoria, classificacao_dre, valor, vencimento, status, pago_em, criado_em'
-    : 'id, unidade_id, descricao, fornecedor, categoria, valor, vencimento, status, pago_em, criado_em'
+async function carregarContas(
+  supabase: ReturnType<typeof db>,
+  unidades: number[],
+  temClassificacaoDre: boolean,
+  temAcrescimosContas: boolean
+) {
+  const camposClassificacao = temClassificacaoDre ? ', classificacao_dre' : ''
+  const camposAcrescimos = temAcrescimosContas ? ', juros, multa, desconto, valor_pago' : ''
+  const selectConta: string = `id, unidade_id, descricao, fornecedor, categoria${camposClassificacao}, valor${camposAcrescimos}, vencimento, status, pago_em, criado_em`
   const { data, error } = await supabase.from('contas_pagar').select(selectConta).in('unidade_id', unidades)
   if (error && !tabelaAusente(error)) throw error
   return (data ?? []) as unknown as Registro[]
@@ -290,6 +308,7 @@ function montarDetalhes(params: {
   ordens: Registro[]
   vendas: Registro[]
   contasPeriodo: Registro[]
+  ajustesContasPeriodo: Registro[]
   pecasOs: Registro[]
   itensVenda: Registro[]
   recebimentosEscopo: Registro[]
@@ -298,7 +317,7 @@ function montarDetalhes(params: {
   proporcaoServico: number
   custoPecaOsReconhecido: (item: Registro) => number
 }) {
-  const { base, ordens, vendas, contasPeriodo, pecasOs, itensVenda, recebimentosEscopo, pagamentosTecnicosEscopo, comissoesPagas, proporcaoServico, custoPecaOsReconhecido } = params
+  const { base, ordens, vendas, contasPeriodo, ajustesContasPeriodo, pecasOs, itensVenda, recebimentosEscopo, pagamentosTecnicosEscopo, comissoesPagas, proporcaoServico, custoPecaOsReconhecido } = params
   const mapa: Record<string, Detalhe[]> = {}
   const adicionar = (chave: string, item: Detalhe) => {
     if (!item.valor) return
@@ -374,6 +393,32 @@ function montarDetalhes(params: {
       data: String(base === 'CAIXA' ? conta.pago_em ?? '' : conta.vencimento ?? conta.criado_em ?? '') || null,
       valor: numero(conta.valor),
     })
+  }
+
+  for (const conta of ajustesContasPeriodo) {
+    const acrescimos = numero(conta.juros) + numero(conta.multa)
+    const desconto = numero(conta.desconto)
+    const comum = {
+      origem: 'Conta a pagar',
+      documento: `Conta #${conta.id}`,
+      data: String(conta.pago_em ?? '') || null,
+    }
+    if (acrescimos > 0) {
+      adicionar('despesasFinanceiras', {
+        ...comum,
+        id: `conta-acrescimos-${conta.id}`,
+        descricao: `Juros e multa pagos • ${String(conta.descricao ?? '')}`,
+        valor: acrescimos,
+      })
+    }
+    if (desconto > 0) {
+      adicionar('receitasFinanceiras', {
+        ...comum,
+        id: `conta-desconto-${conta.id}`,
+        descricao: `Desconto obtido no pagamento • ${String(conta.descricao ?? '')}`,
+        valor: desconto,
+      })
+    }
   }
 
   return mapa

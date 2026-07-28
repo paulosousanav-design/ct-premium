@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
 import { requireAdminEscopoGerencial } from '@/lib/admin-unidade'
+import { calcularBaixaContaPagar } from '@/lib/calculos-contas-pagar'
 import { calcularBaixaRecebimento } from '@/lib/calculos-financeiros'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 import { registrarEventoSistema } from '@/lib/monitoramento'
@@ -24,6 +25,10 @@ type ContaPagar = {
   vencimento?: string | null
   status?: string | null
   forma_pagamento?: string | null
+  juros?: number | string | null
+  multa?: number | string | null
+  desconto?: number | string | null
+  valor_pago?: number | string | null
 }
 
 function getSupabaseAdmin(request?: NextRequest, ator?: AtorAuditoria) {
@@ -62,6 +67,7 @@ export async function GET(request: NextRequest) {
     const temDataUltimoRecebimento = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
     const temDescontoRecebimentoCliente = await colunaExiste(supabase, 'ordens_servico', 'desconto_recebimento_cliente')
     const temAcrescimosRecebimento = await colunaExiste(supabase, 'ordens_servico', 'juros_recebidos_cliente')
+    const temAcrescimosContasPagar = await colunaExiste(supabase, 'contas_pagar', 'valor_pago')
     const temTaxaDiagnostico = await colunaExiste(supabase, 'ordens_servico', 'encerramento_taxa_diagnostico')
     const selectPagamentoTecnico = temPagamentoTecnico
       ? `
@@ -156,6 +162,7 @@ export async function GET(request: NextRequest) {
       documentosPendentes: documentos.tabelaPendente,
       contasPagar: contasPagar.data,
       contasPagarPendente: contasPagar.tabelaPendente,
+      acrescimosContasPagarPendente: !contasPagar.tabelaPendente && !temAcrescimosContasPagar,
       historico: historico.data,
       historicoPendente: historico.tabelaPendente,
       descontoRecebimentoPendente: !temDescontoRecebimentoCliente,
@@ -194,9 +201,10 @@ export async function POST(request: NextRequest) {
 
     const supabase = getSupabaseAdmin(request, auth)
     const temClassificacaoDre = await colunaExiste(supabase, 'contas_pagar', 'classificacao_dre')
-    const selectConta = temClassificacaoDre
-      ? 'id, descricao, fornecedor, categoria, classificacao_dre, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em'
-      : 'id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em'
+    const temAcrescimosConta = await colunaExiste(supabase, 'contas_pagar', 'valor_pago')
+    const camposClassificacao = temClassificacaoDre ? ', classificacao_dre' : ''
+    const camposAcrescimos = temAcrescimosConta ? ', juros, multa, desconto, valor_pago' : ''
+    const selectConta: string = `id, descricao, fornecedor, categoria${camposClassificacao}, valor${camposAcrescimos}, vencimento, status, forma_pagamento, pago_em, observacao, criado_em`
     const classificacaoDre = normalizarClassificacaoDre(body?.classificacaoDre)
     const insertPayload: Record<string, unknown> = {
       descricao,
@@ -279,19 +287,53 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: 'Status da conta invalido.' }, { status: 400 })
       }
 
-      const { data: contaAtual } = await supabase
+      const temAcrescimosConta = await colunaExiste(supabase, 'contas_pagar', 'valor_pago')
+      const selectContaAtual: string = temAcrescimosConta
+        ? 'id, descricao, status, valor, juros, multa, desconto, valor_pago'
+        : 'id, descricao, status, valor'
+      const { data: contaAtualRaw, error: contaAtualError } = await supabase
         .from('contas_pagar')
-        .select('id, descricao, status, valor')
+        .select(selectContaAtual)
         .eq('id', id)
         .maybeSingle()
+      if (contaAtualError) throw contaAtualError
+      const contaAtual = contaAtualRaw as unknown as {
+        id: number
+        descricao?: string | null
+        status?: string | null
+        valor?: number | string | null
+      } | null
+      if (!contaAtual) return NextResponse.json({ error: 'Conta nao encontrada.' }, { status: 404 })
+
+      const baixa = status === 'PAGO'
+        ? calcularBaixaContaPagar({
+            valorOriginal: toNumber(contaAtual.valor),
+            juros: toNumber(body?.juros),
+            multa: toNumber(body?.multa),
+            desconto: toNumber(body?.desconto),
+          })
+        : null
+      if (status === 'PAGO' && !temAcrescimosConta && ((baixa?.acrescimos ?? 0) > 0 || (baixa?.desconto ?? 0) > 0)) {
+        return NextResponse.json(
+          { error: 'Execute o arquivo supabase-add-acrescimos-contas-pagar.sql antes de registrar juros, multa ou desconto.' },
+          { status: 400 }
+        )
+      }
+      const pagoEm = status === 'PAGO' ? dataPagamentoIso(body?.dataPagamento) : null
 
       const updatePayload: Record<string, unknown> = {
         status,
-        pago_em: status === 'PAGO' ? new Date().toISOString() : null,
+        pago_em: pagoEm,
       }
 
       if (await colunaExiste(supabase, 'contas_pagar', 'forma_pagamento')) {
         updatePayload.forma_pagamento = status === 'PAGO' ? forma : null
+      }
+      if (temAcrescimosConta) {
+        updatePayload.juros = baixa?.juros ?? 0
+        updatePayload.multa = baixa?.multa ?? 0
+        updatePayload.desconto = baixa?.desconto ?? 0
+        updatePayload.valor_pago = baixa?.valorPago ?? null
       }
 
       const { error } = await supabase.from('contas_pagar').update(updatePayload).eq('id', id)
@@ -303,8 +345,10 @@ export async function PATCH(request: NextRequest) {
         tipo: 'CONTA_PAGAR',
         statusAnterior: String(contaAtual?.status ?? 'PENDENTE'),
         statusNovo: status,
-        valor: toNumber(contaAtual?.valor),
-        descricao: `${contaAtual?.descricao ?? `Conta #${id}`} marcada como ${status}${status === 'PAGO' ? ` via ${forma}` : ''}.`,
+        valor: baixa?.valorPago ?? toNumber(contaAtual?.valor),
+        descricao: status === 'PAGO'
+          ? `${contaAtual?.descricao ?? `Conta #${id}`} paga via ${forma}. Original ${formatCurrency(baixa?.valorOriginal ?? 0)}, juros ${formatCurrency(baixa?.juros ?? 0)}, multa ${formatCurrency(baixa?.multa ?? 0)}, desconto ${formatCurrency(baixa?.desconto ?? 0)} e total pago ${formatCurrency(baixa?.valorPago ?? 0)}.`
+          : `${contaAtual?.descricao ?? `Conta #${id}`} marcada como ${status}.`,
       })
 
       return NextResponse.json({ ok: true })
@@ -795,6 +839,14 @@ function formatCurrency(value: number) {
   }).format(value || 0)
 }
 
+function dataPagamentoIso(value: unknown) {
+  const data = String(value ?? '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return new Date().toISOString()
+  const instante = new Date(`${data}T12:00:00-04:00`)
+  if (!Number.isFinite(instante.getTime())) throw new Error('Data de pagamento invalida.')
+  return instante.toISOString()
+}
+
 function normalizarFormaPagamento(value: unknown) {
   const forma = String(value ?? 'PIX').trim().toUpperCase()
   const permitidas = ['PIX', 'CARTAO', 'DEPOSITO', 'BOLETO', 'DINHEIRO']
@@ -878,9 +930,10 @@ async function carregarOsIdsDocumento(
 
 async function carregarContasPagar(supabase: ReturnType<typeof getSupabaseAdmin>, unidadeId: number | null, unidadesPermitidas: number[]) {
   const temClassificacaoDre = await colunaExiste(supabase, 'contas_pagar', 'classificacao_dre')
-  const selectConta = temClassificacaoDre
-    ? 'id, descricao, fornecedor, categoria, classificacao_dre, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em'
-    : 'id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, observacao, criado_em'
+  const temAcrescimosConta = await colunaExiste(supabase, 'contas_pagar', 'valor_pago')
+  const camposClassificacao = temClassificacaoDre ? ', classificacao_dre' : ''
+  const camposAcrescimos = temAcrescimosConta ? ', juros, multa, desconto, valor_pago' : ''
+  const selectConta: string = `id, descricao, fornecedor, categoria${camposClassificacao}, valor${camposAcrescimos}, vencimento, status, forma_pagamento, pago_em, observacao, criado_em`
   let query = supabase
     .from('contas_pagar')
     .select(selectConta)

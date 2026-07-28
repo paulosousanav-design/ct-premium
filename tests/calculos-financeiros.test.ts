@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { calcularBaixaContaPagar } from '../lib/calculos-contas-pagar.ts'
 import { calcularBaixaRecebimento, moeda } from '../lib/calculos-financeiros.ts'
 
 test('baixa parcial reduz somente o principal do saldo', () => {
@@ -86,4 +87,39 @@ test('baixa rejeita valores negativos e lançamentos sem principal, desconto ou 
 test('arredondamento monetário mantém duas casas decimais', () => {
   assert.equal(moeda(0.1 + 0.2), 0.3)
   assert.equal(moeda(19.995), 20)
+})
+
+test('baixa de conta vencida soma juros e multa ao valor efetivamente pago', () => {
+  const baixa = calcularBaixaContaPagar({
+    valorOriginal: 1_000,
+    juros: 12,
+    multa: 20,
+    desconto: 0,
+  })
+
+  assert.equal(baixa.acrescimos, 32)
+  assert.equal(baixa.valorPago, 1_032)
+})
+
+test('desconto obtido reduz o total pago sem alterar o valor original', () => {
+  const baixa = calcularBaixaContaPagar({
+    valorOriginal: 500,
+    juros: 5,
+    multa: 10,
+    desconto: 15,
+  })
+
+  assert.equal(baixa.valorOriginal, 500)
+  assert.equal(baixa.valorPago, 500)
+})
+
+test('baixa de conta rejeita ajustes negativos e desconto excessivo', () => {
+  assert.throws(
+    () => calcularBaixaContaPagar({ valorOriginal: 100, juros: -1, multa: 0, desconto: 0 }),
+    /positivos/
+  )
+  assert.throws(
+    () => calcularBaixaContaPagar({ valorOriginal: 100, juros: 0, multa: 0, desconto: 101 }),
+    /desconto/
+  )
 })

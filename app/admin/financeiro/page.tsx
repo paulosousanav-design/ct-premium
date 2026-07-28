@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { adminFetch } from '@/lib/admin-fetch'
+import { calcularBaixaContaPagar } from '@/lib/calculos-contas-pagar'
 
 type AbaFinanceiro = 'receber' | 'tecnicos' | 'contas'
 type FiltroFinanceiro = 'TODOS' | 'PENDENTE' | 'FATURADO' | 'PARCIAL' | 'RECEBIDO'
@@ -89,6 +90,10 @@ type ContaPagar = {
   status: string | null
   forma_pagamento?: string | null
   pago_em?: string | null
+  juros?: number | string | null
+  multa?: number | string | null
+  desconto?: number | string | null
+  valor_pago?: number | string | null
   observacao?: string | null
   criado_em?: string | null
 }
@@ -101,6 +106,15 @@ type ContaForm = {
   valor: string
   vencimento: string
   observacao: string
+}
+
+type BaixaContaForm = {
+  conta: ContaPagar
+  forma: string
+  dataPagamento: string
+  juros: string
+  multa: string
+  desconto: string
 }
 
 const contaInicial: ContaForm = {
@@ -148,6 +162,7 @@ export default function FinanceiroPage() {
   const [historico, setHistorico] = useState<HistoricoFinanceiro[]>([])
   const [documentosPendentes, setDocumentosPendentes] = useState(false)
   const [contasPagarPendente, setContasPagarPendente] = useState(false)
+  const [acrescimosContasPagarPendente, setAcrescimosContasPagarPendente] = useState(false)
   const [historicoPendente, setHistoricoPendente] = useState(false)
   const [descontoRecebimentoPendente, setDescontoRecebimentoPendente] = useState(false)
   const [acrescimosRecebimentoPendente, setAcrescimosRecebimentoPendente] = useState(false)
@@ -159,6 +174,7 @@ export default function FinanceiroPage() {
   const [filtroGarantidor, setFiltroGarantidor] = useState('TODOS')
   const [busca, setBusca] = useState('')
   const [contaForm, setContaForm] = useState<ContaForm>(contaInicial)
+  const [baixaConta, setBaixaConta] = useState<BaixaContaForm | null>(null)
   const [vendasResumo, setVendasResumo] = useState({ total: 0, totalMes: 0, quantidade: 0 })
   const [visaoDre, setVisaoDre] = useState(false)
   const [recebimentosPorForma, setRecebimentosPorForma] = useState<RecebimentosPorForma>({
@@ -181,6 +197,7 @@ export default function FinanceiroPage() {
       setHistorico((data?.historico ?? []) as HistoricoFinanceiro[])
       setDocumentosPendentes(Boolean(data?.documentosPendentes))
       setContasPagarPendente(Boolean(data?.contasPagarPendente))
+      setAcrescimosContasPagarPendente(Boolean(data?.acrescimosContasPagarPendente))
       setHistoricoPendente(Boolean(data?.historicoPendente))
       setDescontoRecebimentoPendente(Boolean(data?.descontoRecebimentoPendente))
       setAcrescimosRecebimentoPendente(Boolean(data?.acrescimosRecebimentoPendente))
@@ -283,7 +300,7 @@ export default function FinanceiroPage() {
       .reduce((acc, conta) => acc + toNumber(conta.valor), 0)
     const contasPagas = contasPagar
       .filter((conta) => String(conta.status ?? '').toUpperCase() === 'PAGO')
-      .reduce((acc, conta) => acc + toNumber(conta.valor), 0)
+      .reduce((acc, conta) => acc + totalPagoConta(conta), 0)
     const descontosCliente = ordensComRecebimento
       .filter((os) => !ehGarantidorOuSeguradora(os))
       .reduce((acc, os) => acc + descontoRecebimentoCliente(os), 0)
@@ -336,7 +353,7 @@ export default function FinanceiroPage() {
       .filter((os) => ehGarantidorOuSeguradora(os))
       .reduce((acc, os) => acc + valorCaixaRecebidoCliente(os), 0)
     const pagoTecnicoMes = tecnicosPagosMes.reduce((acc, os) => acc + valorTecnico(os), 0)
-    const contasPagasValorMes = contasPagasMes.reduce((acc, conta) => acc + toNumber(conta.valor), 0)
+    const contasPagasValorMes = contasPagasMes.reduce((acc, conta) => acc + totalPagoConta(conta), 0)
     const descontosMes = recebidasMes.reduce((acc, os) => acc + descontoRecebimentoCliente(os), 0)
     const despesasPorCategoria = montarDespesasPorCategoria(contasPagasMes)
 
@@ -378,9 +395,34 @@ export default function FinanceiroPage() {
     }
   }
 
-  async function marcarContaPaga(id: number) {
-    const forma = pedirFormaPagamento('Forma de pagamento da conta')
-    if (!forma) return
+  function abrirBaixaConta(conta: ContaPagar) {
+    setErro('')
+    setBaixaConta({
+      conta,
+      forma: 'PIX',
+      dataPagamento: dataHojeInput(),
+      juros: '0',
+      multa: '0',
+      desconto: '0',
+    })
+  }
+
+  async function marcarContaPaga(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!baixaConta) return
+    const id = baixaConta.conta.id
+    let calculo
+    try {
+      calculo = calcularBaixaContaPagar({
+        valorOriginal: toNumber(baixaConta.conta.valor),
+        juros: parseMoneyInput(baixaConta.juros),
+        multa: parseMoneyInput(baixaConta.multa),
+        desconto: parseMoneyInput(baixaConta.desconto),
+      })
+    } catch (error) {
+      setErro(formatarErro(error, 'Confira os valores da baixa.'))
+      return
+    }
     setSalvandoId(id)
     setErro('')
 
@@ -388,10 +430,20 @@ export default function FinanceiroPage() {
       const response = await adminFetch('/api/admin/financeiro', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: 'CONTA', id, status: 'PAGO', forma }),
+        body: JSON.stringify({
+          tipo: 'CONTA',
+          id,
+          status: 'PAGO',
+          forma: baixaConta.forma,
+          dataPagamento: baixaConta.dataPagamento,
+          juros: calculo.juros,
+          multa: calculo.multa,
+          desconto: calculo.desconto,
+        }),
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error ?? 'Erro ao pagar conta.')
+      setBaixaConta(null)
       await carregarDados()
     } catch (error) {
       setErro(formatarErro(error, 'Erro ao pagar conta.'))
@@ -549,6 +601,11 @@ export default function FinanceiroPage() {
       {acrescimosRecebimentoPendente && (
         <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
           Rode o arquivo supabase-add-acrescimos-iss-recebimentos.sql para liberar juros, multa e ISS retido.
+        </div>
+      )}
+      {acrescimosContasPagarPendente && (
+        <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          Rode o arquivo supabase-add-acrescimos-contas-pagar.sql para liberar juros, multa e desconto no pagamento de contas.
         </div>
       )}
 
@@ -729,17 +786,117 @@ export default function FinanceiroPage() {
             loading={loading}
             contas={contasFiltradas}
             tabelaPendente={contasPagarPendente}
+            acrescimosPendente={acrescimosContasPagarPendente}
             salvandoId={salvandoId}
             form={contaForm}
             onFormChange={setContaForm}
             onSubmit={criarContaPagar}
-            onPagar={marcarContaPaga}
+            onPagar={abrirBaixaConta}
             onClassificar={classificarContaDre}
           />
         )}
       </section>
 
       <HistoricoFinanceiroPanel historico={historico} tabelaPendente={historicoPendente} />
+      {baixaConta && (
+        <ModalBaixaConta
+          baixa={baixaConta}
+          salvando={salvandoId === baixaConta.conta.id}
+          onChange={setBaixaConta}
+          onClose={() => setBaixaConta(null)}
+          onSubmit={marcarContaPaga}
+        />
+      )}
+    </div>
+  )
+}
+
+function ModalBaixaConta({
+  baixa,
+  salvando,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  baixa: BaixaContaForm
+  salvando: boolean
+  onChange: (baixa: BaixaContaForm) => void
+  onClose: () => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+}) {
+  let calculo: ReturnType<typeof calcularBaixaContaPagar> | null = null
+  try {
+    calculo = calcularBaixaContaPagar({
+      valorOriginal: toNumber(baixa.conta.valor),
+      juros: parseMoneyInput(baixa.juros),
+      multa: parseMoneyInput(baixa.multa),
+      desconto: parseMoneyInput(baixa.desconto),
+    })
+  } catch {
+    calculo = null
+  }
+  const alterar = (campo: keyof Omit<BaixaContaForm, 'conta'>, valor: string) => {
+    onChange({ ...baixa, [campo]: valor })
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-label="Baixa de conta a pagar">
+      <form onSubmit={onSubmit} className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wide text-emerald-700">Pagamento de conta</p>
+            <h2 className="text-xl font-black text-slate-950">{baixa.conta.descricao ?? `Conta #${baixa.conta.id}`}</h2>
+            <p className="text-sm text-slate-500">{baixa.conta.fornecedor ?? 'Fornecedor não informado'}</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={salvando} className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-black text-slate-600">Fechar</button>
+        </div>
+
+        <div className="space-y-4 p-5">
+          <div className="rounded-xl bg-slate-100 p-4">
+            <span className="text-xs font-black uppercase text-slate-500">Valor original</span>
+            <p className="mt-1 text-2xl font-black text-slate-950">{formatCurrency(toNumber(baixa.conta.valor))}</p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-xs font-bold text-slate-600">Forma de pagamento
+              <select value={baixa.forma} onChange={(event) => alterar('forma', event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-950">
+                <option value="PIX">PIX</option>
+                <option value="BOLETO">Boleto</option>
+                <option value="CARTAO">Cartão</option>
+                <option value="DINHEIRO">Dinheiro</option>
+                <option value="DEPOSITO">Depósito/transferência</option>
+                <option value="OUTRO">Outro</option>
+              </select>
+            </label>
+            <label className="text-xs font-bold text-slate-600">Data do pagamento
+              <input required type="date" value={baixa.dataPagamento} onChange={(event) => alterar('dataPagamento', event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-slate-300 px-3 text-sm font-bold text-slate-950" />
+            </label>
+            <label className="text-xs font-bold text-slate-600">Juros pagos
+              <input required type="number" min="0" step="0.01" value={baixa.juros} onChange={(event) => alterar('juros', event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-slate-300 px-3 text-sm font-bold text-slate-950" />
+            </label>
+            <label className="text-xs font-bold text-slate-600">Multa paga
+              <input required type="number" min="0" step="0.01" value={baixa.multa} onChange={(event) => alterar('multa', event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-slate-300 px-3 text-sm font-bold text-slate-950" />
+            </label>
+            <label className="text-xs font-bold text-slate-600 sm:col-span-2">Desconto obtido
+              <input required type="number" min="0" step="0.01" value={baixa.desconto} onChange={(event) => alterar('desconto', event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-slate-300 px-3 text-sm font-bold text-slate-950" />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 rounded-xl border border-slate-200 p-3 text-center">
+            <div><p className="text-[10px] font-black uppercase text-slate-500">Acréscimos</p><p className="font-black text-red-700">+ {formatCurrency(calculo?.acrescimos ?? 0)}</p></div>
+            <div><p className="text-[10px] font-black uppercase text-slate-500">Desconto</p><p className="font-black text-emerald-700">- {formatCurrency(calculo?.desconto ?? 0)}</p></div>
+            <div><p className="text-[10px] font-black uppercase text-slate-500">Total pago</p><p className="text-lg font-black text-slate-950">{formatCurrency(calculo?.valorPago ?? 0)}</p></div>
+          </div>
+          <p className="text-xs text-slate-500">Juros e multa serão classificados no DRE como despesa financeira. O desconto obtido será tratado como receita financeira.</p>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
+          <button type="button" onClick={onClose} disabled={salvando} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700">Cancelar</button>
+          <button type="submit" disabled={salvando || !calculo || !baixa.dataPagamento} className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-black text-white disabled:opacity-50">
+            {salvando ? 'Registrando...' : 'Confirmar pagamento'}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }
@@ -985,6 +1142,7 @@ function ContasPagarPanel({
   loading,
   contas,
   tabelaPendente,
+  acrescimosPendente,
   salvandoId,
   form,
   onFormChange,
@@ -995,11 +1153,12 @@ function ContasPagarPanel({
   loading: boolean
   contas: ContaPagar[]
   tabelaPendente: boolean
+  acrescimosPendente: boolean
   salvandoId: number | null
   form: ContaForm
   onFormChange: (form: ContaForm) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
-  onPagar: (id: number) => void
+  onPagar: (conta: ContaPagar) => void
   onClassificar: (id: number, classificacao: string) => void
 }) {
   const contasOrdenadas = [...contas].sort((a, b) => {
@@ -1016,6 +1175,12 @@ function ContasPagarPanel({
       {tabelaPendente && (
         <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">
           Rode o SQL de contas a pagar para liberar o lançamento manual de despesas.
+        </div>
+      )}
+
+      {!tabelaPendente && acrescimosPendente && (
+        <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">
+          Execute supabase-add-acrescimos-contas-pagar.sql antes de realizar novas baixas.
         </div>
       )}
 
@@ -1087,15 +1252,17 @@ function ContasPagarPanel({
               <th className="p-3">Categoria</th>
               <th className="p-3">Classificação DRE</th>
               <th className="p-3">Vencimento</th>
-              <th className="p-3">Valor</th>
+              <th className="p-3">Valor original</th>
+              <th className="p-3">Ajustes</th>
+              <th className="p-3">Total pago</th>
               <th className="p-3">Status</th>
               <th className="p-3">Forma</th>
               <th className="p-3">Ações</th>
             </tr>
           </thead>
           <tbody>
-            {loading && <LinhaMensagem colSpan={8} texto="Carregando..." />}
-            {!loading && contas.length === 0 && <LinhaMensagem colSpan={8} texto="Nenhuma conta encontrada." />}
+            {loading && <LinhaMensagem colSpan={10} texto="Carregando..." />}
+            {!loading && contas.length === 0 && <LinhaMensagem colSpan={10} texto="Nenhuma conta encontrada." />}
             {!loading &&
               contasOrdenadas.map((conta) => {
                 const status = String(conta.status ?? 'PENDENTE').toUpperCase()
@@ -1120,13 +1287,23 @@ function ContasPagarPanel({
                     </td>
                     <td className="p-3"><div>{formatDate(conta.vencimento)}</div>{vencimento.label && <span className={`mt-1 inline-flex rounded-full px-2 py-1 text-[10px] font-black ${vencimento.tipo === 'VENCIDA' ? 'bg-red-100 text-red-700' : vencimento.tipo === 'HOJE' ? 'bg-amber-100 text-amber-800' : 'bg-orange-100 text-orange-700'}`}>{vencimento.label}</span>}</td>
                     <td className="p-3 font-black text-slate-950">{formatCurrency(toNumber(conta.valor))}</td>
+                    <td className="p-3 text-xs">
+                      {status === 'PAGO' ? (
+                        <>
+                          <span className="font-bold text-red-700">+ {formatCurrency(jurosMultaConta(conta))}</span>
+                          <br />
+                          <span className="font-bold text-emerald-700">- {formatCurrency(descontoConta(conta))}</span>
+                        </>
+                      ) : '-'}
+                    </td>
+                    <td className="p-3 font-black text-emerald-700">{status === 'PAGO' ? formatCurrency(totalPagoConta(conta)) : '-'}</td>
                     <td className="p-3"><StatusFinanceiro status={status === 'PAGO' ? 'RECEBIDO' : status} pagoLabel="PAGO" /></td>
                     <td className="p-3">{formatarFormaPagamento(conta.forma_pagamento)}</td>
                     <td className="p-3">
                       <button
                         type="button"
-                        onClick={() => onPagar(conta.id)}
-                        disabled={status === 'PAGO' || salvandoId === conta.id}
+                        onClick={() => onPagar(conta)}
+                        disabled={status === 'PAGO' || salvandoId === conta.id || acrescimosPendente}
                         className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         Marcar pago
@@ -1496,12 +1673,35 @@ function situacaoVencimentoConta(conta: ContaPagar) {
   return { tipo: 'NORMAL', label: '', prioridade: 3 }
 }
 
+function jurosMultaConta(conta: ContaPagar) {
+  return Math.max(toNumber(conta.juros), 0) + Math.max(toNumber(conta.multa), 0)
+}
+
+function descontoConta(conta: ContaPagar) {
+  return Math.max(toNumber(conta.desconto), 0)
+}
+
+function totalPagoConta(conta: ContaPagar) {
+  if (conta.valor_pago !== null && conta.valor_pago !== undefined) {
+    return Math.max(toNumber(conta.valor_pago), 0)
+  }
+  return Math.max(toNumber(conta.valor) + jurosMultaConta(conta) - descontoConta(conta), 0)
+}
+
+function dataHojeInput() {
+  const hoje = new Date()
+  const ano = hoje.getFullYear()
+  const mes = String(hoje.getMonth() + 1).padStart(2, '0')
+  const dia = String(hoje.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
+}
+
 function montarDespesasPorCategoria(contas: ContaPagar[]) {
   const mapa = new Map<string, number>()
 
   for (const conta of contas) {
     const categoria = String(conta.categoria ?? 'OUTROS').toUpperCase()
-    mapa.set(categoria, (mapa.get(categoria) ?? 0) + toNumber(conta.valor))
+    mapa.set(categoria, (mapa.get(categoria) ?? 0) + totalPagoConta(conta))
   }
 
   return Array.from(mapa.entries())
@@ -1725,12 +1925,16 @@ function montarSecoesFinanceiro({
     },
     {
       titulo: 'Contas a pagar',
-      headers: ['Descricao', 'Fornecedor', 'Categoria', 'Valor', 'Vencimento', 'Status', 'Forma', 'Pago em'],
+      headers: ['Descricao', 'Fornecedor', 'Categoria', 'Valor original', 'Juros', 'Multa', 'Desconto', 'Total pago', 'Vencimento', 'Status', 'Forma', 'Pago em'],
       rows: contas.map((conta) => [
         conta.descricao ?? '-',
         conta.fornecedor ?? '-',
         formatarCategoriaConta(conta.categoria),
         formatCurrency(toNumber(conta.valor)),
+        formatCurrency(toNumber(conta.juros)),
+        formatCurrency(toNumber(conta.multa)),
+        formatCurrency(toNumber(conta.desconto)),
+        String(conta.status ?? '').toUpperCase() === 'PAGO' ? formatCurrency(totalPagoConta(conta)) : '-',
         formatDate(conta.vencimento),
         conta.status ?? 'PENDENTE',
         formatarFormaPagamento(conta.forma_pagamento),

@@ -623,21 +623,28 @@ async function carregarResumoContasPagar(
     return { pendentes: 0, pagas: 0, total: 0, despesasCategorias: [], itens: [] }
   }
 
+  const temAcrescimos = await colunaExiste(supabase, 'contas_pagar', 'valor_pago')
+  const camposAcrescimos = temAcrescimos ? ', juros, multa, desconto, valor_pago' : ''
+  const selectContas: string = `id, descricao, fornecedor, categoria, valor${camposAcrescimos}, vencimento, status, forma_pagamento, pago_em, criado_em`
   let query = supabase
     .from('contas_pagar')
-    .select('id, descricao, fornecedor, categoria, valor, vencimento, status, forma_pagamento, pago_em, criado_em')
+    .select(selectContas)
     .order('vencimento', { ascending: true, nullsFirst: false })
   query = unidadeId ? query.eq('unidade_id', unidadeId) : query.in('unidade_id', unidadesPermitidas)
   const { data, error } = await query
 
   if (error) throw error
 
-  const lista = (data ?? []) as Array<{
+  const lista = (data ?? []) as unknown as Array<{
     id: number
     descricao?: string | null
     fornecedor?: string | null
     categoria?: string | null
     valor?: number | string | null
+    juros?: number | string | null
+    multa?: number | string | null
+    desconto?: number | string | null
+    valor_pago?: number | string | null
     vencimento?: string | null
     status?: string | null
     forma_pagamento?: string | null
@@ -658,7 +665,7 @@ async function carregarResumoContasPagar(
     .reduce((acc, conta) => acc + toNumber(conta.valor), 0)
   const pagas = listaPeriodo
     .filter((conta) => String(conta.status ?? '').toUpperCase() === 'PAGO')
-    .reduce((acc, conta) => acc + toNumber(conta.valor), 0)
+    .reduce((acc, conta) => acc + valorPagoConta(conta), 0)
   const despesasCategorias = montarDespesasPorCategoria(
     listaPeriodo.filter((conta) => String(conta.status ?? '').toUpperCase() === 'PAGO')
   )
@@ -673,18 +680,36 @@ async function carregarResumoContasPagar(
 }
 
 function montarDespesasPorCategoria(
-  contas: Array<{ categoria?: string | null; valor?: number | string | null }>
+  contas: Array<{
+    categoria?: string | null
+    valor?: number | string | null
+    juros?: number | string | null
+    multa?: number | string | null
+    desconto?: number | string | null
+    valor_pago?: number | string | null
+  }>
 ) {
   const mapa = new Map<string, number>()
 
   for (const conta of contas) {
     const categoria = String(conta.categoria ?? 'OUTROS').toUpperCase()
-    mapa.set(categoria, (mapa.get(categoria) ?? 0) + toNumber(conta.valor))
+    mapa.set(categoria, (mapa.get(categoria) ?? 0) + valorPagoConta(conta))
   }
 
   return Array.from(mapa.entries())
     .map(([categoria, valor]) => ({ categoria, valor }))
     .sort((a, b) => b.valor - a.valor)
+}
+
+function valorPagoConta(conta: {
+  valor?: number | string | null
+  juros?: number | string | null
+  multa?: number | string | null
+  desconto?: number | string | null
+  valor_pago?: number | string | null
+}) {
+  if (conta.valor_pago !== null && conta.valor_pago !== undefined) return Math.max(toNumber(conta.valor_pago), 0)
+  return Math.max(toNumber(conta.valor) + toNumber(conta.juros) + toNumber(conta.multa) - toNumber(conta.desconto), 0)
 }
 
 function agruparPorStatus(ordens: OrdemRelatorio[]) {
