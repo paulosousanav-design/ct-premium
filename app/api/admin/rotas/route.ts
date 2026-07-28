@@ -4,11 +4,12 @@ import { requireAdminUnidade } from '@/lib/admin-unidade'
 import { calcularRateioDespesas } from '@/lib/calculos-rotas'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 import { registrarEventoSistema } from '@/lib/monitoramento'
+import { calcularRotaGoogle, montarEnderecoCliente, montarEnderecoRota } from '@/lib/google-routes'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY
 const METODOS = new Set(['IGUAL', 'RECEITA', 'QUILOMETRAGEM'])
-const STATUS = new Set(['PLANEJADA', 'EM_ANDAMENTO', 'CONCLUIDA', 'CANCELADA'])
 const TIPOS_DESPESA = new Set(['COMBUSTIVEL', 'PEDAGIO', 'ALIMENTACAO', 'HOSPEDAGEM', 'ESTACIONAMENTO', 'OUTRA'])
 const FINALIDADES = new Set(['COLETA', 'ATENDIMENTO', 'ENTREGA', 'RETORNO', 'OUTRA'])
 
@@ -34,10 +35,13 @@ export async function GET(request: NextRequest) {
         vinculos: [],
         ordensDisponiveis: [],
         tecnicos: [],
+        mapasConfigurado: Boolean(googleMapsApiKey),
+        calculoKmPendente: true,
       })
     }
 
-    const [{ data: rotas, error: rotasError }, { data: tecnicos, error: tecnicosError }] = await Promise.all([
+    const [calculoKmDisponivel, { data: rotas, error: rotasError }, { data: tecnicos, error: tecnicosError }] = await Promise.all([
+      colunaExiste(supabase, 'rotas', 'km_planejado'),
       supabase.from('rotas').select('*').eq('unidade_id', auth.unidadeId).order('data_inicio', { ascending: false }).limit(150),
       supabase.from('parceiros').select('id, responsavel, nome_fantasia, tipo_vinculo, status').eq('status', 'ATIVO').order('responsavel'),
     ])
@@ -82,6 +86,8 @@ export async function GET(request: NextRequest) {
       vinculos: vinculosComOrdem,
       ordensDisponiveis: ordensBase ?? [],
       tecnicos: tecnicos ?? [],
+      mapasConfigurado: Boolean(googleMapsApiKey),
+      calculoKmPendente: !calculoKmDisponivel,
     })
   } catch (error) {
     return NextResponse.json({ error: formatarErro(error, 'Erro ao carregar gestao de rotas.') }, { status: 500 })
@@ -134,16 +140,197 @@ export async function POST(request: NextRequest) {
     if (!rotaId) return NextResponse.json({ error: 'Rota invalida.' }, { status: 400 })
     const rota = await carregarRotaAutorizada(supabase, rotaId, auth.unidadeId)
     if (!rota) return NextResponse.json({ error: 'Rota nao encontrada nesta unidade.' }, { status: 404 })
-    if (rota.status === 'CANCELADA' && acao !== 'ATUALIZAR') {
-      return NextResponse.json({ error: 'Uma rota cancelada nao pode receber alteracoes operacionais.' }, { status: 400 })
+
+    if (acao === 'INICIAR_ROTA') {
+      if (rota.status !== 'PLANEJADA') {
+        return NextResponse.json({ error: 'Somente uma rota planejada pode ser iniciada.' }, { status: 400 })
+      }
+      const { count, error: vinculosError } = await supabase
+        .from('rota_ordens')
+        .select('id', { count: 'exact', head: true })
+        .eq('rota_id', rotaId)
+      if (vinculosError) throw vinculosError
+      if (!count) {
+        return NextResponse.json({ error: 'Vincule pelo menos uma OS antes de iniciar a rota.' }, { status: 400 })
+      }
+      const { error } = await supabase.from('rotas').update({
+        status: 'EM_ANDAMENTO',
+        atualizado_por_nome: auth.nome,
+        atualizado_por_email: auth.email,
+        atualizado_em: new Date().toISOString(),
+      }).eq('id', rotaId)
+      if (error) throw error
+      await recalcularRateio(supabase, rotaId, String(rota.metodo_rateio))
+      return NextResponse.json({ ok: true })
+    }
+
+    if (acao === 'CONCLUIR_ROTA') {
+      if (rota.status !== 'EM_ANDAMENTO') {
+        return NextResponse.json({ error: 'Somente uma rota em andamento pode ser concluida.' }, { status: 400 })
+      }
+      const dataFim = texto(body?.dataFim)
+      const kmTotal = numeroNaoNegativo(body?.kmTotal)
+      if (!dataFim) return NextResponse.json({ error: 'Informe a data final da rota.' }, { status: 400 })
+      if (dataFim < String(rota.data_inicio)) {
+        return NextResponse.json({ error: 'A data final nao pode ser anterior ao inicio da rota.' }, { status: 400 })
+      }
+      if (kmTotal <= 0) {
+        return NextResponse.json({ error: 'Informe a quilometragem total realizada para concluir a rota.' }, { status: 400 })
+      }
+      const { data: vinculos, error: vinculosError } = await supabase
+        .from('rota_ordens')
+        .select('id, km_referencia')
+        .eq('rota_id', rotaId)
+      if (vinculosError) throw vinculosError
+      if (!vinculos?.length) {
+        return NextResponse.json({ error: 'Vincule pelo menos uma OS antes de concluir a rota.' }, { status: 400 })
+      }
+      if (String(rota.metodo_rateio) === 'QUILOMETRAGEM' && vinculos.some((item) => numeroNaoNegativo(item.km_referencia) <= 0)) {
+        return NextResponse.json({ error: 'Informe os quilometros de referencia de todas as OS antes de concluir.' }, { status: 400 })
+      }
+      await recalcularRateio(supabase, rotaId, String(rota.metodo_rateio))
+      const { error } = await supabase.from('rotas').update({
+        status: 'CONCLUIDA',
+        data_fim: dataFim,
+        km_total: kmTotal,
+        atualizado_por_nome: auth.nome,
+        atualizado_por_email: auth.email,
+        atualizado_em: new Date().toISOString(),
+      }).eq('id', rotaId)
+      if (error) throw error
+      return NextResponse.json({ ok: true })
+    }
+
+    if (acao === 'CANCELAR_ROTA') {
+      if (rota.status === 'CONCLUIDA') {
+        return NextResponse.json({ error: 'Reabra a rota concluida antes de cancela-la.' }, { status: 400 })
+      }
+      if (rota.status === 'CANCELADA') {
+        return NextResponse.json({ error: 'Esta rota ja esta cancelada.' }, { status: 400 })
+      }
+      const { error } = await supabase.from('rotas').update({
+        status: 'CANCELADA',
+        atualizado_por_nome: auth.nome,
+        atualizado_por_email: auth.email,
+        atualizado_em: new Date().toISOString(),
+      }).eq('id', rotaId)
+      if (error) throw error
+      const { error: rateioError } = await supabase.from('rota_ordens').update({
+        percentual_rateio: 0,
+        custo_rateado: 0,
+      }).eq('rota_id', rotaId)
+      if (rateioError) throw rateioError
+      return NextResponse.json({ ok: true })
+    }
+
+    if (acao === 'REABRIR_ROTA') {
+      if (!['CONCLUIDA', 'CANCELADA'].includes(String(rota.status))) {
+        return NextResponse.json({ error: 'Esta rota nao esta encerrada.' }, { status: 400 })
+      }
+      const { error } = await supabase.from('rotas').update({
+        status: rota.status === 'CONCLUIDA' ? 'EM_ANDAMENTO' : 'PLANEJADA',
+        data_fim: rota.status === 'CONCLUIDA' ? null : rota.data_fim,
+        atualizado_por_nome: auth.nome,
+        atualizado_por_email: auth.email,
+        atualizado_em: new Date().toISOString(),
+      }).eq('id', rotaId)
+      if (error) throw error
+      await recalcularRateio(supabase, rotaId, String(rota.metodo_rateio))
+      return NextResponse.json({ ok: true })
+    }
+
+    if (['CONCLUIDA', 'CANCELADA'].includes(String(rota.status))) {
+      return NextResponse.json({ error: 'A rota esta encerrada. Reabra-a antes de fazer alteracoes.' }, { status: 400 })
+    }
+
+    if (acao === 'CALCULAR_DISTANCIA') {
+      if (!googleMapsApiKey) {
+        return NextResponse.json({ error: 'Configure GOOGLE_MAPS_API_KEY no ambiente do servidor.' }, { status: 400 })
+      }
+      if (!(await colunaExiste(supabase, 'rotas', 'km_planejado'))) {
+        return NextResponse.json({ error: 'Execute o arquivo supabase-add-calculo-km-rotas.sql no Supabase.' }, { status: 400 })
+      }
+      const retornaOrigem = body?.retornaOrigem !== false
+      const { data: vinculos, error: vinculosError } = await supabase
+        .from('rota_ordens')
+        .select('id, os_id')
+        .eq('rota_id', rotaId)
+        .order('id')
+      if (vinculosError) throw vinculosError
+      if (!vinculos?.length) {
+        return NextResponse.json({ error: 'Vincule pelo menos uma OS para calcular a rota.' }, { status: 400 })
+      }
+      const osIds = vinculos.map((item) => Number(item.os_id))
+      const { data: ordens, error: ordensError } = await supabase
+        .from('ordens_servico')
+        .select('id, numero_os, clientes:cliente_id(logradouro, numero, bairro, cidade, estado, cep)')
+        .in('id', osIds)
+      if (ordensError) throw ordensError
+      const ordensMap = new Map((ordens ?? []).map((item) => [Number(item.id), item]))
+      const paradas = vinculos.map((vinculo) => {
+        const ordem = ordensMap.get(Number(vinculo.os_id))
+        const clienteRelacao = ordem?.clientes
+        const cliente = (Array.isArray(clienteRelacao) ? clienteRelacao[0] : clienteRelacao) as {
+          logradouro?: unknown
+          numero?: unknown
+          bairro?: unknown
+          cidade?: unknown
+          estado?: unknown
+          cep?: unknown
+        } | null | undefined
+        const endereco = cliente ? montarEnderecoCliente(cliente) : ''
+        if (!cliente?.logradouro || !cliente?.cidade || !cliente?.estado) {
+          throw new Error(`Complete o endereco do cliente da ${ordem?.numero_os ?? `OS #${vinculo.os_id}`} antes de calcular a rota.`)
+        }
+        return {
+          vinculoId: Number(vinculo.id),
+          osId: Number(vinculo.os_id),
+          numeroOs: String(ordem?.numero_os ?? `OS #${vinculo.os_id}`),
+          endereco,
+        }
+      })
+      const origem = montarEnderecoRota(rota.origem)
+      const destino = retornaOrigem ? origem : montarEnderecoRota(rota.destino)
+      const resultado = await calcularRotaGoogle({
+        apiKey: googleMapsApiKey,
+        origem,
+        destino,
+        paradas,
+      })
+
+      for (const parada of paradas) {
+        const { error } = await supabase.from('rota_ordens').update({
+          km_referencia: resultado.distanciasPorVinculo.get(parada.vinculoId) ?? 0,
+        }).eq('id', parada.vinculoId).eq('rota_id', rotaId)
+        if (error) throw error
+      }
+      const { error: rotaError } = await supabase.from('rotas').update({
+        km_planejado: resultado.distanciaKm,
+        duracao_planejada_min: resultado.duracaoMinutos,
+        retorna_origem: retornaOrigem,
+        ordem_otimizada: resultado.ordemOtimizada.map((parada) => parada.osId),
+        rota_calculada_em: new Date().toISOString(),
+        atualizado_por_nome: auth.nome,
+        atualizado_por_email: auth.email,
+        atualizado_em: new Date().toISOString(),
+      }).eq('id', rotaId)
+      if (rotaError) throw rotaError
+      await recalcularRateio(supabase, rotaId, String(rota.metodo_rateio))
+      return NextResponse.json({
+        ok: true,
+        distanciaKm: resultado.distanciaKm,
+        duracaoMinutos: resultado.duracaoMinutos,
+        ordemOtimizada: resultado.ordemOtimizada.map((parada) => ({
+          osId: parada.osId,
+          numeroOs: parada.numeroOs,
+        })),
+      })
     }
 
     if (acao === 'ATUALIZAR') {
       const metodoRateio = normalizar(body?.metodoRateio, METODOS, String(rota.metodo_rateio ?? 'RECEITA'))
-      const status = normalizar(body?.status, STATUS, String(rota.status ?? 'PLANEJADA'))
       const payload: Record<string, unknown> = {
         metodo_rateio: metodoRateio,
-        status,
         atualizado_por_nome: auth.nome,
         atualizado_por_email: auth.email,
         atualizado_em: new Date().toISOString(),
@@ -288,6 +475,11 @@ async function recalcularRateio(supabase: ReturnType<typeof getSupabaseAdmin>, r
 
 async function tabelaExiste(supabase: ReturnType<typeof getSupabaseAdmin>, tabela: string) {
   const { error } = await supabase.from(tabela).select('id').limit(0)
+  return !error
+}
+
+async function colunaExiste(supabase: ReturnType<typeof getSupabaseAdmin>, tabela: string, coluna: string) {
+  const { error } = await supabase.from(tabela).select(coluna).limit(0)
   return !error
 }
 

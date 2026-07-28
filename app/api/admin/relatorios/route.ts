@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminEscopoGerencial } from '@/lib/admin-unidade'
+import { somarCustosRateadosPorOs } from '@/lib/calculos-rotas'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -436,11 +437,7 @@ async function carregarCustosRotasRelatorio(
   if (!osIds.length || !(await tabelaExiste(supabase, 'rota_ordens'))) return mapa
   const { data, error } = await supabase.from('rota_ordens').select('os_id, custo_rateado').in('os_id', osIds)
   if (error) throw error
-  for (const item of data ?? []) {
-    const osId = Number(item.os_id)
-    mapa.set(osId, (mapa.get(osId) ?? 0) + toNumber(item.custo_rateado))
-  }
-  return mapa
+  return somarCustosRateadosPorOs(data ?? [])
 }
 
 async function carregarSlaEmpresa(supabase: ReturnType<typeof getSupabaseAdmin>) {

@@ -24,3 +24,16 @@ export function calcularRateioDespesas(total: number, pesosInformados: number[])
     }
   })
 }
+
+export function somarCustosRateadosPorOs(
+  itens: Array<{ os_id: unknown; custo_rateado: unknown }>
+) {
+  const mapa = new Map<number, number>()
+  for (const item of itens) {
+    const osId = Number(item.os_id)
+    const custo = Number(item.custo_rateado)
+    if (!Number.isFinite(osId) || osId <= 0) continue
+    mapa.set(osId, moeda((mapa.get(osId) ?? 0) + (Number.isFinite(custo) ? custo : 0)))
+  }
+  return mapa
+}

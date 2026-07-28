@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { calcularComissao } from '../lib/calculos-comissoes.ts'
 import { calcularRentabilidade } from '../lib/calculos-rentabilidade.ts'
-import { calcularRateioDespesas } from '../lib/calculos-rotas.ts'
+import { calcularRateioDespesas, somarCustosRateadosPorOs } from '../lib/calculos-rotas.ts'
+import { montarEnderecoCliente, montarEnderecoRota } from '../lib/google-routes.ts'
 
 test('rateio igual distribui todos os centavos sem perder valor', () => {
   const rateio = calcularRateioDespesas(100, [1, 1, 1])
@@ -24,6 +25,30 @@ test('rateio sem pesos válidos usa divisão igual', () => {
   const rateio = calcularRateioDespesas(90, [0, 0, 0])
 
   assert.deepEqual(rateio.map((item) => item.valor), [30, 30, 30])
+})
+
+test('custos de coleta e entrega em rotas diferentes são somados na mesma OS', () => {
+  const custos = somarCustosRateadosPorOs([
+    { os_id: 10, custo_rateado: 80.25 },
+    { os_id: 10, custo_rateado: 44.75 },
+    { os_id: 20, custo_rateado: 60 },
+  ])
+
+  assert.equal(custos.get(10), 125)
+  assert.equal(custos.get(20), 60)
+})
+
+test('endereços da rota e do cliente são preparados para o cálculo rodoviário', () => {
+  assert.equal(montarEnderecoRota('Naviraí'), 'Naviraí, MS, Brasil')
+  assert.equal(montarEnderecoRota('Campo Grande, MS'), 'Campo Grande, MS, Brasil')
+  assert.equal(montarEnderecoCliente({
+    logradouro: 'Rua Exemplo',
+    numero: '100',
+    bairro: 'Centro',
+    cidade: 'Naviraí',
+    estado: 'MS',
+    cep: '79950-000',
+  }), 'Rua Exemplo, 100, Centro, Naviraí - MS, 79950-000, Brasil')
 })
 
 test('rentabilidade de técnico próprio soma peças, comissões e rota', () => {

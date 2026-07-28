@@ -15,6 +15,11 @@ type Rota = {
   motorista_nome?: string | null
   veiculo?: string | null
   km_total: number
+  km_planejado?: number
+  duracao_planejada_min?: number
+  retorna_origem?: boolean
+  ordem_otimizada?: number[] | null
+  rota_calculada_em?: string | null
   metodo_rateio: 'IGUAL' | 'RECEITA' | 'QUILOMETRAGEM'
   status: 'PLANEJADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'CANCELADA'
   observacao?: string | null
@@ -65,6 +70,8 @@ type Payload = {
   vinculos: Vinculo[]
   ordensDisponiveis: OrdemResumo[]
   tecnicos: Tecnico[]
+  mapasConfigurado: boolean
+  calculoKmPendente: boolean
 }
 
 const hoje = () => new Date().toISOString().slice(0, 10)
@@ -82,7 +89,7 @@ const formRotaInicial = {
 }
 
 export default function RotasPage() {
-  const [data, setData] = useState<Payload>({ estruturaPendente: false, rotas: [], despesas: [], vinculos: [], ordensDisponiveis: [], tecnicos: [] })
+  const [data, setData] = useState<Payload>({ estruturaPendente: false, rotas: [], despesas: [], vinculos: [], ordensDisponiveis: [], tecnicos: [], mapasConfigurado: false, calculoKmPendente: false })
   const [rotaSelecionadaId, setRotaSelecionadaId] = useState<number | null>(null)
   const [formRota, setFormRota] = useState(formRotaInicial)
   const [novaRotaAberta, setNovaRotaAberta] = useState(false)
@@ -126,6 +133,7 @@ export default function RotasPage() {
   }, [data.ordensDisponiveis, vinculosRota])
   const totalDespesas = useMemo(() => despesasRota.reduce((acc, item) => acc + Number(item.valor ?? 0), 0), [despesasRota])
   const receitaRota = useMemo(() => vinculosRota.reduce((acc, item) => acc + Number(item.receita_referencia ?? 0), 0), [vinculosRota])
+  const rotaEditavel = rota ? rota.status === 'PLANEJADA' || rota.status === 'EM_ANDAMENTO' : false
 
   async function acao(body: Record<string, unknown>, sucesso: string) {
     setSalvando(true)
@@ -183,11 +191,6 @@ export default function RotasPage() {
     void acao({ acao: 'ATUALIZAR', rotaId: rota.id, metodoRateio }, 'Método de rateio atualizado.')
   }
 
-  function alterarStatus(status: Rota['status']) {
-    if (!rota) return
-    void acao({ acao: 'ATUALIZAR', rotaId: rota.id, status }, 'Situação da rota atualizada.')
-  }
-
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-6">
       <div className="mx-auto max-w-[1600px] space-y-5">
@@ -205,6 +208,16 @@ export default function RotasPage() {
         {data.estruturaPendente && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-bold text-amber-900">
             Execute o arquivo <span className="font-black">supabase-add-gestao-rotas.sql</span> no SQL Editor do Supabase para liberar esta área.
+          </div>
+        )}
+        {!data.estruturaPendente && data.calculoKmPendente && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-bold text-amber-900">
+            Para liberar o cálculo automático de quilômetros, execute <span className="font-black">supabase-add-calculo-km-rotas.sql</span> no Supabase.
+          </div>
+        )}
+        {!data.estruturaPendente && !data.mapasConfigurado && (
+          <div className="rounded-xl border border-blue-300 bg-blue-50 p-4 text-sm font-bold text-blue-900">
+            Configure <span className="font-black">GOOGLE_MAPS_API_KEY</span> no servidor para calcular distâncias e tempo de viagem.
           </div>
         )}
         {erro && <div className="rounded-xl bg-red-50 p-4 text-sm font-bold text-red-700">{erro}</div>}
@@ -263,11 +276,12 @@ export default function RotasPage() {
                 <section className="rounded-2xl bg-white p-5 shadow-sm">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div><p className="text-xs font-black uppercase tracking-wide text-orange-600">{rota.numero_rota}</p><h2 className="text-2xl font-black text-slate-950">{rota.origem} → {rota.destino}</h2><p className="mt-1 text-sm text-slate-500">{dataPt(rota.data_inicio)}{rota.data_fim ? ` a ${dataPt(rota.data_fim)}` : ''} · {rota.veiculo || 'Veículo não informado'} · {rota.km_total || 0} km</p></div>
-                    <div className="flex flex-wrap gap-2">
-                      <select value={rota.status} onChange={(e) => alterarStatus(e.target.value as Rota['status'])} disabled={salvando} className="input min-w-44">
-                        <option value="PLANEJADA">Planejada</option><option value="EM_ANDAMENTO">Em andamento</option><option value="CONCLUIDA">Concluída</option><option value="CANCELADA">Cancelada</option>
-                      </select>
-                    </div>
+                    <ControlesStatusRota
+                      key={`${rota.id}-${rota.status}`}
+                      rota={rota}
+                      salvando={salvando}
+                      onAcao={acao}
+                    />
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
                     <Resumo label="Ordens vinculadas" value={String(vinculosRota.length)} />
@@ -275,40 +289,56 @@ export default function RotasPage() {
                     <Resumo label="Despesas da rota" value={moeda(totalDespesas)} tom="amber" />
                     <Resumo label="Resultado bruto da rota" value={moeda(receitaRota - totalDespesas)} tom={receitaRota - totalDespesas >= 0 ? 'green' : 'red'} />
                   </div>
+                  <CalculoMapaRota
+                    key={`${rota.id}-${rota.rota_calculada_em ?? 'sem-calculo'}-${rota.status}`}
+                    rota={rota}
+                    vinculos={vinculosRota}
+                    salvando={salvando}
+                    disponivel={data.mapasConfigurado && !data.calculoKmPendente}
+                    editavel={rotaEditavel}
+                    onAcao={acao}
+                  />
                   <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
                     <Campo label="Forma de distribuir as despesas">
-                      <select value={rota.metodo_rateio} onChange={(e) => alterarMetodo(e.target.value as Rota['metodo_rateio'])} disabled={salvando} className="input">
+                      <select value={rota.metodo_rateio} onChange={(e) => alterarMetodo(e.target.value as Rota['metodo_rateio'])} disabled={salvando || !rotaEditavel} className="input">
                         <option value="RECEITA">Proporcional ao valor da OS</option>
                         <option value="IGUAL">Igual entre todas as OS</option>
                         <option value="QUILOMETRAGEM">Proporcional à quilometragem</option>
                       </select>
                     </Campo>
                     <div className="rounded-xl bg-blue-50 p-3 text-xs font-semibold text-blue-800">{explicacaoRateio(rota.metodo_rateio)}</div>
-                    <button type="button" disabled={salvando} onClick={() => void acao({ acao: 'ATUALIZAR', rotaId: rota.id, metodoRateio: rota.metodo_rateio }, 'Valores das OS e rateio atualizados.')} className="rounded-xl border border-blue-200 bg-white px-4 py-2 text-xs font-black text-blue-700 disabled:opacity-50">Recalcular valores</button>
+                    <button type="button" disabled={salvando || !rotaEditavel} onClick={() => void acao({ acao: 'ATUALIZAR', rotaId: rota.id, metodoRateio: rota.metodo_rateio }, 'Valores das OS e rateio atualizados.')} className="rounded-xl border border-blue-200 bg-white px-4 py-2 text-xs font-black text-blue-700 disabled:opacity-50">Recalcular valores</button>
                   </div>
+                  {!rotaEditavel && (
+                    <p className="mt-3 rounded-xl bg-slate-100 px-4 py-3 text-xs font-bold text-slate-600">
+                      Esta rota está encerrada. Os vínculos, despesas e valores rateados estão protegidos contra alterações.
+                    </p>
+                  )}
                 </section>
 
                 <section className="rounded-2xl bg-white p-5 shadow-sm">
                   <h3 className="text-lg font-black">Ordens atendidas na rota</h3>
-                  <form onSubmit={vincularOs} className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_150px_130px_auto]">
-                    <select required value={osId} onChange={(e) => setOsId(e.target.value)} className="input">
-                      <option value="">Selecione uma OS desta unidade</option>
-                      {ordensDisponiveisRota.map((ordem) => <option key={ordem.id} value={ordem.id}>{ordem.numero_os} · {nomePagador(ordem)} · {ordem.modelo ?? '-'}</option>)}
-                    </select>
-                    <select value={finalidade} onChange={(e) => setFinalidade(e.target.value as Vinculo['finalidade'])} className="input">
-                      <option value="COLETA">Coleta</option><option value="ATENDIMENTO">Atendimento</option><option value="ENTREGA">Entrega</option><option value="RETORNO">Retorno</option><option value="OUTRA">Outra</option>
-                    </select>
-                    <input type="number" min="0" step="0.01" value={kmReferencia} onChange={(e) => setKmReferencia(e.target.value)} placeholder="Km da OS" className="input" />
-                    <button disabled={salvando} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white disabled:opacity-50">Vincular OS</button>
-                  </form>
+                  {rotaEditavel && (
+                    <form onSubmit={vincularOs} className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_150px_130px_auto]">
+                      <select required value={osId} onChange={(e) => setOsId(e.target.value)} className="input">
+                        <option value="">Selecione uma OS desta unidade</option>
+                        {ordensDisponiveisRota.map((ordem) => <option key={ordem.id} value={ordem.id}>{ordem.numero_os} · {nomePagador(ordem)} · {ordem.modelo ?? '-'}</option>)}
+                      </select>
+                      <select value={finalidade} onChange={(e) => setFinalidade(e.target.value as Vinculo['finalidade'])} className="input">
+                        <option value="COLETA">Coleta</option><option value="ATENDIMENTO">Atendimento</option><option value="ENTREGA">Entrega</option><option value="RETORNO">Retorno</option><option value="OUTRA">Outra</option>
+                      </select>
+                      <input type="number" min="0" step="0.01" value={kmReferencia} onChange={(e) => setKmReferencia(e.target.value)} placeholder="Km da OS" className="input" />
+                      <button disabled={salvando} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white disabled:opacity-50">Vincular OS</button>
+                    </form>
+                  )}
                   <div className="mt-4 space-y-2">
                     {vinculosRota.length === 0 ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Nenhuma OS vinculada.</p> : vinculosRota.map((item) => (
                       <div key={item.id} className="grid gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-[minmax(0,1fr)_120px_130px_120px_auto] md:items-center">
                         <div><div className="flex flex-wrap items-center gap-2"><Link href={`/admin/os/${item.os_id}`} className="font-black text-blue-700 hover:underline">{item.ordem?.numero_os ?? `OS #${item.os_id}`}</Link><span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-black text-blue-700">{labelFinalidade(item.finalidade)}</span></div><p className="text-xs text-slate-500">{item.ordem ? nomePagador(item.ordem) : '-'} · Receita {moeda(item.receita_referencia)}</p></div>
                         <p className="text-xs"><span className="block text-slate-500">Peso</span><b>{Number(item.percentual_rateio).toFixed(2)}%</b></p>
-                        <label className="text-xs text-slate-500">Km de referência<input type="number" defaultValue={item.km_referencia} onBlur={(e) => void acao({ acao: 'ATUALIZAR_KM_OS', rotaId: rota.id, vinculoId: item.id, kmReferencia: e.target.value }, 'Quilometragem e rateio atualizados.')} className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-2 font-bold text-slate-900" /></label>
+                        <label className="text-xs text-slate-500">Km de referência<input type="number" disabled={!rotaEditavel} defaultValue={item.km_referencia} onBlur={(e) => rotaEditavel && void acao({ acao: 'ATUALIZAR_KM_OS', rotaId: rota.id, vinculoId: item.id, kmReferencia: e.target.value }, 'Quilometragem e rateio atualizados.')} className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-2 font-bold text-slate-900 disabled:bg-slate-100 disabled:text-slate-500" /></label>
                         <p className="text-sm"><span className="block text-xs text-slate-500">Custo rateado</span><b className="text-amber-700">{moeda(item.custo_rateado)}</b></p>
-                        <button type="button" disabled={salvando} onClick={() => window.confirm('Desvincular esta OS da rota?') && void acao({ acao: 'DESVINCULAR_OS', rotaId: rota.id, vinculoId: item.id }, 'OS desvinculada e rateio recalculado.')} className="text-xs font-black text-red-600">Desvincular</button>
+                        {rotaEditavel ? <button type="button" disabled={salvando} onClick={() => window.confirm('Desvincular esta OS da rota?') && void acao({ acao: 'DESVINCULAR_OS', rotaId: rota.id, vinculoId: item.id }, 'OS desvinculada e rateio recalculado.')} className="text-xs font-black text-red-600">Desvincular</button> : <span className="text-xs font-bold text-slate-400">Fechado</span>}
                       </div>
                     ))}
                   </div>
@@ -316,17 +346,19 @@ export default function RotasPage() {
 
                 <section className="rounded-2xl bg-white p-5 shadow-sm">
                   <h3 className="text-lg font-black">Despesas da viagem</h3>
-                  <form onSubmit={adicionarDespesa} className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-[170px_160px_minmax(0,1fr)_150px_auto]">
-                    <select value={despesa.tipo} onChange={(e) => setDespesa({ ...despesa, tipo: e.target.value })} className="input">
-                      <option value="COMBUSTIVEL">Combustível</option><option value="PEDAGIO">Pedágio</option><option value="ALIMENTACAO">Alimentação</option><option value="HOSPEDAGEM">Hospedagem</option><option value="ESTACIONAMENTO">Estacionamento</option><option value="OUTRA">Outra</option>
-                    </select>
-                    <input required type="date" value={despesa.dataDespesa} onChange={(e) => setDespesa({ ...despesa, dataDespesa: e.target.value })} className="input" />
-                    <input value={despesa.descricao} onChange={(e) => setDespesa({ ...despesa, descricao: e.target.value })} placeholder="Descrição opcional" className="input" />
-                    <input required type="number" min="0.01" step="0.01" value={despesa.valor} onChange={(e) => setDespesa({ ...despesa, valor: e.target.value })} placeholder="Valor" className="input" />
-                    <button disabled={salvando} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-black text-white disabled:opacity-50">Adicionar</button>
-                  </form>
+                  {rotaEditavel && (
+                    <form onSubmit={adicionarDespesa} className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-[170px_160px_minmax(0,1fr)_150px_auto]">
+                      <select value={despesa.tipo} onChange={(e) => setDespesa({ ...despesa, tipo: e.target.value })} className="input">
+                        <option value="COMBUSTIVEL">Combustível</option><option value="PEDAGIO">Pedágio</option><option value="ALIMENTACAO">Alimentação</option><option value="HOSPEDAGEM">Hospedagem</option><option value="ESTACIONAMENTO">Estacionamento</option><option value="OUTRA">Outra</option>
+                      </select>
+                      <input required type="date" value={despesa.dataDespesa} onChange={(e) => setDespesa({ ...despesa, dataDespesa: e.target.value })} className="input" />
+                      <input value={despesa.descricao} onChange={(e) => setDespesa({ ...despesa, descricao: e.target.value })} placeholder="Descrição opcional" className="input" />
+                      <input required type="number" min="0.01" step="0.01" value={despesa.valor} onChange={(e) => setDespesa({ ...despesa, valor: e.target.value })} placeholder="Valor" className="input" />
+                      <button disabled={salvando} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-black text-white disabled:opacity-50">Adicionar</button>
+                    </form>
+                  )}
                   <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-sm"><thead className="text-xs uppercase text-slate-500"><tr><th className="py-2">Data</th><th>Tipo</th><th>Descrição</th><th className="text-right">Valor</th><th className="text-right">Ação</th></tr></thead><tbody>
-                    {despesasRota.map((item) => <tr key={item.id} className="border-t border-slate-100"><td className="py-3">{dataPt(item.data_despesa)}</td><td className="font-bold">{labelTipo(item.tipo)}</td><td>{item.descricao || '-'}</td><td className="text-right font-black">{moeda(item.valor)}</td><td className="text-right"><button type="button" disabled={salvando} onClick={() => window.confirm('Excluir esta despesa?') && void acao({ acao: 'EXCLUIR_DESPESA', rotaId: rota.id, despesaId: item.id }, 'Despesa excluída e rateio recalculado.')} className="text-xs font-black text-red-600">Excluir</button></td></tr>)}
+                    {despesasRota.map((item) => <tr key={item.id} className="border-t border-slate-100"><td className="py-3">{dataPt(item.data_despesa)}</td><td className="font-bold">{labelTipo(item.tipo)}</td><td>{item.descricao || '-'}</td><td className="text-right font-black">{moeda(item.valor)}</td><td className="text-right">{rotaEditavel ? <button type="button" disabled={salvando} onClick={() => window.confirm('Excluir esta despesa?') && void acao({ acao: 'EXCLUIR_DESPESA', rotaId: rota.id, despesaId: item.id }, 'Despesa excluída e rateio recalculado.')} className="text-xs font-black text-red-600">Excluir</button> : <span className="text-xs font-bold text-slate-400">Fechado</span>}</td></tr>)}
                     {despesasRota.length === 0 && <tr><td colSpan={5} className="border-t py-4 text-center text-slate-500">Nenhuma despesa registrada.</td></tr>}
                   </tbody><tfoot><tr className="border-t-2 border-slate-300"><td colSpan={3} className="py-3 font-black">Total da rota</td><td className="text-right text-lg font-black">{moeda(totalDespesas)}</td><td /></tr></tfoot></table></div>
                 </section>
@@ -338,6 +370,182 @@ export default function RotasPage() {
       <style jsx>{`.input{width:100%;height:42px;border:1px solid #cbd5e1;border-radius:9px;padding:0 12px;background:#fff;font-size:14px;color:#0f172a;outline:none}.input:focus{border-color:#f97316;box-shadow:0 0 0 2px rgba(249,115,22,.12)}`}</style>
     </main>
   )
+}
+
+function CalculoMapaRota({
+  rota,
+  vinculos,
+  salvando,
+  disponivel,
+  editavel,
+  onAcao,
+}: {
+  rota: Rota
+  vinculos: Vinculo[]
+  salvando: boolean
+  disponivel: boolean
+  editavel: boolean
+  onAcao: (body: Record<string, unknown>, sucesso: string) => Promise<unknown>
+}) {
+  const [retornaOrigem, setRetornaOrigem] = useState(rota.retorna_origem !== false)
+  const kmPlanejado = Number(rota.km_planejado ?? 0)
+  const kmReal = Number(rota.km_total ?? 0)
+  const desvio = kmPlanejado > 0 && kmReal > 0 ? Math.round(((kmReal - kmPlanejado) / kmPlanejado) * 10_000) / 100 : null
+  const ordemIds = Array.isArray(rota.ordem_otimizada) ? rota.ordem_otimizada.map(Number) : []
+  const ordem = ordemIds
+    .map((osId) => vinculos.find((item) => item.os_id === osId))
+    .filter((item): item is Vinculo => Boolean(item))
+
+  return (
+    <div className="mt-4 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-blue-50 p-4">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700">Planejamento inteligente</p>
+          <h3 className="text-base font-black text-slate-950">Distância calculada pelos endereços das OS</h3>
+          <p className="mt-1 text-xs font-semibold text-slate-600">
+            {retornaOrigem ? 'Percurso com retorno ao ponto de origem.' : `Percurso encerrando em ${rota.destino}.`}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <MapaResumo label="Km planejado" value={kmPlanejado > 0 ? `${numeroKm(kmPlanejado)} km` : '-'} />
+          <MapaResumo label="Tempo estimado" value={rota.duracao_planejada_min ? formatarDuracao(rota.duracao_planejada_min) : '-'} />
+          <MapaResumo label="Km realizado" value={kmReal > 0 ? `${numeroKm(kmReal)} km` : '-'} />
+          <MapaResumo label="Desvio" value={desvio === null ? '-' : `${desvio > 0 ? '+' : ''}${desvio}%`} destaque={desvio !== null && Math.abs(desvio) > 10} />
+        </div>
+      </div>
+
+      {editavel && (
+        <div className="mt-4 flex flex-col gap-3 border-t border-emerald-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700">
+            <input type="checkbox" checked={retornaOrigem} onChange={(event) => setRetornaOrigem(event.target.checked)} className="h-4 w-4 accent-emerald-600" />
+            Retornar ao endereço de origem após a última OS
+          </label>
+          <button
+            type="button"
+            disabled={salvando || !disponivel || vinculos.length === 0}
+            onClick={() => void onAcao(
+              { acao: 'CALCULAR_DISTANCIA', rotaId: rota.id, retornaOrigem },
+              'Rota calculada pelo Google Maps. Quilômetros e rateio das OS foram atualizados.'
+            )}
+            className="rounded-xl bg-emerald-600 px-5 py-3 text-xs font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Calcular e otimizar rota
+          </button>
+        </div>
+      )}
+
+      {!disponivel && editavel && (
+        <p className="mt-3 rounded-lg bg-white/80 px-3 py-2 text-xs font-bold text-amber-800">
+          Cálculo aguardando o SQL e a chave da Google Maps Platform.
+        </p>
+      )}
+
+      {ordem.length > 0 && (
+        <div className="mt-4 border-t border-emerald-200 pt-3">
+          <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Ordem sugerida das paradas</p>
+          <div className="flex flex-wrap gap-2">
+            {ordem.map((item, index) => (
+              <span key={item.id} className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-black text-slate-700">
+                {index + 1}. {item.ordem?.numero_os ?? `OS #${item.os_id}`}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ControlesStatusRota({
+  rota,
+  salvando,
+  onAcao,
+}: {
+  rota: Rota
+  salvando: boolean
+  onAcao: (body: Record<string, unknown>, sucesso: string) => Promise<unknown>
+}) {
+  const [dataFim, setDataFim] = useState(rota.data_fim || hoje())
+  const [kmTotal, setKmTotal] = useState(rota.km_total > 0 ? String(rota.km_total) : '')
+
+  if (rota.status === 'PLANEJADA') {
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Status status={rota.status} />
+        <button
+          type="button"
+          disabled={salvando}
+          onClick={() => void onAcao({ acao: 'INICIAR_ROTA', rotaId: rota.id }, 'Rota iniciada. Despesas e atendimentos podem ser registrados durante a viagem.')}
+          className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          Iniciar rota
+        </button>
+        <button
+          type="button"
+          disabled={salvando}
+          onClick={() => window.confirm('Cancelar esta rota planejada?') && void onAcao({ acao: 'CANCELAR_ROTA', rotaId: rota.id }, 'Rota cancelada.')}
+          className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-xs font-black text-red-700 disabled:opacity-50"
+        >
+          Cancelar
+        </button>
+      </div>
+    )
+  }
+
+  if (rota.status === 'EM_ANDAMENTO') {
+    return (
+      <div className="w-full max-w-xl rounded-xl border border-blue-200 bg-blue-50 p-3 lg:w-auto">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-xs font-black text-blue-900">Fechamento da rota</p>
+          <Status status={rota.status} />
+        </div>
+        <div className="grid gap-2 sm:grid-cols-[145px_145px_auto]">
+          <label className="text-[10px] font-black uppercase text-blue-800">
+            Data final
+            <input type="date" value={dataFim} onChange={(event) => setDataFim(event.target.value)} className="mt-1 h-[42px] w-full rounded-lg border border-blue-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none focus:border-blue-500" />
+          </label>
+          <label className="text-[10px] font-black uppercase text-blue-800">
+            Km total realizado
+            <input type="number" min="0.01" step="0.01" value={kmTotal} onChange={(event) => setKmTotal(event.target.value)} className="mt-1 h-[42px] w-full rounded-lg border border-blue-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none focus:border-blue-500" />
+          </label>
+          <button
+            type="button"
+            disabled={salvando || !dataFim || Number(kmTotal) <= 0}
+            onClick={() => window.confirm('Concluir a rota e proteger os valores rateados?') && void onAcao({ acao: 'CONCLUIR_ROTA', rotaId: rota.id, dataFim, kmTotal }, 'Rota concluída. O rateio foi recalculado e os valores foram protegidos.')}
+            className="self-end rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            Concluir rota
+          </button>
+        </div>
+        <button
+          type="button"
+          disabled={salvando}
+          onClick={() => window.confirm('Cancelar esta rota em andamento?') && void onAcao({ acao: 'CANCELAR_ROTA', rotaId: rota.id }, 'Rota cancelada.')}
+          className="mt-2 text-[11px] font-black text-red-700"
+        >
+          Cancelar rota
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <Status status={rota.status} />
+      <button
+        type="button"
+        disabled={salvando}
+        onClick={() => window.confirm('Reabrir esta rota permitirá alterar vínculos, despesas e rateio. Continuar?') && void onAcao({ acao: 'REABRIR_ROTA', rotaId: rota.id }, 'Rota reaberta para ajustes.')}
+        className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+      >
+        Reabrir rota
+      </button>
+    </div>
+  )
+}
+
+function MapaResumo({ label, value, destaque = false }: { label: string; value: string; destaque?: boolean }) {
+  return <div className={`min-w-28 rounded-xl border bg-white px-3 py-2 ${destaque ? 'border-amber-300 text-amber-800' : 'border-white text-slate-900'}`}><p className="text-[9px] font-black uppercase text-slate-500">{label}</p><p className="mt-0.5 text-sm font-black">{value}</p></div>
 }
 
 function Campo({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block text-xs font-black text-slate-600">{label}<div className="mt-1">{children}</div></label> }
@@ -359,6 +567,13 @@ function moeda(value: number | string | null | undefined) { return new Intl.Numb
 function dataPt(value: string) { return new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR') }
 function labelTipo(value: string) { return ({ COMBUSTIVEL: 'Combustível', PEDAGIO: 'Pedágio', ALIMENTACAO: 'Alimentação', HOSPEDAGEM: 'Hospedagem', ESTACIONAMENTO: 'Estacionamento', OUTRA: 'Outra' } as Record<string, string>)[value] ?? value }
 function labelFinalidade(value: Vinculo['finalidade']) { return ({ COLETA: 'Coleta', ATENDIMENTO: 'Atendimento', ENTREGA: 'Entrega', RETORNO: 'Retorno', OUTRA: 'Outra' } as Record<string, string>)[value] ?? value }
+function numeroKm(value: number) { return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(value) }
+function formatarDuracao(value: number) {
+  const minutos = Math.max(Math.round(Number(value) || 0), 0)
+  const horas = Math.floor(minutos / 60)
+  const restante = minutos % 60
+  return horas > 0 ? `${horas}h ${restante}min` : `${restante}min`
+}
 function explicacaoRateio(value: Rota['metodo_rateio']) {
   if (value === 'IGUAL') return 'Todas as OS recebem a mesma parcela das despesas, independentemente do valor ou distância.'
   if (value === 'QUILOMETRAGEM') return 'Cada OS absorve as despesas conforme os quilômetros de referência informados no vínculo.'
