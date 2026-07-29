@@ -83,6 +83,7 @@ export default function ClientesPage() {
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [clienteEditando, setClienteEditando] = useState<ClienteResumo | null>(null)
+  const [novoClienteAberto, setNovoClienteAberto] = useState(false)
   const [formCliente, setFormCliente] = useState<ClienteForm>(clienteFormInicial())
   const [salvandoCliente, setSalvandoCliente] = useState(false)
 
@@ -176,6 +177,39 @@ export default function ClientesPage() {
     }
   }
 
+  async function cadastrarCliente(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSalvandoCliente(true)
+    setErro('')
+    setMensagem('')
+
+    try {
+      const response = await adminFetch('/api/admin/clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formCliente),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Erro ao cadastrar cliente.')
+
+      setMensagem('Cliente cadastrado com sucesso. Ele já pode ser usado em uma nova OS.')
+      setNovoClienteAberto(false)
+      setFormCliente(clienteFormInicial())
+      await carregar()
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Erro ao cadastrar cliente.')
+    } finally {
+      setSalvandoCliente(false)
+    }
+  }
+
+  function abrirNovoCliente() {
+    setErro('')
+    setMensagem('')
+    setFormCliente(clienteFormInicial())
+    setNovoClienteAberto(true)
+  }
+
   function atualizarFormCliente(campo: keyof ClienteForm, valor: string) {
     setFormCliente((atual) => ({ ...atual, [campo]: valor }))
   }
@@ -224,9 +258,16 @@ export default function ClientesPage() {
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h1 className="text-2xl font-black text-slate-950">Clientes</h1>
-            <p className="text-sm text-slate-500">Consulte clientes cadastrados automaticamente pelas OS e exporte a base.</p>
+            <p className="text-sm text-slate-500">Cadastre clientes independentemente e consulte o histórico de atendimentos.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={abrirNovoCliente}
+              className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-black text-white"
+            >
+              + Novo cliente
+            </button>
             <button
               type="button"
               onClick={() => void carregar()}
@@ -446,6 +487,57 @@ export default function ClientesPage() {
                 className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50"
               >
                 {salvandoCliente ? 'Salvando...' : 'Salvar cliente'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {novoClienteAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-6">
+          <form onSubmit={cadastrarCliente} className="w-full max-w-3xl rounded-xl bg-white p-5 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase text-orange-600">Cadastro independente</p>
+                <h2 className="text-xl font-black text-slate-950">Novo cliente</h2>
+                <p className="text-xs text-slate-500">O equipamento e a OS poderão ser cadastrados posteriormente.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNovoClienteAberto(false)}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-black text-slate-600 hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <EditField label="Nome *" value={formCliente.nome} onChange={(valor) => atualizarFormCliente('nome', valor)} required />
+              <EditField label="CPF/CNPJ" value={formCliente.cpf_cnpj} onChange={(valor) => atualizarFormCliente('cpf_cnpj', valor)} />
+              <EditField label="WhatsApp" value={formCliente.whatsapp} onChange={(valor) => atualizarFormCliente('whatsapp', valor)} />
+              <EditField label="E-mail" value={formCliente.email} onChange={(valor) => atualizarFormCliente('email', valor)} type="email" />
+              <EditField label="CEP" value={formCliente.cep} onChange={(valor) => atualizarFormCliente('cep', valor)} />
+              <EditField label="Logradouro" value={formCliente.logradouro} onChange={(valor) => atualizarFormCliente('logradouro', valor)} />
+              <EditField label="Número" value={formCliente.numero} onChange={(valor) => atualizarFormCliente('numero', valor)} />
+              <EditField label="Bairro" value={formCliente.bairro} onChange={(valor) => atualizarFormCliente('bairro', valor)} />
+              <EditField label="Cidade" value={formCliente.cidade} onChange={(valor) => atualizarFormCliente('cidade', valor)} />
+              <EditField label="UF" value={formCliente.estado} onChange={(valor) => atualizarFormCliente('estado', valor.toUpperCase().slice(0, 2))} maxLength={2} />
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setNovoClienteAberto(false)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-black text-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={salvandoCliente}
+                className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50"
+              >
+                {salvandoCliente ? 'Cadastrando...' : 'Cadastrar cliente'}
               </button>
             </div>
           </form>

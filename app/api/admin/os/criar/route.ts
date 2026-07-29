@@ -131,6 +131,9 @@ export async function POST(request: NextRequest) {
     const defeito = String(body?.defeito ?? '').trim()
     const garantia = body?.garantia === 'SIM'
     const clienteIdInformado = Number(body?.clienteId)
+    const equipamentoIdInformado = Number(body?.equipamentoId)
+    const garantiaAsc = body?.garantiaAsc === 'SIM'
+    const garantiaAscOrigemOsId = Number(body?.garantiaAscOrigemOsId)
 
     if (!nomeCliente || !cpfCnpj || !whatsapp || !categoriaId || !marcaId || !modelo || !defeito) {
       return NextResponse.json(
@@ -209,11 +212,91 @@ export async function POST(request: NextRequest) {
       clienteId = novoCliente.id
     }
 
+    if (!await colunaExiste(supabase, 'ordens_servico', 'equipamento_id')) {
+      return NextResponse.json(
+        { error: 'Execute o arquivo supabase-add-cadastro-equipamentos-garantia-asc.sql antes de cadastrar a OS.' },
+        { status: 400 }
+      )
+    }
+
+    const equipamentoPayload = {
+      cliente_id: Number(clienteId),
+      categoria_id: categoriaId,
+      marca_id: marcaId,
+      modelo,
+      numero_serie: String(body?.numeroSerie ?? '').trim() || null,
+      atualizado_em: new Date().toISOString(),
+    }
+    let equipamentoId = Number.isInteger(equipamentoIdInformado) && equipamentoIdInformado > 0
+      ? equipamentoIdInformado
+      : null
+
+    if (equipamentoId) {
+      const { data: equipamentoExistente, error: equipamentoError } = await supabase
+        .from('equipamentos_clientes')
+        .select('id, cliente_id')
+        .eq('id', equipamentoId)
+        .maybeSingle()
+
+      if (equipamentoError) throw equipamentoError
+      if (!equipamentoExistente || Number(equipamentoExistente.cliente_id) !== Number(clienteId)) {
+        return NextResponse.json(
+          { error: 'O equipamento selecionado não pertence a este cliente.' },
+          { status: 400 }
+        )
+      }
+
+      const { error: atualizarEquipamentoError } = await supabase
+        .from('equipamentos_clientes')
+        .update(equipamentoPayload)
+        .eq('id', equipamentoId)
+      if (atualizarEquipamentoError) throw atualizarEquipamentoError
+    } else {
+      const { data: novoEquipamento, error: novoEquipamentoError } = await supabase
+        .from('equipamentos_clientes')
+        .insert(equipamentoPayload)
+        .select('id')
+        .single()
+
+      if (novoEquipamentoError) {
+        if (String(novoEquipamentoError.message ?? '').toLowerCase().includes('duplicate')) {
+          return NextResponse.json(
+            { error: 'Já existe um equipamento cadastrado com este número de série. Selecione-o no histórico do cliente.' },
+            { status: 409 }
+          )
+        }
+        throw novoEquipamentoError
+      }
+      equipamentoId = Number(novoEquipamento.id)
+    }
+
+    if (garantiaAsc) {
+      if (!Number.isInteger(garantiaAscOrigemOsId) || garantiaAscOrigemOsId <= 0) {
+        return NextResponse.json({ error: 'Selecione a OS que originou a garantia ASC.' }, { status: 400 })
+      }
+
+      const { data: origemGarantia, error: origemGarantiaError } = await supabase
+        .from('ordens_servico')
+        .select('id, equipamento_id, status')
+        .eq('id', garantiaAscOrigemOsId)
+        .maybeSingle()
+
+      if (origemGarantiaError) throw origemGarantiaError
+      if (
+        !origemGarantia
+        || Number(origemGarantia.equipamento_id) !== Number(equipamentoId)
+        || String(origemGarantia.status ?? '').toUpperCase() !== 'FINALIZADA'
+      ) {
+        return NextResponse.json({ error: 'A OS de origem da garantia ASC é inválida.' }, { status: 400 })
+      }
+    }
+
     const numeroOS = gerarNumeroOS()
-    const origemOs = garantia ? 'GARANTIA_SEGURADORA' : 'ABERTURA_INTERNA'
+    const origemOs = garantiaAsc ? 'GARANTIA_ASC' : garantia ? 'GARANTIA_SEGURADORA' : 'ABERTURA_INTERNA'
     const osPayload: Record<string, unknown> = {
       numero_os: numeroOS,
       cliente_id: Number(clienteId),
+      equipamento_id: equipamentoId,
       categoria_id: categoriaId,
       marca_id: marcaId,
       modelo,
@@ -227,6 +310,9 @@ export async function POST(request: NextRequest) {
       prioridade: body?.prioridade === 'URGENTE' ? 'URGENTE' : 'NORMAL',
       parceiro_id: null,
       sla_status: 'NORMAL',
+      garantia_asc: garantiaAsc,
+      garantia_asc_origem_os_id: garantiaAsc ? garantiaAscOrigemOsId : null,
+      garantia_asc_confirmada_em: garantiaAsc ? new Date().toISOString() : null,
     }
 
     if (await colunaExiste(supabase, 'ordens_servico', 'origem_os')) {

@@ -153,6 +153,84 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function POST(request: NextRequest) {
+  try {
+    const auth = await requireAdminPermission(request, 'clientes')
+    if (!auth.ok) return auth.response
+
+    const body = await request.json().catch(() => null)
+    const nome = limparTexto(body?.nome)
+    const cpfCnpj = limparTexto(body?.cpf_cnpj)
+    const whatsapp = limparTexto(body?.whatsapp)
+
+    if (!nome) {
+      return NextResponse.json({ error: 'Informe o nome do cliente.' }, { status: 400 })
+    }
+
+    if (!cpfCnpj && !whatsapp) {
+      return NextResponse.json(
+        { error: 'Informe ao menos CPF/CNPJ ou WhatsApp para evitar cadastros duplicados.' },
+        { status: 400 }
+      )
+    }
+
+    const supabase = getSupabaseAdmin(request, auth)
+    const documentoNormalizado = normalizarDigitos(cpfCnpj)
+    const whatsappNormalizado = normalizarDigitos(whatsapp)
+    const { data: candidatos, error: candidatosError } = await supabase
+      .from('clientes')
+      .select('id, nome, cpf_cnpj, whatsapp')
+
+    if (candidatosError) throw candidatosError
+
+    const duplicado = (candidatos ?? []).find((cliente) => {
+      const mesmoDocumento = documentoNormalizado.length >= 8
+        && normalizarDigitos(String(cliente.cpf_cnpj ?? '')) === documentoNormalizado
+      const mesmoWhatsapp = whatsappNormalizado.length >= 8
+        && normalizarDigitos(String(cliente.whatsapp ?? '')) === whatsappNormalizado
+      return mesmoDocumento || mesmoWhatsapp
+    })
+
+    if (duplicado) {
+      return NextResponse.json(
+        {
+          error: `Já existe um cliente com este CPF/CNPJ ou WhatsApp: ${duplicado.nome ?? `#${duplicado.id}`}.`,
+          clienteId: duplicado.id,
+        },
+        { status: 409 }
+      )
+    }
+
+    const payload = {
+      nome,
+      cpf_cnpj: cpfCnpj || null,
+      whatsapp: whatsapp || null,
+      email: limparTexto(body?.email) || null,
+      cep: limparTexto(body?.cep) || null,
+      logradouro: limparTexto(body?.logradouro) || null,
+      numero: limparTexto(body?.numero) || null,
+      bairro: limparTexto(body?.bairro) || null,
+      cidade: limparTexto(body?.cidade) || null,
+      estado: limparTexto(body?.estado)?.toUpperCase() || null,
+    }
+
+    const { data, error } = await supabase
+      .from('clientes')
+      .insert(payload)
+      .select('id, nome')
+      .single()
+
+    if (error) throw error
+    return NextResponse.json({ ok: true, data }, { status: 201 })
+  } catch (error) {
+    console.error('Erro ao cadastrar cliente:', error)
+    return NextResponse.json(
+      { error: formatarErro(error, 'Erro ao cadastrar cliente.') },
+      { status: 500 }
+    )
+  }
+}
+
 export async function PATCH(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'clientes')

@@ -79,6 +79,36 @@ type ClienteSugestao = {
   ultimo_atendimento: string | null
 }
 
+type EquipamentoCliente = {
+  id: number
+  cliente_id: number
+  categoria_id: number | null
+  marca_id: number | null
+  modelo: string
+  numero_serie: string | null
+  total_os: number
+  ultima_os: string | null
+  ultimo_atendimento: string | null
+  categorias?: { nome?: string | null } | Array<{ nome?: string | null }> | null
+  marcas?: { nome?: string | null } | Array<{ nome?: string | null }> | null
+  garantia_asc?: {
+    ativa: boolean
+    ate: string
+    origem_os_id: number
+    origem_numero_os: string | null
+    servico_executado: string | null
+  } | null
+  historico: Array<{
+    id: number
+    numero_os: string | null
+    created_at: string | null
+    status: string | null
+    defeito: string | null
+    diagnostico_tecnico: string | null
+    servico_executado: string | null
+  }>
+}
+
 type OrdemServicoTriagemApi = {
   id: number
   numero_os: string | null
@@ -136,6 +166,8 @@ type FormState = {
   defeito: string
   prioridade: 'NORMAL' | 'URGENTE'
   observacaoInterna: string
+  garantiaAsc: 'SIM' | 'NAO'
+  garantiaAscOrigemOsId: number | null
 }
 
 const formInicial: FormState = {
@@ -160,6 +192,8 @@ const formInicial: FormState = {
   defeito: '',
   prioridade: 'NORMAL',
   observacaoInterna: '',
+  garantiaAsc: 'NAO',
+  garantiaAscOrigemOsId: null,
 }
 
 const STATUS_FILTROS = [
@@ -189,6 +223,7 @@ const ORIGEM_FILTROS = [
   { value: 'TODAS', label: 'Todas origens' },
   { value: 'PORTAL_CLIENTE', label: 'Portal Cliente' },
   { value: 'ABERTURA_INTERNA', label: 'Abertura Interna' },
+  { value: 'GARANTIA_ASC', label: 'Garantia ASC' },
   { value: 'GARANTIA_SEGURADORA', label: 'Garantia/Seguradora' },
   { value: 'AVULSO_ADMIN', label: 'Avulso/Admin' },
 ] as const
@@ -211,6 +246,10 @@ export default function OrdensServicoPage() {
   const [clienteSelecionado, setClienteSelecionado] = useState<ClienteSugestao | null>(null)
   const [clientesSugeridos, setClientesSugeridos] = useState<ClienteSugestao[]>([])
   const [buscandoClientes, setBuscandoClientes] = useState(false)
+  const [equipamentosCliente, setEquipamentosCliente] = useState<EquipamentoCliente[]>([])
+  const [equipamentoSelecionado, setEquipamentoSelecionado] = useState<EquipamentoCliente | null>(null)
+  const [buscandoEquipamentos, setBuscandoEquipamentos] = useState(false)
+  const [erroEquipamentos, setErroEquipamentos] = useState('')
   const [busca, setBusca] = useState('')
   const [statusFiltro, setStatusFiltro] = useState('TODAS')
   const [origemFiltro, setOrigemFiltro] = useState('TODAS')
@@ -450,11 +489,66 @@ export default function OrdensServicoPage() {
       cidade: cliente.cidade ?? prev.cidade,
       estado: cliente.estado ?? prev.estado,
     }))
+    void buscarEquipamentosCliente(cliente.id)
   }
 
   function limparClienteSelecionado() {
     setClienteSelecionado(null)
     setClientesSugeridos([])
+    setEquipamentosCliente([])
+    setEquipamentoSelecionado(null)
+    setErroEquipamentos('')
+    setForm((prev) => ({
+      ...prev,
+      garantiaAsc: 'NAO',
+      garantiaAscOrigemOsId: null,
+    }))
+  }
+
+  async function buscarEquipamentosCliente(clienteId: number) {
+    setBuscandoEquipamentos(true)
+    setErroEquipamentos('')
+    setEquipamentosCliente([])
+    setEquipamentoSelecionado(null)
+
+    try {
+      const response = await adminFetch(`/api/admin/clientes/equipamentos?clienteId=${clienteId}`)
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Erro ao carregar equipamentos.')
+      setEquipamentosCliente((payload?.equipamentos ?? []) as EquipamentoCliente[])
+    } catch (error) {
+      setErroEquipamentos(error instanceof Error ? error.message : 'Erro ao carregar equipamentos.')
+    } finally {
+      setBuscandoEquipamentos(false)
+    }
+  }
+
+  function usarEquipamento(equipamento: EquipamentoCliente) {
+    setEquipamentoSelecionado(equipamento)
+    setForm((prev) => ({
+      ...prev,
+      categoriaId: equipamento.categoria_id ? String(equipamento.categoria_id) : '',
+      marcaId: equipamento.marca_id ? String(equipamento.marca_id) : '',
+      modelo: equipamento.modelo ?? '',
+      numeroSerie: equipamento.numero_serie ?? '',
+      garantiaAsc: 'NAO',
+      garantiaAscOrigemOsId: equipamento.garantia_asc?.ativa
+        ? equipamento.garantia_asc.origem_os_id
+        : null,
+    }))
+  }
+
+  function cadastrarOutroEquipamento() {
+    setEquipamentoSelecionado(null)
+    setForm((prev) => ({
+      ...prev,
+      categoriaId: '',
+      marcaId: '',
+      modelo: '',
+      numeroSerie: '',
+      garantiaAsc: 'NAO',
+      garantiaAscOrigemOsId: null,
+    }))
   }
 
   async function buscarCep(cepInformado?: string) {
@@ -506,7 +600,11 @@ export default function OrdensServicoPage() {
       const response = await adminFetch('/api/admin/os/criar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, clienteId: clienteSelecionado?.id ?? null }),
+        body: JSON.stringify({
+          ...form,
+          clienteId: clienteSelecionado?.id ?? null,
+          equipamentoId: equipamentoSelecionado?.id ?? null,
+        }),
       })
 
       const data = await response.json().catch(() => null)
@@ -522,6 +620,9 @@ export default function OrdensServicoPage() {
       setFotos([])
       setClienteSelecionado(null)
       setClientesSugeridos([])
+      setEquipamentosCliente([])
+      setEquipamentoSelecionado(null)
+      setErroEquipamentos('')
       await carregarDados()
     } catch (err) {
       console.error('Erro ao salvar OS:', err)
@@ -818,6 +919,132 @@ export default function OrdensServicoPage() {
 
             <section>
               <SectionTitle title="Equipamento" />
+              {clienteSelecionado && (
+                <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm font-black text-blue-950">Equipamentos deste cliente</p>
+                      <p className="text-xs font-semibold text-blue-700">
+                        Selecione um equipamento para preencher os dados e manter o histórico.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={cadastrarOutroEquipamento}
+                      className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-black text-blue-800"
+                    >
+                      + Cadastrar outro equipamento
+                    </button>
+                  </div>
+
+                  {buscandoEquipamentos && (
+                    <p className="mt-3 text-sm font-bold text-blue-700">Carregando equipamentos...</p>
+                  )}
+                  {erroEquipamentos && (
+                    <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm font-bold text-amber-800">
+                      {erroEquipamentos}
+                    </p>
+                  )}
+                  {!buscandoEquipamentos && !erroEquipamentos && equipamentosCliente.length === 0 && (
+                    <p className="mt-3 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-600">
+                      Nenhum equipamento permanente cadastrado. Preencha os campos abaixo para criar o primeiro.
+                    </p>
+                  )}
+
+                  {equipamentosCliente.length > 0 && (
+                    <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                      {equipamentosCliente.map((equipamento) => (
+                        <button
+                          key={equipamento.id}
+                          type="button"
+                          onClick={() => usarEquipamento(equipamento)}
+                          className={`rounded-lg border bg-white p-3 text-left transition ${
+                            equipamentoSelecionado?.id === equipamento.id
+                              ? 'border-blue-600 ring-2 ring-blue-200'
+                              : 'border-blue-200 hover:border-blue-400'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-black text-slate-950">{equipamento.modelo}</p>
+                            {equipamento.garantia_asc?.ativa && (
+                              <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-800">
+                                GARANTIA ASC
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-xs font-semibold text-slate-600">
+                            {nomeRelacao(equipamento.categorias)} · {nomeRelacao(equipamento.marcas)}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Série: {equipamento.numero_serie || 'não informada'}
+                          </p>
+                          <p className="mt-2 text-xs font-bold text-blue-700">
+                            {equipamento.total_os} OS
+                            {equipamento.ultima_os ? ` · última ${equipamento.ultima_os}` : ''}
+                          </p>
+                          {equipamento.garantia_asc?.ativa && (
+                            <p className="mt-2 text-xs font-black text-emerald-700">
+                              Cobertura até {formatarDataCurta(equipamento.garantia_asc.ate)}
+                            </p>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {equipamentoSelecionado && (
+                <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm font-black text-emerald-900">
+                        Equipamento selecionado: {equipamentoSelecionado.modelo}
+                      </p>
+                      <p className="text-xs font-semibold text-emerald-700">
+                        Histórico preservado com {equipamentoSelecionado.total_os} atendimento(s).
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={cadastrarOutroEquipamento}
+                      className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-black text-emerald-800"
+                    >
+                      Trocar / novo
+                    </button>
+                  </div>
+                  {equipamentoSelecionado.historico.length > 0 && (
+                    <details className="mt-3 rounded-lg border border-emerald-200 bg-white p-3">
+                      <summary className="cursor-pointer text-xs font-black text-emerald-800">
+                        Ver histórico completo deste equipamento
+                      </summary>
+                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        {equipamentoSelecionado.historico.map((ordem) => (
+                          <a
+                            key={ordem.id}
+                            href={`/admin/os/${ordem.id}`}
+                            className="rounded-lg border border-slate-200 p-3 text-xs transition hover:border-orange-300"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-black text-slate-950">{ordem.numero_os ?? `OS #${ordem.id}`}</span>
+                              <span className="rounded-full bg-slate-100 px-2 py-1 font-bold text-slate-600">
+                                {String(ordem.status ?? '-').replace(/_/g, ' ')}
+                              </span>
+                            </div>
+                            <p className="mt-2 font-semibold text-slate-600">
+                              Defeito: {ordem.defeito || '-'}
+                            </p>
+                            {ordem.servico_executado && (
+                              <p className="mt-1 text-slate-500">Serviço: {ordem.servico_executado}</p>
+                            )}
+                          </a>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              )}
+
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <Select
                   label="Categoria *"
@@ -854,6 +1081,42 @@ export default function OrdensServicoPage() {
                 <Input label="Número de Série" name="numeroSerie" value={form.numeroSerie} onChange={handleChange} />
               </div>
             </section>
+
+            {equipamentoSelecionado?.garantia_asc?.ativa && (
+              <section className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+                <p className="text-xs font-black uppercase tracking-wide text-amber-700">Atenção à garantia ASC</p>
+                <h3 className="mt-1 text-lg font-black text-amber-950">
+                  Este equipamento possui serviço dentro dos 90 dias
+                </h3>
+                <p className="mt-1 text-sm font-semibold text-amber-800">
+                  Origem: {equipamentoSelecionado.garantia_asc.origem_numero_os ?? `OS #${equipamentoSelecionado.garantia_asc.origem_os_id}`}
+                  {' · '}válida até {formatarDataCurta(equipamentoSelecionado.garantia_asc.ate)}
+                </p>
+                {equipamentoSelecionado.garantia_asc.servico_executado && (
+                  <p className="mt-2 rounded-lg bg-white px-3 py-2 text-sm text-slate-700">
+                    Serviço anterior: {equipamentoSelecionado.garantia_asc.servico_executado}
+                  </p>
+                )}
+                <label className="mt-3 block text-sm font-black text-amber-950">
+                  Classificação desta nova OS
+                  <select
+                    value={form.garantiaAsc}
+                    onChange={(event) => setForm((prev) => ({
+                      ...prev,
+                      garantiaAsc: event.target.value as 'SIM' | 'NAO',
+                      garantiaAscOrigemOsId: equipamentoSelecionado.garantia_asc?.origem_os_id ?? null,
+                    }))}
+                    className="mt-1 h-11 w-full rounded-lg border border-amber-300 bg-white px-3 text-sm outline-none md:max-w-xl"
+                  >
+                    <option value="NAO">Novo defeito / fora da cobertura ASC</option>
+                    <option value="SIM">Confirmar retorno em garantia ASC</option>
+                  </select>
+                </label>
+                <p className="mt-2 text-xs font-semibold text-amber-700">
+                  O sistema apenas alerta. A confirmação continua sendo decisão do administrativo.
+                </p>
+              </section>
+            )}
 
             <section>
               <SectionTitle title="Garantia" />
@@ -1619,6 +1882,7 @@ function OrigemBadge({ origem, compact = false }: { origem?: string | null; comp
 function normalizarOrigemOs(origem?: string | null) {
   const valor = String(origem ?? '').trim().toUpperCase()
   if (valor === 'PORTAL_CLIENTE') return valor
+  if (valor === 'GARANTIA_ASC') return valor
   if (valor === 'GARANTIA_SEGURADORA') return valor
   if (valor === 'AVULSO_ADMIN') return valor
   return 'ABERTURA_INTERNA'
@@ -1636,6 +1900,7 @@ function getOrigemOsVisual(os: {
 function formatarOrigemOs(origem?: string | null) {
   const valor = normalizarOrigemOs(origem)
   if (valor === 'PORTAL_CLIENTE') return 'Portal Cliente'
+  if (valor === 'GARANTIA_ASC') return 'Garantia ASC'
   if (valor === 'GARANTIA_SEGURADORA') return 'Garantia/Seguradora'
   if (valor === 'AVULSO_ADMIN') return 'Avulso/Admin'
   return 'Abertura Interna'
@@ -1811,6 +2076,19 @@ function SectionTitle({ title }: { title: string }) {
     </h3>
   )
 }
+
+function nomeRelacao(
+  relacao?: { nome?: string | null } | Array<{ nome?: string | null }> | null
+) {
+  const item = Array.isArray(relacao) ? relacao[0] : relacao
+  return item?.nome ?? '-'
+}
+
+function formatarDataCurta(value?: string | null) {
+  if (!value) return '-'
+  return new Intl.DateTimeFormat('pt-BR').format(new Date(value))
+}
+
 function formatarErro(err: unknown, fallback: string) {
   if (err instanceof Error) return err.message
 

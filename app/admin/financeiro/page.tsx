@@ -42,6 +42,7 @@ type OrdemFinanceira = {
   cliente_total?: number | string | null
   encerramento_taxa_diagnostico?: number | string | null
   parceiro_id?: number | null
+  cliente_id?: number | null
   garantidor_id?: number | null
   garantia?: boolean | null
   tipo_atendimento?: string | null
@@ -117,6 +118,15 @@ type BaixaContaForm = {
   desconto: string
 }
 
+type ItemLoteForm = {
+  os: OrdemFinanceira
+  valor: string
+  juros: string
+  multa: string
+  desconto: string
+  issRetido: string
+}
+
 const contaInicial: ContaForm = {
   descricao: '',
   fornecedor: '',
@@ -175,6 +185,11 @@ export default function FinanceiroPage() {
   const [busca, setBusca] = useState('')
   const [contaForm, setContaForm] = useState<ContaForm>(contaInicial)
   const [baixaConta, setBaixaConta] = useState<BaixaContaForm | null>(null)
+  const [selecionadasLote, setSelecionadasLote] = useState<number[]>([])
+  const [itensLote, setItensLote] = useState<ItemLoteForm[]>([])
+  const [formaLote, setFormaLote] = useState('PIX')
+  const [loteAberto, setLoteAberto] = useState(false)
+  const [salvandoLote, setSalvandoLote] = useState(false)
   const [vendasResumo, setVendasResumo] = useState({ total: 0, totalMes: 0, quantidade: 0 })
   const [visaoDre, setVisaoDre] = useState(false)
   const [recebimentosPorForma, setRecebimentosPorForma] = useState<RecebimentosPorForma>({
@@ -497,6 +512,92 @@ export default function FinanceiroPage() {
     }
   }
 
+  function alternarSelecaoLote(os: OrdemFinanceira) {
+    setErro('')
+    if (!pagadorLoteValido(os)) {
+      setErro('Esta OS precisa ter cliente ou garantidor identificado antes do recebimento em lote.')
+      return
+    }
+    setSelecionadasLote((atuais) => {
+      if (atuais.includes(os.id)) return atuais.filter((id) => id !== os.id)
+      const primeira = ordens.find((item) => item.id === atuais[0])
+      if (primeira && chavePagador(primeira) !== chavePagador(os)) {
+        setErro('No recebimento em lote, selecione somente OS do mesmo cliente ou garantidor.')
+        return atuais
+      }
+      return [...atuais, os.id]
+    })
+  }
+
+  function abrirRecebimentoLote() {
+    const selecionadas = selecionadasLote
+      .map((id) => ordens.find((os) => os.id === id))
+      .filter((os): os is OrdemFinanceira => Boolean(os))
+    if (selecionadas.length < 2) {
+      setErro('Selecione ao menos duas OS do mesmo pagador.')
+      return
+    }
+    setItensLote(selecionadas.map((os) => ({
+      os,
+      valor: moneyInput(saldoCliente(os)),
+      juros: '0,00',
+      multa: '0,00',
+      desconto: '0,00',
+      issRetido: '0,00',
+    })))
+    setFormaLote('PIX')
+    setLoteAberto(true)
+  }
+
+  function atualizarItemLote(index: number, campo: keyof Omit<ItemLoteForm, 'os'>, valor: string) {
+    setItensLote((atuais) => atuais.map((item, itemIndex) =>
+      itemIndex === index ? { ...item, [campo]: valor } : item
+    ))
+  }
+
+  async function receberLote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSalvandoLote(true)
+    setErro('')
+    try {
+      const primeira = itensLote[0]?.os
+      if (!primeira) throw new Error('Nenhuma OS selecionada.')
+      const itens = itensLote.map((item) => ({
+        osId: item.os.id,
+        valor: parseMoneyInput(item.valor),
+        juros: parseMoneyInput(item.juros),
+        multa: parseMoneyInput(item.multa),
+        desconto: parseMoneyInput(item.desconto),
+        issRetido: parseMoneyInput(item.issRetido),
+      }))
+      if (itens.some((item) => [item.valor, item.juros, item.multa, item.desconto, item.issRetido]
+        .some((valor) => !Number.isFinite(valor) || valor < 0))) {
+        throw new Error('Confira os valores informados no lote.')
+      }
+
+      const response = await adminFetch('/api/admin/financeiro/recebimento-lote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipoPagador: ehGarantidorOuSeguradora(primeira) ? 'GARANTIDOR' : 'CLIENTE',
+          forma: formaLote,
+          itens,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Erro ao receber lote.')
+
+      setLoteAberto(false)
+      setSelecionadasLote([])
+      setItensLote([])
+      await carregarDados()
+    } catch (error) {
+      setErro(formatarErro(error, 'Erro ao receber lote.'))
+    } finally {
+      setSalvandoLote(false)
+    }
+  }
+
   async function marcarDocumentoPago(id: number) {
     setSalvandoId(id)
     setErro('')
@@ -758,6 +859,22 @@ export default function FinanceiroPage() {
 
         {aba === 'receber' ? (
           <div>
+            <div className="flex flex-col gap-2 border-b border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-black text-slate-950">Recebimento em lote</p>
+                <p className="text-xs text-slate-500">
+                  Marque duas ou mais OS do mesmo cliente ou garantidor.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={abrirRecebimentoLote}
+                disabled={selecionadasLote.length < 2}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Receber selecionadas ({selecionadasLote.length})
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-2 border-b border-slate-200 bg-slate-50/60 p-3 md:grid-cols-4">
               <MiniFinanceCard label="Valor total" value={formatCurrency(resumoRecebimentosFiltrado.total)} tone="blue" />
               <MiniFinanceCard label="Recebido" value={formatCurrency(resumoRecebimentosFiltrado.recebido)} tone="green" />
@@ -769,6 +886,8 @@ export default function FinanceiroPage() {
               ordens={ordensRecebimentoFiltradas}
               salvandoId={salvandoId}
               onStatus={alterarFinanceiro}
+              selecionadas={selecionadasLote}
+              onSelecionar={alternarSelecaoLote}
             />
           </div>
         ) : aba === 'tecnicos' ? (
@@ -806,6 +925,106 @@ export default function FinanceiroPage() {
           onClose={() => setBaixaConta(null)}
           onSubmit={marcarContaPaga}
         />
+      )}
+
+      {loteAberto && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 px-4 py-8">
+          <form onSubmit={receberLote} className="mx-auto w-full max-w-6xl rounded-xl bg-white p-5 shadow-2xl">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase text-emerald-700">Conferência obrigatória</p>
+                <h2 className="text-xl font-black text-slate-950">Receber OS em lote</h2>
+                <p className="text-sm text-slate-500">
+                  Pagador: {itensLote[0] ? nomePagador(itensLote[0].os) : '-'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLoteAberto(false)}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-black text-slate-700"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <label className="mt-4 block max-w-xs text-xs font-black text-slate-600">
+              Forma de recebimento
+              <select
+                value={formaLote}
+                onChange={(event) => setFormaLote(event.target.value)}
+                className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
+              >
+                <option value="PIX">PIX</option>
+                <option value="BOLETO">Boleto</option>
+                <option value="CARTAO">Cartão</option>
+                <option value="DEPOSITO">Depósito/transferência</option>
+                <option value="DINHEIRO">Dinheiro</option>
+              </select>
+            </label>
+
+            <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full min-w-[980px] text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="p-3">OS</th>
+                    <th className="p-3">Saldo</th>
+                    <th className="p-3">Principal</th>
+                    <th className="p-3">Juros</th>
+                    <th className="p-3">Multa</th>
+                    <th className="p-3">Desconto</th>
+                    <th className="p-3">ISS retido</th>
+                    <th className="p-3">Entrada no caixa</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {itensLote.map((item, index) => {
+                    const entrada = Math.max(
+                      parseMoneyInput(item.valor) + parseMoneyInput(item.juros) + parseMoneyInput(item.multa),
+                      0
+                    )
+                    return (
+                      <tr key={item.os.id} className="border-t border-slate-200">
+                        <td className="p-3">
+                          <p className="font-black text-slate-950">{item.os.numero_os ?? `#${item.os.id}`}</p>
+                          <p className="text-xs text-slate-500">{nomeCliente(item.os)}</p>
+                        </td>
+                        <td className="p-3 font-black text-orange-700">{formatCurrency(saldoCliente(item.os))}</td>
+                        {(['valor', 'juros', 'multa', 'desconto', 'issRetido'] as const).map((campo) => (
+                          <td key={campo} className="p-2">
+                            <input
+                              inputMode="decimal"
+                              value={item[campo]}
+                              onChange={(event) => atualizarItemLote(index, campo, event.target.value)}
+                              className="h-9 w-28 rounded-lg border border-slate-300 px-2 text-right text-sm"
+                            />
+                          </td>
+                        ))}
+                        <td className="p-3 font-black text-emerald-700">{formatCurrency(entrada)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 rounded-xl bg-slate-950 p-4 text-white md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase text-slate-300">Total previsto no caixa</p>
+                <p className="text-2xl font-black">
+                  {formatCurrency(itensLote.reduce((acc, item) =>
+                    acc + parseMoneyInput(item.valor) + parseMoneyInput(item.juros) + parseMoneyInput(item.multa), 0))}
+                </p>
+              </div>
+              <button
+                type="submit"
+                disabled={salvandoLote}
+                className="rounded-lg bg-emerald-500 px-5 py-3 text-sm font-black text-white disabled:opacity-50"
+              >
+                {salvandoLote ? 'Processando lote...' : `Confirmar recebimento de ${itensLote.length} OS`}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   )
@@ -949,17 +1168,24 @@ function RecebimentosTable({
   ordens,
   salvandoId,
   onStatus,
+  selecionadas,
+  onSelecionar,
 }: {
   loading: boolean
   ordens: OrdemFinanceira[]
   salvandoId: number | null
   onStatus: (id: number, status: FiltroFinanceiro) => void
+  selecionadas: number[]
+  onSelecionar: (os: OrdemFinanceira) => void
 }) {
+  const primeiraSelecionada = ordens.find((os) => os.id === selecionadas[0])
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+            <th className="p-3">Lote</th>
             <th className="p-3">OS</th>
             <th className="p-3">Cliente</th>
             <th className="p-3">Origem</th>
@@ -976,13 +1202,27 @@ function RecebimentosTable({
           </tr>
         </thead>
         <tbody>
-          {loading && <LinhaMensagem colSpan={13} texto="Carregando..." />}
-          {!loading && ordens.length === 0 && <LinhaMensagem colSpan={13} texto="Nenhum registro encontrado." />}
+          {loading && <LinhaMensagem colSpan={14} texto="Carregando..." />}
+          {!loading && ordens.length === 0 && <LinhaMensagem colSpan={14} texto="Nenhum registro encontrado." />}
           {!loading &&
             ordens.map((os) => {
               const saldo = saldoCliente(os)
               return (
                 <tr key={os.id} className="border-t border-slate-200">
+                  <td className="p-3">
+                    <input
+                      type="checkbox"
+                      checked={selecionadas.includes(os.id)}
+                      disabled={
+                        saldo <= 0
+                        || !pagadorLoteValido(os)
+                        || Boolean(primeiraSelecionada && chavePagador(primeiraSelecionada) !== chavePagador(os))
+                      }
+                      onChange={() => onSelecionar(os)}
+                      aria-label={`Selecionar ${os.numero_os ?? `OS ${os.id}`} para lote`}
+                      className="h-4 w-4 accent-emerald-600"
+                    />
+                  </td>
                   <td className="p-3 font-bold text-slate-950">{os.numero_os ?? `#${os.id}`}</td>
                   <td className="p-3">{nomeCliente(os)}</td>
                   <td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-black ${ehGarantidorOuSeguradora(os) ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'}`}>{ehGarantidorOuSeguradora(os) ? nomeGarantidor(os) : 'CLIENTE'}</span></td>
@@ -1573,6 +1813,20 @@ function nomeGarantidor(os: OrdemFinanceira) {
   return primeiraRelacao(os.garantidores)?.nome ?? (ehGarantidorOuSeguradora(os) ? 'GARANTIDOR/SEGURADORA' : '-')
 }
 
+function chavePagador(os: OrdemFinanceira) {
+  return ehGarantidorOuSeguradora(os)
+    ? `GARANTIDOR:${os.garantidor_id ?? 0}`
+    : `CLIENTE:${os.cliente_id ?? 0}`
+}
+
+function pagadorLoteValido(os: OrdemFinanceira) {
+  return ehGarantidorOuSeguradora(os) ? Boolean(os.garantidor_id) : Boolean(os.cliente_id)
+}
+
+function nomePagador(os: OrdemFinanceira) {
+  return ehGarantidorOuSeguradora(os) ? nomeGarantidor(os) : nomeCliente(os)
+}
+
 function tecnicoProprio(os: OrdemFinanceira) {
   return primeiraRelacao(os.parceiros)?.tipo_vinculo === 'PROPRIO'
 }
@@ -1804,6 +2058,10 @@ function pedirRecebimentoComDesconto(os: OrdemFinanceira, usarSaldoComoPadrao: b
 
 function parseMoneyInput(value: string) {
   return Number(value.replace(/\./g, '').replace(',', '.'))
+}
+
+function moneyInput(value: number) {
+  return value.toFixed(2).replace('.', ',')
 }
 
 function formatarFormaPagamento(forma?: string | null) {

@@ -101,6 +101,7 @@ export async function GET(request: NextRequest) {
         ${selectPagamentoTecnico}
         ${selectFormaPagamentoTecnico}
         parceiro_id,
+        cliente_id,
         garantidor_id,
         garantia,
         tipo_atendimento,
