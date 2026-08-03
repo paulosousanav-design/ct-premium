@@ -69,6 +69,19 @@ export async function POST(request: NextRequest) {
     if (!(await estruturaExiste(supabase))) {
       return NextResponse.json({ error: 'Rode o arquivo supabase-add-importacao-xml-nfe.sql antes de importar.' }, { status: 400 })
     }
+    const dfeDocumentoId = Number(body?.dfeDocumentoId) || null
+    if (dfeDocumentoId) {
+      const { data: documentoDfe, error: dfeError } = await supabase.from('dfe_documentos')
+        .select('id, unidade_id, chave_acesso, tipo_documento, status')
+        .eq('id', dfeDocumentoId).eq('unidade_id', auth.unidadeId).maybeSingle()
+      if (dfeError) throw dfeError
+      if (!documentoDfe || documentoDfe.tipo_documento !== 'NFE_COMPLETA') {
+        return NextResponse.json({ error: 'Documento da SEFAZ inválido ou sem XML completo.' }, { status: 400 })
+      }
+      if (documentoDfe.chave_acesso && documentoDfe.chave_acesso !== nfe.chaveAcesso) {
+        return NextResponse.json({ error: 'A chave do XML não corresponde ao documento recebido da SEFAZ.' }, { status: 400 })
+      }
+    }
     const { data: existente, error: existenteError } = await supabase.from('nfe_importacoes')
       .select('id, importado_em, importado_por').eq('chave_acesso', nfe.chaveAcesso).maybeSingle()
     if (existenteError) throw existenteError
@@ -143,6 +156,16 @@ export async function POST(request: NextRequest) {
       p_responsavel: `${auth.nome} (${auth.email})`,
     })
     if (rpcError) throw rpcError
+    if (dfeDocumentoId) {
+      const { error: dfeUpdateError } = await supabase.from('dfe_documentos').update({
+        status: 'IMPORTADA',
+        nfe_importacao_id: Number(importacaoId),
+        tratado_por: `${auth.nome} (${auth.email})`,
+        tratado_em: new Date().toISOString(),
+        atualizado_em: new Date().toISOString(),
+      }).eq('id', dfeDocumentoId).eq('unidade_id', auth.unidadeId)
+      if (dfeUpdateError) throw dfeUpdateError
+    }
     return NextResponse.json({ ok: true, importacaoId, itens: itensRpc.length, parcelas: gerarContas ? parcelas.length : 0 })
   } catch (error) {
     const texto = mensagem(error, 'Erro ao importar XML da NF-e.')

@@ -32,6 +32,7 @@ const permissoesValidas = new Set([
   'rotas',
   'vendas',
   'pecas',
+  'documentos_fiscais',
   'clientes',
   'usuarios',
   'relatorios',

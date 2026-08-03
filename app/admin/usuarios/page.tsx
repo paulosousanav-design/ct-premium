@@ -41,6 +41,7 @@ const permissoes = [
   { id: 'rotas', label: 'Gestao de Rotas' },
   { id: 'vendas', label: 'Vendas' },
   { id: 'pecas', label: 'Pecas e estoque' },
+  { id: 'documentos_fiscais', label: 'Documentos fiscais recebidos' },
   { id: 'clientes', label: 'Clientes' },
   { id: 'unidades', label: 'Matriz e Filiais' },
   { id: 'usuarios', label: 'Usuarios e acessos' },

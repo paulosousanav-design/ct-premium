@@ -76,9 +76,12 @@ export default function ImportarXmlNfePage() {
   const [processando, setProcessando] = useState(false)
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
+  const [dfeDocumentoId, setDfeDocumentoId] = useState<number | null>(null)
 
   useEffect(() => {
     void Promise.resolve().then(carregarHistorico)
+    const id = Number(new URLSearchParams(window.location.search).get('dfe'))
+    if (id) void carregarDocumentoSefaz(id)
   }, [])
 
   const totalParcelas = useMemo(
@@ -116,7 +119,27 @@ export default function ImportarXmlNfePage() {
     setXml(await file.text())
   }
 
-  async function analisar() {
+  async function carregarDocumentoSefaz(id: number) {
+    setProcessando(true)
+    setErro('')
+    try {
+      const response = await adminFetch(`/api/admin/documentos-fiscais?id=${id}&xml=1`, { cache: 'no-store' })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Erro ao carregar XML da SEFAZ.')
+      const xmlRecebido = String(payload?.xml ?? '')
+      setXml(xmlRecebido)
+      setArquivo(`SEFAZ-${payload?.chaveAcesso ?? id}.xml`)
+      setDfeDocumentoId(id)
+      await analisar(xmlRecebido)
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Erro ao carregar XML da SEFAZ.')
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  async function analisar(xmlInformado?: string) {
+    const xmlParaAnalisar = xmlInformado ?? xml
     setProcessando(true)
     setErro('')
     setMensagem('')
@@ -124,7 +147,7 @@ export default function ImportarXmlNfePage() {
       const response = await adminFetch('/api/admin/pecas/importar-xml', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ acao: 'ANALISAR', xml }),
+        body: JSON.stringify({ acao: 'ANALISAR', xml: xmlParaAnalisar }),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) throw new Error(payload?.error ?? 'Erro ao analisar XML.')
@@ -195,7 +218,7 @@ export default function ImportarXmlNfePage() {
       const response = await adminFetch('/api/admin/pecas/importar-xml', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ acao: 'CONFIRMAR', xml, itens, parcelas, gerarContas }),
+        body: JSON.stringify({ acao: 'CONFIRMAR', xml, itens, parcelas, gerarContas, dfeDocumentoId }),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) throw new Error(payload?.error ?? 'Erro ao confirmar importacao.')
@@ -205,6 +228,7 @@ export default function ImportarXmlNfePage() {
       setParcelas([])
       setXml('')
       setArquivo('')
+      setDfeDocumentoId(null)
       await carregarHistorico()
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Erro ao confirmar importacao.')
@@ -221,7 +245,7 @@ export default function ImportarXmlNfePage() {
           <h1 className="text-2xl font-black text-slate-950">Importar XML da NF-e</h1>
           <p className="text-sm text-slate-500">Confira produtos, estoque e vencimentos antes de efetivar a entrada.</p>
         </div>
-        <Link href="/admin/pecas" className="rounded-lg bg-slate-900 px-4 py-2 text-center text-sm font-bold text-white">Voltar para Pecas</Link>
+        <Link href={dfeDocumentoId ? '/admin/documentos-fiscais' : '/admin/pecas'} className="rounded-lg bg-slate-900 px-4 py-2 text-center text-sm font-bold text-white">{dfeDocumentoId ? 'Voltar para Documentos' : 'Voltar para Pecas'}</Link>
       </header>
 
       {erro && <Aviso cor="red">{erro}</Aviso>}
@@ -236,7 +260,7 @@ export default function ImportarXmlNfePage() {
             Arquivo XML
             <input type="file" accept=".xml,text/xml,application/xml" onChange={selecionarArquivo} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm" />
           </label>
-          <button type="button" disabled={!xml || processando || estruturaPendente} onClick={analisar} className="rounded-lg bg-orange-600 px-5 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" disabled={!xml || processando || estruturaPendente} onClick={() => void analisar()} className="rounded-lg bg-orange-600 px-5 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
             {processando ? 'Processando...' : 'Ler e conferir XML'}
           </button>
         </div>

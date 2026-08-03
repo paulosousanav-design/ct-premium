@@ -60,6 +60,7 @@ const menu: MenuItem[] = [
   { label: 'Gestao de Rotas', href: '/admin/rotas', permissao: 'rotas' },
   { label: 'Vendas', href: '/admin/vendas', permissao: 'vendas' },
   { label: 'Pecas', href: '/admin/pecas', permissao: 'pecas' },
+  { label: 'Documentos recebidos', href: '/admin/documentos-fiscais', permissao: 'documentos_fiscais' },
   { label: 'Clientes', href: '/admin/clientes', permissao: 'clientes' },
   { label: 'Matriz e Filiais', href: '/admin/unidades', permissao: 'unidades' },
   { label: 'Usuarios', href: '/admin/usuarios', permissao: 'usuarios' },
