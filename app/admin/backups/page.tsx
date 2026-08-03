@@ -144,6 +144,28 @@ export default function BackupsPage() {
     }
   }
 
+  async function desconectarGoogle() {
+    const confirmar = window.confirm(
+      'Desconectar o Google Drive? Os backups que já estão no Drive e o histórico do CT Premium serão preservados. A rotina automática será pausada.'
+    )
+    if (!confirmar) return
+
+    setProcessandoGoogle(true)
+    setErro('')
+    setMensagem('')
+    try {
+      const response = await adminFetch('/api/admin/backup/google', { method: 'DELETE' })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error ?? 'Erro ao desconectar o Google Drive.')
+      setMensagem('Google Drive desconectado. Os backups existentes foram preservados.')
+      await carregarGoogle()
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Erro ao desconectar o Google Drive.')
+    } finally {
+      setProcessandoGoogle(false)
+    }
+  }
+
   async function testarGoogle() {
     setProcessandoGoogle(true)
     setErro('')
@@ -155,7 +177,7 @@ export default function BackupsPage() {
       setMensagem(`Backup enviado ao Google Drive.${data?.resultado?.storageEnviados ? ` ${data.resultado.storageEnviados} arquivo(s) do Storage copiado(s).` : ''}`)
       await Promise.all([carregar(), carregarGoogle()])
     } catch (error) {
-      setErro(error instanceof Error ? error.message : 'Erro no teste do Google Drive.')
+      setErro(mensagemErroGoogle(error))
     } finally {
       setProcessandoGoogle(false)
     }
@@ -183,6 +205,7 @@ export default function BackupsPage() {
 
   const ultimo = useMemo(() => execucoes.find((item) => item.status === 'CONCLUIDO' && item.integridade === 'VALIDA') ?? null, [execucoes])
   const situacaoVisual = visualSituacao(resumo.situacao)
+  const autorizacaoGoogleExpirada = tokenGoogleExpirado(google?.configuracao?.ultimo_backup_automatico_erro)
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5">
@@ -239,10 +262,21 @@ export default function BackupsPage() {
           </div>
         ) : google?.conectado ? (
           <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_220px_220px] lg:items-end">
+            {autorizacaoGoogleExpirada && (
+              <Aviso classe="border-red-200 bg-red-50 text-red-800 lg:col-span-3">
+                <b>A autorização do Google Drive expirou.</b> Reconecte a conta para gerar um novo acesso. Os backups existentes continuam preservados.
+              </Aviso>
+            )}
             <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
               <p><b>Última rotina:</b> {google.configuracao?.ultimo_backup_automatico_em ? dataHora(google.configuracao.ultimo_backup_automatico_em) : 'Ainda não executada'}</p>
               <p className="mt-1"><b>Status:</b> {google.configuracao?.ultimo_backup_automatico_status || 'Aguardando teste'}</p>
-              {google.configuracao?.ultimo_backup_automatico_erro && <p className="mt-2 text-red-700">{google.configuracao.ultimo_backup_automatico_erro}</p>}
+              {google.configuracao?.ultimo_backup_automatico_erro && (
+                <p className="mt-2 text-red-700">
+                  {autorizacaoGoogleExpirada
+                    ? 'Acesso ao Google Drive expirado ou revogado. Reconecte a conta.'
+                    : google.configuracao.ultimo_backup_automatico_erro}
+                </p>
+              )}
             </div>
             <CampoGoogle label="Retenção do banco">
               <select value={retencaoDias} onChange={(event) => setRetencaoDias(Number(event.target.value))} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-bold">
@@ -251,8 +285,12 @@ export default function BackupsPage() {
             </CampoGoogle>
             <button type="button" onClick={() => void testarGoogle()} disabled={processandoGoogle} className="rounded-xl border border-blue-300 bg-blue-50 px-4 py-3 text-sm font-black text-blue-800 disabled:opacity-50">{processandoGoogle ? 'Processando...' : 'Testar envio agora'}</button>
             <div className="flex flex-wrap gap-2 lg:col-span-3">
+              <button type="button" onClick={() => void conectarGoogle()} disabled={processandoGoogle} className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50">
+                {processandoGoogle ? 'Processando...' : autorizacaoGoogleExpirada ? 'Reconectar Google Drive agora' : 'Reconectar Google Drive'}
+              </button>
               <button type="button" onClick={() => void salvarGoogle(!google.configuracao?.automatico_ativo)} disabled={processandoGoogle} className={`rounded-xl px-4 py-3 text-sm font-black text-white ${google.configuracao?.automatico_ativo ? 'bg-amber-600' : 'bg-emerald-600'}`}>{google.configuracao?.automatico_ativo ? 'Pausar automação' : 'Ativar backup diário'}</button>
               <button type="button" onClick={() => void salvarGoogle(Boolean(google.configuracao?.automatico_ativo))} disabled={processandoGoogle} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700">Salvar retenção</button>
+              <button type="button" onClick={() => void desconectarGoogle()} disabled={processandoGoogle} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">Desconectar</button>
             </div>
           </div>
         ) : (
@@ -335,6 +373,18 @@ function visualSituacao(situacao: ResumoBackup['situacao']) {
   if (situacao === 'EM_DIA') return { rotulo: 'Protegido', classe: 'border-emerald-200 bg-emerald-50 text-emerald-900' }
   if (situacao === 'ATRASADO') return { rotulo: 'Backup atrasado', classe: 'border-red-200 bg-red-50 text-red-900' }
   return { rotulo: 'Sem backup', classe: 'border-amber-200 bg-amber-50 text-amber-900' }
+}
+
+function tokenGoogleExpirado(mensagem?: string | null) {
+  return /expired|revoked|invalid_grant|expirad|revogad/i.test(mensagem ?? '')
+}
+
+function mensagemErroGoogle(error: unknown) {
+  const mensagem = error instanceof Error ? error.message : 'Erro no teste do Google Drive.'
+  if (tokenGoogleExpirado(mensagem)) {
+    return 'A autorização do Google Drive expirou ou foi revogada. Clique em Reconectar Google Drive e autorize novamente.'
+  }
+  return mensagem
 }
 
 function dataHora(value: string) {

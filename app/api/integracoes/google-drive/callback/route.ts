@@ -45,6 +45,8 @@ export async function GET(request: NextRequest) {
       google_pasta_storage_id: pastaStorage.id,
       google_conectado_em: new Date().toISOString(),
       automatico_ativo: false,
+      ultimo_backup_automatico_status: null,
+      ultimo_backup_automatico_erro: null,
       atualizado_em: new Date().toISOString(),
     })
     if (error) throw error
