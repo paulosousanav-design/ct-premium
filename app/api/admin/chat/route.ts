@@ -4,6 +4,7 @@ import { requireAdminUnidade } from '@/lib/admin-unidade'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const STATUS_OS_ENCERRADA = ['FINALIZADA', 'CANCELADA', 'ENCERRADA_SEM_REPARO']
 
 function db() {
   if (!supabaseUrl || !serviceRoleKey) throw new Error('Configuracao do Supabase ausente no servidor.')
@@ -80,7 +81,12 @@ export async function GET(request: NextRequest) {
       : []
     const [{ data: usuarios }, { data: ordens }] = await Promise.all([
       supabase.from('admin_usuarios').select('id, nome, email, ativo, permissoes').eq('ativo', true).order('nome'),
-      supabase.from('ordens_servico').select('id, numero_os, clientes:cliente_id(nome)').eq('unidade_id', auth.unidadeId).order('created_at', { ascending: false }).limit(150),
+      supabase.from('ordens_servico')
+        .select('id, numero_os, clientes:cliente_id(nome)')
+        .eq('unidade_id', auth.unidadeId)
+        .not('status', 'in', `(${STATUS_OS_ENCERRADA.map((status) => `"${status}"`).join(',')})`)
+        .order('created_at', { ascending: false })
+        .limit(150),
     ])
     const usuariosChat = (usuarios ?? []).filter((usuario) => Array.isArray(usuario.permissoes) && usuario.permissoes.includes('chat') && Number(usuario.id) !== auth.usuarioId)
     return NextResponse.json({
@@ -135,8 +141,11 @@ export async function POST(request: NextRequest) {
     if (!conteudo || conteudo.length > 2000) return NextResponse.json({ error: 'A mensagem deve ter entre 1 e 2.000 caracteres.' }, { status: 400 })
     const osId = Number(body?.osId) || null
     if (osId) {
-      const { data: ordem } = await supabase.from('ordens_servico').select('id').eq('id', osId).eq('unidade_id', auth.unidadeId).maybeSingle()
+      const { data: ordem } = await supabase.from('ordens_servico').select('id, status').eq('id', osId).eq('unidade_id', auth.unidadeId).maybeSingle()
       if (!ordem) return NextResponse.json({ error: 'OS nao localizada na unidade ativa.' }, { status: 400 })
+      if (STATUS_OS_ENCERRADA.includes(String(ordem.status))) {
+        return NextResponse.json({ error: 'Somente ordens abertas podem ser vinculadas a novas mensagens.' }, { status: 400 })
+      }
     }
     const { data: enviada, error } = await supabase.from('chat_mensagens').insert({ conversa_id: conversaId, autor_id: auth.usuarioId, conteudo, os_id: osId }).select('id').single()
     if (error) throw error
