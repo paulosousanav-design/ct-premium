@@ -112,11 +112,16 @@ type ContaForm = {
 type BaixaContaForm = {
   conta: ContaPagar
   forma: string
+  contaFinanceiraId: string
   dataPagamento: string
   juros: string
   multa: string
   desconto: string
 }
+
+type ContaFinanceira = { id: number; nome: string; tipo: string; ativa: boolean }
+type OperadoraCartao = { id: number; nome: string; conta_recebimento_id: number }
+type TaxaCartao = { operadora_id: number; modalidade: string; parcelas_de: number; parcelas_ate: number; taxa_percentual: number | string; taxa_fixa: number | string; prazo_dias: number }
 
 type ItemLoteForm = {
   os: OrdemFinanceira
@@ -169,6 +174,9 @@ export default function FinanceiroPage() {
   const [ordens, setOrdens] = useState<OrdemFinanceira[]>([])
   const [documentos, setDocumentos] = useState<DocumentoTecnico[]>([])
   const [contasPagar, setContasPagar] = useState<ContaPagar[]>([])
+  const [contasFinanceiras, setContasFinanceiras] = useState<ContaFinanceira[]>([])
+  const [operadorasCartao, setOperadorasCartao] = useState<OperadoraCartao[]>([])
+  const [taxasCartao, setTaxasCartao] = useState<TaxaCartao[]>([])
   const [historico, setHistorico] = useState<HistoricoFinanceiro[]>([])
   const [documentosPendentes, setDocumentosPendentes] = useState(false)
   const [contasPagarPendente, setContasPagarPendente] = useState(false)
@@ -188,6 +196,10 @@ export default function FinanceiroPage() {
   const [selecionadasLote, setSelecionadasLote] = useState<number[]>([])
   const [itensLote, setItensLote] = useState<ItemLoteForm[]>([])
   const [formaLote, setFormaLote] = useState('PIX')
+  const [contaLoteId, setContaLoteId] = useState('')
+  const [operadoraLoteId, setOperadoraLoteId] = useState('')
+  const [modalidadeLote, setModalidadeLote] = useState('CREDITO')
+  const [parcelasLote, setParcelasLote] = useState('1')
   const [loteAberto, setLoteAberto] = useState(false)
   const [salvandoLote, setSalvandoLote] = useState(false)
   const [vendasResumo, setVendasResumo] = useState({ total: 0, totalMes: 0, quantidade: 0 })
@@ -201,10 +213,14 @@ export default function FinanceiroPage() {
     setErro('')
 
     try {
-      const response = await adminFetch('/api/admin/financeiro')
+      const [response, contasResponse] = await Promise.all([adminFetch('/api/admin/financeiro'), adminFetch('/api/admin/financeiro/contas')])
       const data = await response.json().catch(() => null)
+      const dadosContas = await contasResponse.json().catch(() => null)
 
       if (!response.ok) throw new Error(data?.error ?? 'Erro ao carregar financeiro.')
+      if (contasResponse.ok) setContasFinanceiras((dadosContas?.contas ?? []).filter((item: ContaFinanceira) => item.ativa))
+      if (contasResponse.ok) setOperadorasCartao(dadosContas?.operadoras ?? [])
+      if (contasResponse.ok) setTaxasCartao(dadosContas?.taxas ?? [])
 
       setOrdens((data?.ordens ?? []) as OrdemFinanceira[])
       setDocumentos((data?.documentos ?? []) as DocumentoTecnico[])
@@ -415,6 +431,7 @@ export default function FinanceiroPage() {
     setBaixaConta({
       conta,
       forma: 'PIX',
+      contaFinanceiraId: '',
       dataPagamento: dataHojeInput(),
       juros: '0',
       multa: '0',
@@ -450,6 +467,7 @@ export default function FinanceiroPage() {
           id,
           status: 'PAGO',
           forma: baixaConta.forma,
+          contaFinanceiraId: Number(baixaConta.contaFinanceiraId),
           dataPagamento: baixaConta.dataPagamento,
           juros: calculo.juros,
           multa: calculo.multa,
@@ -491,8 +509,10 @@ export default function FinanceiroPage() {
     const ordem = ordens.find((item) => item.id === id)
     const pagamento = status === 'PARCIAL' || status === 'RECEBIDO'
     const forma = pagamento ? pedirFormaPagamento('Forma de recebimento') : null
+    const contaFinanceiraId = pagamento ? pedirContaFinanceira(contasFinanceiras, 'Conta onde o recebimento entrará') : null
+    const dadosCartao = pagamento && forma === 'CARTAO' ? pedirDadosCartao(operadorasCartao, taxasCartao) : null
     const recebimento = pagamento && ordem ? pedirRecebimentoComDesconto(ordem, status === 'RECEBIDO') : null
-    if (pagamento && (!forma || recebimento === null)) return
+    if (pagamento && (!forma || !contaFinanceiraId || recebimento === null || (forma === 'CARTAO' && !dadosCartao))) return
     setSalvandoId(id)
     setErro('')
 
@@ -500,7 +520,7 @@ export default function FinanceiroPage() {
       const response = await adminFetch('/api/admin/financeiro', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: 'OS', id, status, forma, valor: recebimento?.valor, desconto: recebimento?.desconto, juros: recebimento?.juros, multa: recebimento?.multa, issRetido: recebimento?.issRetido }),
+        body: JSON.stringify({ tipo: 'OS', id, status, forma, contaFinanceiraId, ...dadosCartao, valor: recebimento?.valor, desconto: recebimento?.desconto, juros: recebimento?.juros, multa: recebimento?.multa, issRetido: recebimento?.issRetido }),
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error ?? 'Erro ao atualizar financeiro.')
@@ -581,6 +601,10 @@ export default function FinanceiroPage() {
         body: JSON.stringify({
           tipoPagador: ehGarantidorOuSeguradora(primeira) ? 'GARANTIDOR' : 'CLIENTE',
           forma: formaLote,
+          contaFinanceiraId: Number(contaLoteId),
+          operadoraId: Number(operadoraLoteId) || null,
+          modalidadeCartao: modalidadeLote,
+          parcelas: Number(parcelasLote),
           itens,
         }),
       })
@@ -599,6 +623,9 @@ export default function FinanceiroPage() {
   }
 
   async function marcarDocumentoPago(id: number) {
+    const forma = pedirFormaPagamento('Forma de pagamento do documento')
+    const contaFinanceiraId = pedirContaFinanceira(contasFinanceiras, 'Conta de onde sairá o pagamento')
+    if (!forma || !contaFinanceiraId) return
     setSalvandoId(id)
     setErro('')
 
@@ -606,7 +633,7 @@ export default function FinanceiroPage() {
       const response = await adminFetch('/api/admin/financeiro', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: 'DOCUMENTO', id }),
+        body: JSON.stringify({ tipo: 'DOCUMENTO', id, forma, contaFinanceiraId }),
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error ?? 'Erro ao atualizar documento do tecnico.')
@@ -620,7 +647,8 @@ export default function FinanceiroPage() {
 
   async function marcarTecnicoPago(id: number) {
     const forma = pedirFormaPagamento('Forma de pagamento ao tecnico')
-    if (!forma) return
+    const contaFinanceiraId = pedirContaFinanceira(contasFinanceiras, 'Conta de onde sairá o pagamento')
+    if (!forma || !contaFinanceiraId) return
     setSalvandoId(id)
     setErro('')
 
@@ -628,7 +656,7 @@ export default function FinanceiroPage() {
       const response = await adminFetch('/api/admin/financeiro', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: 'TECNICO', id, forma }),
+        body: JSON.stringify({ tipo: 'TECNICO', id, forma, contaFinanceiraId }),
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error ?? 'Erro ao pagar tecnico.')
@@ -796,6 +824,12 @@ export default function FinanceiroPage() {
           <Link href="/admin/financeiro/comissoes" className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700">
             Fechamento de comissões
           </Link>
+          <Link href="/admin/financeiro/caixa" className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-black text-blue-700">
+            Fechamento de caixa
+          </Link>
+          <Link href="/admin/financeiro/contas" className="rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-black text-violet-700">
+            Contas e taxas
+          </Link>
           <Link href="/admin/financeiro/parcelamentos" className="rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-xs font-black text-orange-700">
             Boletos parcelados
           </Link>
@@ -920,6 +954,7 @@ export default function FinanceiroPage() {
       {baixaConta && (
         <ModalBaixaConta
           baixa={baixaConta}
+          contas={contasFinanceiras}
           salvando={salvandoId === baixaConta.conta.id}
           onChange={setBaixaConta}
           onClose={() => setBaixaConta(null)}
@@ -961,6 +996,14 @@ export default function FinanceiroPage() {
                 <option value="DINHEIRO">Dinheiro</option>
               </select>
             </label>
+            <label className="mt-3 block max-w-md text-xs font-black text-slate-600">
+              Conta de destino
+              <select value={contaLoteId} onChange={(event) => setContaLoteId(event.target.value)} required className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm">
+                <option value="">Selecione onde o valor entrará</option>
+                {contasFinanceiras.map((conta) => <option key={conta.id} value={conta.id}>{conta.nome} · {conta.tipo.replaceAll('_', ' ')}</option>)}
+              </select>
+            </label>
+            {formaLote === 'CARTAO' && <div className="mt-3 grid max-w-3xl gap-3 sm:grid-cols-3"><label className="text-xs font-black text-slate-600">Operadora<select required value={operadoraLoteId} onChange={(event) => { const id = event.target.value; setOperadoraLoteId(id); const op = operadorasCartao.find((item) => item.id === Number(id)); if (op) setContaLoteId(String(op.conta_recebimento_id)) }} className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"><option value="">Selecione</option>{operadorasCartao.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}</select></label><label className="text-xs font-black text-slate-600">Modalidade<select value={modalidadeLote} onChange={(event) => setModalidadeLote(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"><option value="CREDITO">Crédito</option><option value="DEBITO">Débito</option></select></label><label className="text-xs font-black text-slate-600">Parcelas<input type="number" min="1" max="24" value={parcelasLote} onChange={(event) => setParcelasLote(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label></div>}
 
             <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full min-w-[980px] text-sm">
@@ -1032,12 +1075,14 @@ export default function FinanceiroPage() {
 
 function ModalBaixaConta({
   baixa,
+  contas,
   salvando,
   onChange,
   onClose,
   onSubmit,
 }: {
   baixa: BaixaContaForm
+  contas: ContaFinanceira[]
   salvando: boolean
   onChange: (baixa: BaixaContaForm) => void
   onClose: () => void
@@ -1077,6 +1122,12 @@ function ModalBaixaConta({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-xs font-bold text-slate-600 sm:col-span-2">Conta de origem
+              <select required value={baixa.contaFinanceiraId} onChange={(event) => alterar('contaFinanceiraId', event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-950">
+                <option value="">Selecione de onde o valor sairá</option>
+                {contas.map((conta) => <option key={conta.id} value={conta.id}>{conta.nome} · {conta.tipo.replaceAll('_', ' ')}</option>)}
+              </select>
+            </label>
             <label className="text-xs font-bold text-slate-600">Forma de pagamento
               <select value={baixa.forma} onChange={(event) => alterar('forma', event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-950">
                 <option value="PIX">PIX</option>
@@ -1111,7 +1162,7 @@ function ModalBaixaConta({
 
         <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
           <button type="button" onClick={onClose} disabled={salvando} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700">Cancelar</button>
-          <button type="submit" disabled={salvando || !calculo || !baixa.dataPagamento} className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-black text-white disabled:opacity-50">
+          <button type="submit" disabled={salvando || !calculo || !baixa.dataPagamento || !baixa.contaFinanceiraId} className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-black text-white disabled:opacity-50">
             {salvando ? 'Registrando...' : 'Confirmar pagamento'}
           </button>
         </div>
@@ -1996,6 +2047,29 @@ function pedirFormaPagamento(titulo: string) {
   }
 
   return forma
+}
+
+function pedirContaFinanceira(contas: ContaFinanceira[], titulo: string) {
+  if (!contas.length) { window.alert('Cadastre uma conta em Financeiro > Contas e taxas.'); return null }
+  const lista = contas.map((conta) => `${conta.id} - ${conta.nome} (${conta.tipo.replaceAll('_', ' ')})`).join('\n')
+  const resposta = window.prompt(`${titulo}:\n${lista}`, String(contas[0].id))
+  if (resposta === null) return null
+  const id = Number(resposta)
+  if (!contas.some((conta) => conta.id === id)) { window.alert('Conta financeira inválida.'); return null }
+  return id
+}
+
+function pedirDadosCartao(operadoras: OperadoraCartao[], taxas: TaxaCartao[]) {
+  if (!operadoras.length) { window.alert('Cadastre a operadora e suas taxas em Financeiro > Contas e taxas.'); return null }
+  const lista = operadoras.map((item) => `${item.id} - ${item.nome}`).join('\n')
+  const operadoraId = Number(window.prompt(`Operadora do cartão:\n${lista}`, String(operadoras[0].id)))
+  if (!operadoras.some((item) => item.id === operadoraId)) return null
+  const modalidadeCartao = String(window.prompt('Modalidade: CREDITO ou DEBITO', 'CREDITO') ?? '').trim().toUpperCase()
+  if (!['CREDITO', 'DEBITO'].includes(modalidadeCartao)) return null
+  const parcelas = modalidadeCartao === 'DEBITO' ? 1 : Math.max(1, Math.min(24, Number(window.prompt('Quantidade de parcelas', '1')) || 1))
+  const taxa = taxas.find((item) => item.operadora_id === operadoraId && item.modalidade === modalidadeCartao && parcelas >= item.parcelas_de && parcelas <= item.parcelas_ate)
+  if (!taxa) { window.alert('Não existe uma taxa cadastrada para essa modalidade e quantidade de parcelas.'); return null }
+  return { operadoraId, modalidadeCartao, parcelas }
 }
 
 function pedirRecebimentoComDesconto(os: OrdemFinanceira, usarSaldoComoPadrao: boolean) {

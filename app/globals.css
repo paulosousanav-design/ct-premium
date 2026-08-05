@@ -5,6 +5,25 @@
   --foreground: #171717;
 }
 
+.campo {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 4px;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.65rem 0.8rem;
+  color: #0f172a;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.campo:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgb(37 99 235 / 12%);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

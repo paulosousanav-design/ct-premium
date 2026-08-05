@@ -4,6 +4,7 @@ import { requireAdminPermission } from '@/lib/admin-auth'
 import { calcularComissao } from '@/lib/calculos-comissoes'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 import { registrarEventoSistema } from '@/lib/monitoramento'
+import { registrarMovimentoFinanceiro, validarContaFinanceira } from '@/lib/financeiro-contas'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -72,7 +73,9 @@ export async function GET(request: NextRequest) {
       ? await supabase.from('comissao_fechamento_itens').select('*').in('fechamento_id', fechamentoIds).order('criado_em')
       : { data: [] }
 
-    return NextResponse.json({ estruturaPendente: false, tecnicos, elegiveis, fechamentos, itens: itens ?? [] })
+    const { data: contas } = await supabase.from('contas_financeiras').select('id, nome, unidade_id, tipo').eq('ativa', true).order('nome')
+
+    return NextResponse.json({ estruturaPendente: false, tecnicos, elegiveis, fechamentos, itens: itens ?? [], contas: contas ?? [] })
   } catch (error) {
     return NextResponse.json({ error: formatarErro(error, 'Erro ao carregar comissoes.') }, { status: 500 })
   }
@@ -90,11 +93,28 @@ export async function POST(request: NextRequest) {
       const id = Number(body?.id)
       const forma = normalizarForma(body?.forma)
       if (!id) return NextResponse.json({ error: 'Fechamento invalido.' }, { status: 400 })
+      const { data: fechamento, error: fechamentoError } = await supabase.from('comissao_fechamentos').select('id, status, total_comissao').eq('id', id).eq('status', 'FECHADO').maybeSingle()
+      if (fechamentoError) throw fechamentoError
+      if (!fechamento) return NextResponse.json({ error: 'Fechamento não localizado ou já pago.' }, { status: 404 })
+      const { data: itemOs } = await supabase.from('comissao_fechamento_itens').select('os_id').eq('fechamento_id', id).eq('tipo', 'OS').not('os_id', 'is', null).limit(1).maybeSingle()
+      const { data: ordem } = itemOs?.os_id ? await supabase.from('ordens_servico').select('unidade_id').eq('id', itemOs.os_id).maybeSingle() : { data: null }
+      if (!ordem?.unidade_id) return NextResponse.json({ error: 'Não foi possível identificar a unidade deste fechamento.' }, { status: 400 })
+      const conta = await validarContaFinanceira(supabase, Number(ordem.unidade_id), body?.contaFinanceiraId)
       const { error } = await supabase.from('comissao_fechamentos').update({
         status: 'PAGO', pago_em: new Date().toISOString(), forma_pagamento: forma,
-        pago_por_nome: auth.nome, pago_por_email: auth.email,
+        conta_financeira_id: conta.id, pago_por_nome: auth.nome, pago_por_email: auth.email,
       }).eq('id', id).eq('status', 'FECHADO')
       if (error) throw error
+      try {
+        await registrarMovimentoFinanceiro(supabase, {
+          unidadeId: Number(ordem.unidade_id), contaId: conta.id, natureza: 'SAIDA', tipo: 'PAGAMENTO_COMISSAO', forma,
+          valorBruto: Number(fechamento.total_comissao ?? 0), origemTipo: 'COMISSAO', origemId: id,
+          descricao: `Pagamento do fechamento de comissão #${id}.`, usuarioId: auth.usuarioId, nome: auth.nome, email: auth.email,
+        })
+      } catch (movimentoError) {
+        await supabase.from('comissao_fechamentos').update({ status: 'FECHADO', pago_em: null, forma_pagamento: null, conta_financeira_id: null, pago_por_nome: null, pago_por_email: null }).eq('id', id)
+        throw movimentoError
+      }
       return NextResponse.json({ ok: true })
     }
 

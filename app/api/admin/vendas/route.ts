@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 import { registrarEventoSistema } from '@/lib/monitoramento'
+import { calcularLiquidacaoCartao, registrarMovimentoFinanceiro, validarContaFinanceira } from '@/lib/financeiro-contas'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -23,7 +24,11 @@ export async function GET(request: NextRequest) {
     ])
     if (pecasError || clientesError || vendasError) throw pecasError || clientesError || vendasError
     const ids = (vendas ?? []).map((v) => Number(v.id)); const { data: itens } = ids.length ? await supabase.from('venda_itens').select('*').in('venda_id', ids) : { data: [] }
-    return NextResponse.json({ estruturaPendente: false, pecas, clientes, vendas, itens: itens ?? [] })
+    const { data: contas, error: contasError } = await supabase.from('contas_financeiras').select('id, nome, tipo, ativa').eq('unidade_id', auth.unidadeId).eq('ativa', true).order('nome')
+    if (contasError) return NextResponse.json({ estruturaPendente: true, pecas, clientes, vendas, itens: itens ?? [], contas: [], operadoras: [], taxas: [] })
+    const { data: operadoras } = await supabase.from('operadoras_cartao').select('id, nome, conta_recebimento_id').eq('unidade_id', auth.unidadeId).eq('ativa', true).order('nome')
+    const opIds = (operadoras ?? []).map((item) => Number(item.id)); const { data: taxas } = opIds.length ? await supabase.from('operadoras_cartao_taxas').select('*').in('operadora_id', opIds).eq('ativa', true) : { data: [] }
+    return NextResponse.json({ estruturaPendente: false, pecas, clientes, vendas, itens: itens ?? [], contas, operadoras: operadoras ?? [], taxas: taxas ?? [] })
   } catch (error) { return NextResponse.json({ error: mensagem(error, 'Erro ao carregar vendas.') }, { status: 500 }) }
 }
 
@@ -48,12 +53,17 @@ export async function POST(request: NextRequest) {
   const subtotal = arredondar(itens.reduce((a, i) => a + i.quantidade * i.valorUnitario, 0)); if (descontoVenda < 0 || descontoVenda > subtotal - itens.reduce((a, i) => a + i.desconto, 0)) return NextResponse.json({ error: 'Desconto da venda inválido.' }, { status: 400 })
   const total = arredondar(subtotal - itens.reduce((a, i) => a + i.desconto, 0) - descontoVenda); const forma = formaRecebimento(body?.formaRecebimento); const ator = `${auth.nome} (${auth.email})`; const numeroVenda = `VD${Date.now()}`; const processados: Array<{ id: number; estoque: number }> = []
   try {
-    const { data: venda, error: vendaError } = await supabase.from('vendas').insert({ numero_venda: numeroVenda, cliente_id: Number(body?.clienteId) || null, unidade_id: auth.unidadeId, subtotal, desconto: descontoVenda + itens.reduce((a, i) => a + i.desconto, 0), total, forma_recebimento: forma, status: 'PAGO', observacao: texto(body?.observacao) || null, criado_por_nome: auth.nome, criado_por_email: auth.email }).select('id, numero_venda').single()
+    const conta = await validarContaFinanceira(supabase, auth.unidadeId, body?.contaFinanceiraId)
+    const parcelas = Math.max(1, Math.min(24, Math.trunc(Number(body?.parcelas) || 1)))
+    const modalidade = texto(body?.modalidadeCartao || 'CREDITO').toUpperCase()
+    const liquidacao = forma === 'CARTAO' ? await calcularLiquidacaoCartao(supabase, { unidadeId: auth.unidadeId, operadoraId: body?.operadoraId, modalidade, parcelas, valorBruto: total }) : { taxaId: null, taxaPercentual: 0, taxaFixa: 0, taxaValor: 0, valorLiquido: total, prazoDias: 0, previsaoCredito: new Date().toISOString().slice(0, 10) }
+    const { data: venda, error: vendaError } = await supabase.from('vendas').insert({ numero_venda: numeroVenda, cliente_id: Number(body?.clienteId) || null, unidade_id: auth.unidadeId, subtotal, desconto: descontoVenda + itens.reduce((a, i) => a + i.desconto, 0), total, forma_recebimento: forma, conta_financeira_id: conta.id, operadora_id: forma === 'CARTAO' ? Number(body?.operadoraId) : null, taxa_cartao: liquidacao.taxaValor, valor_liquido: liquidacao.valorLiquido, parcelas_cartao: parcelas, status: 'PAGO', observacao: texto(body?.observacao) || null, criado_por_nome: auth.nome, criado_por_email: auth.email }).select('id, numero_venda').single()
     if (vendaError) throw vendaError
     const { error: itensError } = await supabase.from('venda_itens').insert(itens.map((i) => ({ venda_id: venda.id, peca_id: i.peca?.id ?? null, descricao: i.descricao, codigo: i.codigo, quantidade: i.quantidade, valor_custo_unitario: i.custo, valor_unitario: i.valorUnitario, desconto: i.desconto, total_item: i.total }))); if (itensError) throw itensError
     for (const item of itens) { if (!item.peca) continue; const anterior = numero(item.peca.estoque); const posterior = anterior - item.quantidade; const { data: atualizada, error } = await supabase.from('pecas').update({ estoque: posterior }).eq('id', item.peca.id).eq('unidade_id', auth.unidadeId).eq('estoque', anterior).select('id').maybeSingle(); if (error || !atualizada) throw error ?? new Error(`Estoque de ${item.peca.descricao} foi alterado por outra operação.`); processados.push({ id: item.peca.id, estoque: anterior }); const { error: movError } = await supabase.from('pecas_movimentacoes').insert({ peca_id: item.peca.id, venda_id: venda.id, unidade_id: auth.unidadeId, tipo: 'SAIDA_VENDA', quantidade: item.quantidade, estoque_anterior: anterior, estoque_posterior: posterior, observacao: `${numeroVenda} • ${ator}` }); if (movError) throw movError }
-    await historico(supabase, venda.id, 'VENDA_REALIZADA', null, 'PAGO', total, `${numeroVenda} recebida via ${forma}.`, ator)
-    return NextResponse.json({ ok: true, id: venda.id, numeroVenda })
+    await registrarMovimentoFinanceiro(supabase, { unidadeId: auth.unidadeId, contaId: conta.id, natureza: 'ENTRADA', tipo: 'VENDA_BALCAO', forma, valorBruto: total, taxaValor: liquidacao.taxaValor, valorLiquido: liquidacao.valorLiquido, operadoraId: forma === 'CARTAO' ? Number(body?.operadoraId) : null, taxaId: liquidacao.taxaId, taxaPercentual: liquidacao.taxaPercentual, parcelas, previsaoCredito: liquidacao.previsaoCredito, origemTipo: 'VENDA', origemId: venda.id, descricao: `${numeroVenda} recebida via ${forma} em ${conta.nome}.`, usuarioId: auth.usuarioId, nome: auth.nome, email: auth.email })
+    await historico(supabase, venda.id, 'VENDA_REALIZADA', null, 'PAGO', total, `${numeroVenda} recebida via ${forma} em ${conta.nome}. Bruto ${total}, taxa ${liquidacao.taxaValor} e líquido ${liquidacao.valorLiquido}.`, ator)
+    return NextResponse.json({ ok: true, id: venda.id, numeroVenda, valorLiquido: liquidacao.valorLiquido, taxa: liquidacao.taxaValor })
   } catch (error) {
     for (const item of processados) await supabase.from('pecas').update({ estoque: item.estoque }).eq('id', item.id).eq('unidade_id', auth.unidadeId)
     await supabase.from('vendas').delete().eq('numero_venda', numeroVenda).eq('unidade_id', auth.unidadeId)
@@ -71,6 +81,7 @@ export async function PATCH(request: NextRequest) {
     const { data: itens, error: itensError } = await supabase.from('venda_itens').select('peca_id, quantidade').eq('venda_id', id); if (itensError) throw itensError; const ator = `${auth.nome} (${auth.email})`
     for (const item of itens ?? []) { if (!item.peca_id) continue; const { data: peca } = await supabase.from('pecas').select('estoque').eq('id', item.peca_id).eq('unidade_id', auth.unidadeId).maybeSingle(); const anterior = numero(peca?.estoque); const posterior = anterior + numero(item.quantidade); const { error } = await supabase.from('pecas').update({ estoque: posterior }).eq('id', item.peca_id).eq('unidade_id', auth.unidadeId); if (error) throw error; await supabase.from('pecas_movimentacoes').insert({ peca_id: item.peca_id, venda_id: id, unidade_id: auth.unidadeId, tipo: 'ENTRADA_CANCELAMENTO_VENDA', quantidade: item.quantidade, estoque_anterior: anterior, estoque_posterior: posterior, observacao: `${venda.numero_venda} cancelada • ${ator}` }) }
     const { error } = await supabase.from('vendas').update({ status: 'CANCELADA', cancelado_por_nome: auth.nome, cancelado_por_email: auth.email, cancelado_em: new Date().toISOString(), cancelamento_motivo: motivo }).eq('id', id).eq('unidade_id', auth.unidadeId); if (error) throw error
+    await supabase.from('movimentos_financeiros').update({ status: 'ESTORNADO', estornado_em: new Date().toISOString(), estorno_motivo: motivo }).eq('origem_tipo', 'VENDA').eq('origem_id', String(id)).eq('unidade_id', auth.unidadeId).eq('status', 'ATIVO')
     await historico(supabase, id, 'VENDA_CANCELADA', 'PAGO', 'CANCELADA', numero(venda.total), `${venda.numero_venda} cancelada: ${motivo}`, ator)
     return NextResponse.json({ ok: true })
   } catch (error) {

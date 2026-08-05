@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 import { registrarEventoSistema } from '@/lib/monitoramento'
+import { registrarMovimentoFinanceiro, validarContaFinanceira } from '@/lib/financeiro-contas'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -139,15 +140,17 @@ export async function PATCH(request: NextRequest) {
     const valorLiquido = centavos(principalRecebido + juros + multa)
     if (valorLiquido <= 0 && issRetido <= 0) return NextResponse.json({ error: 'O valor total da baixa deve ser maior que zero.' }, { status: 400 })
 
+    const { data: os, error: osError } = await supabase.from('ordens_servico').select('id, unidade_id, numero_os, total, cliente_total, valor_recebido_cliente, desconto_recebimento_cliente, juros_recebidos_cliente, multa_recebida_cliente, iss_retido_cliente, status_financeiro').eq('id', parcela.os_id).maybeSingle()
+    if (osError || !os) throw osError ?? new Error('OS nao localizada.')
+    const contaFinanceira = await validarContaFinanceira(supabase, Number(os.unidade_id), body?.contaFinanceiraId)
+
     const agora = new Date().toISOString()
     const { data: atualizada, error: baixaError } = await supabase.from('recebimento_parcelas').update({
       status: 'RECEBIDO', recebido_em: agora, recebido_por: ator,
-      juros, multa, desconto_baixa: descontoBaixa, iss_retido: issRetido, valor_recebido: valorLiquido,
+      juros, multa, desconto_baixa: descontoBaixa, iss_retido: issRetido, valor_recebido: valorLiquido, conta_financeira_id: contaFinanceira.id,
     }).eq('id', id).eq('status', 'PENDENTE').select('id').maybeSingle()
     if (baixaError || !atualizada) return NextResponse.json({ error: 'A parcela ja foi processada.' }, { status: 409 })
 
-    const { data: os, error: osError } = await supabase.from('ordens_servico').select('id, numero_os, total, cliente_total, valor_recebido_cliente, desconto_recebimento_cliente, juros_recebidos_cliente, multa_recebida_cliente, iss_retido_cliente, status_financeiro').eq('id', parcela.os_id).maybeSingle()
-    if (osError || !os) throw osError ?? new Error('OS nao localizada.')
     const total = numero(os.cliente_total ?? os.total)
     const novoRecebido = centavos(numero(os.valor_recebido_cliente) + principalRecebido)
     const novoDesconto = centavos(numero(os.desconto_recebimento_cliente) + descontoBaixa)
@@ -165,7 +168,7 @@ export async function PATCH(request: NextRequest) {
       forma_recebimento: 'BOLETO',
     }).eq('id', parcela.os_id)
     if (osUpdateError) {
-      await supabase.from('recebimento_parcelas').update({ status: 'PENDENTE', recebido_em: null, recebido_por: null, juros: 0, multa: 0, desconto_baixa: 0, iss_retido: 0, valor_recebido: null }).eq('id', id)
+      await supabase.from('recebimento_parcelas').update({ status: 'PENDENTE', recebido_em: null, recebido_por: null, juros: 0, multa: 0, desconto_baixa: 0, iss_retido: 0, valor_recebido: null, conta_financeira_id: null }).eq('id', id)
       throw osUpdateError
     }
     await historico(supabase, {
@@ -174,6 +177,7 @@ export async function PATCH(request: NextRequest) {
       valorPrincipal: principalRecebido, juros, multa, desconto: descontoBaixa, issRetido, valorLiquido,
       descricao: `${os.numero_os}: boleto ${parcela.numero_parcela}/${parcela.total_parcelas} recebido. Principal ${moeda(principalRecebido)}, juros ${moeda(juros)}, multa ${moeda(multa)}, desconto ${moeda(descontoBaixa)}, ISS retido ${moeda(issRetido)} e entrada no caixa ${moeda(valorLiquido)}.`,
     })
+    await registrarMovimentoFinanceiro(supabase, { unidadeId: Number(os.unidade_id), contaId: contaFinanceira.id, natureza: 'ENTRADA', tipo: 'RECEBIMENTO_BOLETO', forma: 'BOLETO', valorBruto: valorLiquido, origemTipo: 'PARCELA', origemId: id, descricao: `${os.numero_os}: parcela ${parcela.numero_parcela}/${parcela.total_parcelas} recebida em ${contaFinanceira.nome}.`, usuarioId: auth.usuarioId, nome: auth.nome, email: auth.email })
     return NextResponse.json({ ok: true })
   } catch (error) {
     await registrarEventoSistema({ error, modulo: 'PARCELAMENTOS', gravidade: 'CRITICO', request })

@@ -6,9 +6,10 @@ import { adminFetch } from '@/lib/admin-fetch'
 
 type Tecnico = { id: number; responsavel?: string | null; nome_fantasia?: string | null; periodicidade_comissao?: string | null }
 type Elegivel = { os_id: number; numero_os: string; parceiro_id: number; data_pagamento?: string | null; valor_pecas_venda: number; valor_mao_obra_venda: number; percentual_pecas: number; percentual_mao_obra: number; comissao_pecas: number; comissao_mao_obra: number }
-type Fechamento = { id: number; parceiro_id: number; periodo_inicio: string; periodo_fim: string; periodicidade: string; status: string; total_pecas_venda: number; total_mao_obra_venda: number; total_comissao_pecas: number; total_comissao_mao_obra: number; total_ajustes: number; total_comissao: number; criado_por_nome: string; criado_por_email: string; criado_em: string; pago_por_nome?: string | null; pago_em?: string | null; forma_pagamento?: string | null; parceiros?: { responsavel?: string | null; nome_fantasia?: string | null } | null }
+type Fechamento = { id: number; parceiro_id: number; periodo_inicio: string; periodo_fim: string; periodicidade: string; status: string; total_pecas_venda: number; total_mao_obra_venda: number; total_comissao_pecas: number; total_comissao_mao_obra: number; total_ajustes: number; total_comissao: number; criado_por_nome: string; criado_por_email: string; criado_em: string; pago_por_nome?: string | null; pago_em?: string | null; forma_pagamento?: string | null; conta_financeira_id?: number | null; parceiros?: { responsavel?: string | null; nome_fantasia?: string | null } | null }
 type Item = { id: number; fechamento_id: number; os_id?: number | null; tipo: string; descricao?: string | null; valor_pecas_venda: number; valor_mao_obra_venda: number; comissao_pecas: number; comissao_mao_obra: number; valor_ajuste: number }
-type Payload = { estruturaPendente: boolean; tecnicos: Tecnico[]; elegiveis: Elegivel[]; fechamentos: Fechamento[]; itens: Item[] }
+type Conta = { id: number; nome: string; unidade_id: number; tipo: string }
+type Payload = { estruturaPendente: boolean; tecnicos: Tecnico[]; elegiveis: Elegivel[]; fechamentos: Fechamento[]; itens: Item[]; contas: Conta[] }
 
 function periodoInicial() { const hoje = new Date(); return { inicio: new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10), fim: hoje.toISOString().slice(0, 10) } }
 
@@ -17,7 +18,7 @@ export default function ComissoesPage() {
   const [inicio, setInicio] = useState(periodo.inicio)
   const [fim, setFim] = useState(periodo.fim)
   const [parceiroId, setParceiroId] = useState('TODOS')
-  const [data, setData] = useState<Payload>({ estruturaPendente: false, tecnicos: [], elegiveis: [], fechamentos: [], itens: [] })
+  const [data, setData] = useState<Payload>({ estruturaPendente: false, tecnicos: [], elegiveis: [], fechamentos: [], itens: [], contas: [] })
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
@@ -59,7 +60,7 @@ export default function ComissoesPage() {
   }
 
   function fechar(tecnico: Tecnico) { void acao({ acao: 'FECHAR', parceiroId: tecnico.id, inicio, fim }, `Comissão de ${nomeTecnico(tecnico)} fechada.`) }
-  function pagar(fechamento: Fechamento) { const forma = window.prompt('Forma de pagamento: PIX, CARTAO, DEPOSITO, BOLETO ou DINHEIRO', 'PIX'); if (forma) void acao({ acao: 'PAGAR', id: fechamento.id, forma }, 'Pagamento da comissão registrado.') }
+  function pagar(fechamento: Fechamento) { const forma = window.prompt('Forma de pagamento: PIX, CARTAO, DEPOSITO, BOLETO ou DINHEIRO', 'PIX'); if (!forma) return; const opcoes = data.contas.map((conta) => `${conta.id} - ${conta.nome} (${conta.tipo})`).join('\n'); const contaFinanceiraId = Number(window.prompt(`Informe o código da conta de saída:\n${opcoes}`, String(data.contas[0]?.id ?? ''))); if (contaFinanceiraId) void acao({ acao: 'PAGAR', id: fechamento.id, forma, contaFinanceiraId }, 'Pagamento da comissão registrado.') }
   function ajustar(fechamento: Fechamento) { const valor = window.prompt('Valor do ajuste (use negativo para desconto):', '0'); if (valor === null) return; const descricao = window.prompt('Motivo obrigatório do ajuste:'); if (descricao) void acao({ acao: 'AJUSTAR', id: fechamento.id, valor: Number(valor.replace(',', '.')), descricao }, 'Ajuste registrado.') }
 
   return <main className="min-h-screen bg-slate-100 p-4 md:p-6"><div className="mx-auto max-w-[1500px] space-y-5">

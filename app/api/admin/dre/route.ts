@@ -35,12 +35,13 @@ export async function GET(request: NextRequest) {
     const temClassificacaoDre = await colunaExiste(supabase, 'contas_pagar', 'classificacao_dre')
     const temAcrescimosContas = await colunaExiste(supabase, 'contas_pagar', 'valor_pago')
 
-    const [ordens, vendas, contas, recebimentos, pagamentosTecnicos] = await Promise.all([
+    const [ordens, vendas, contas, recebimentos, pagamentosTecnicos, taxasCartao] = await Promise.all([
       carregarOrdens(supabase, idsUnidades, inicioIso, fimIso, base),
       carregarVendas(supabase, idsUnidades, inicioIso, fimIso),
       carregarContas(supabase, idsUnidades, temClassificacaoDre, temAcrescimosContas),
       base === 'CAIXA' ? carregarHistorico(supabase, 'RECEBIMENTO_OS', inicioIso, fimIso) : Promise.resolve([]),
       base === 'CAIXA' ? carregarHistorico(supabase, 'PAGAMENTO_TECNICO', inicioIso, fimIso) : Promise.resolve([]),
+      carregarTaxasCartao(supabase, idsUnidades, inicioIso, fimIso),
     ])
 
     const ordemIds = ordens.map((item) => numero(item.id)).filter(Boolean)
@@ -120,7 +121,7 @@ export async function GET(request: NextRequest) {
     const despesasOperacionais = despesasCategorias.reduce((total, item) => total + item.valor, 0)
     const custosContas = soma(contasCustosDiretos, (item) => numero(item.valor))
     const impostosSobreVendas = soma(contasImpostos, (item) => numero(item.valor))
-    const despesasFinanceiras = soma(contasFinanceiras, (item) => numero(item.valor)) + jurosMultasPagos
+    const despesasFinanceiras = soma(contasFinanceiras, (item) => numero(item.valor)) + jurosMultasPagos + soma(taxasCartao, (item) => numero(item.taxa_valor))
     const despesasNaoOperacionais = soma(contasNaoOperacionais, (item) => numero(item.valor))
     const investimentos = soma(contasInvestimentos, (item) => numero(item.valor))
 
@@ -160,10 +161,11 @@ export async function GET(request: NextRequest) {
         despesas: numero(conta.juros) + numero(conta.multa),
       })
     }
+    for (const taxa of taxasCartao) adicionarMes(meses, taxa.criado_em, { despesas: numero(taxa.taxa_valor) })
 
     const detalhes = montarDetalhes({
       base, ordens, vendas, contasPeriodo, ajustesContasPeriodo, pecasOs, itensVenda, recebimentosEscopo,
-      pagamentosTecnicosEscopo, comissoesPagas,
+      pagamentosTecnicosEscopo, comissoesPagas, taxasCartao,
       proporcaoServico: receitaServicosCompetencia + receitaPecasOsCompetencia > 0 ? receitaServicosCompetencia / (receitaServicosCompetencia + receitaPecasOsCompetencia) : 1,
       custoPecaOsReconhecido,
     })
@@ -266,6 +268,14 @@ async function carregarHistorico(supabase: ReturnType<typeof db>, tipo: string, 
   return (data ?? []) as unknown as Registro[]
 }
 
+async function carregarTaxasCartao(supabase: ReturnType<typeof db>, unidades: number[], inicio: string, fim: string) {
+  const existe = await colunaExiste(supabase, 'movimentos_financeiros', 'taxa_valor')
+  if (!existe) return []
+  const { data, error } = await supabase.from('movimentos_financeiros').select('id, origem_tipo, origem_id, descricao, taxa_valor, criado_em').in('unidade_id', unidades).eq('status', 'ATIVO').gt('taxa_valor', 0).gte('criado_em', inicio).lte('criado_em', fim)
+  if (error && !tabelaAusente(error)) throw error
+  return (data ?? []) as Registro[]
+}
+
 async function carregarComissoesPagas(supabase: ReturnType<typeof db>, inicio: string, fim: string, ordemIds: number[]) {
   if (!ordemIds.length) return []
   const { data: fechamentos, error } = await supabase.from('comissao_fechamentos').select('id, pago_em').eq('status', 'PAGO').gte('pago_em', inicio).lte('pago_em', fim)
@@ -314,10 +324,11 @@ function montarDetalhes(params: {
   recebimentosEscopo: Registro[]
   pagamentosTecnicosEscopo: Registro[]
   comissoesPagas: Registro[]
+  taxasCartao: Registro[]
   proporcaoServico: number
   custoPecaOsReconhecido: (item: Registro) => number
 }) {
-  const { base, ordens, vendas, contasPeriodo, ajustesContasPeriodo, pecasOs, itensVenda, recebimentosEscopo, pagamentosTecnicosEscopo, comissoesPagas, proporcaoServico, custoPecaOsReconhecido } = params
+  const { base, ordens, vendas, contasPeriodo, ajustesContasPeriodo, pecasOs, itensVenda, recebimentosEscopo, pagamentosTecnicosEscopo, comissoesPagas, taxasCartao, proporcaoServico, custoPecaOsReconhecido } = params
   const mapa: Record<string, Detalhe[]> = {}
   const adicionar = (chave: string, item: Detalhe) => {
     if (!item.valor) return
@@ -420,6 +431,8 @@ function montarDetalhes(params: {
       })
     }
   }
+
+  for (const taxa of taxasCartao) adicionar('despesasFinanceiras', { id: `taxa-cartao-${taxa.id}`, origem: 'Cartão', documento: String(taxa.origem_id ?? ''), descricao: String(taxa.descricao ?? 'Taxa de cartão'), data: String(taxa.criado_em ?? '') || null, valor: numero(taxa.taxa_valor) })
 
   return mapa
 }

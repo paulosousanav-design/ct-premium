@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminPermission } from '@/lib/admin-auth'
 import { requireAdminEscopoGerencial } from '@/lib/admin-unidade'
 import { calcularBaixaContaPagar } from '@/lib/calculos-contas-pagar'
+import { calcularLiquidacaoCartao, registrarMovimentoFinanceiro, validarContaFinanceira } from '@/lib/financeiro-contas'
 import { calcularBaixaRecebimento } from '@/lib/calculos-financeiros'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 import { registrarEventoSistema } from '@/lib/monitoramento'
@@ -290,8 +291,8 @@ export async function PATCH(request: NextRequest) {
 
       const temAcrescimosConta = await colunaExiste(supabase, 'contas_pagar', 'valor_pago')
       const selectContaAtual: string = temAcrescimosConta
-        ? 'id, descricao, status, valor, juros, multa, desconto, valor_pago'
-        : 'id, descricao, status, valor'
+        ? 'id, unidade_id, descricao, status, valor, juros, multa, desconto, valor_pago'
+        : 'id, unidade_id, descricao, status, valor'
       const { data: contaAtualRaw, error: contaAtualError } = await supabase
         .from('contas_pagar')
         .select(selectContaAtual)
@@ -321,6 +322,7 @@ export async function PATCH(request: NextRequest) {
         )
       }
       const pagoEm = status === 'PAGO' ? dataPagamentoIso(body?.dataPagamento) : null
+      const contaFinanceira = status === 'PAGO' ? await validarContaFinanceira(supabase, Number((contaAtual as Record<string, unknown>).unidade_id), body?.contaFinanceiraId) : null
 
       const updatePayload: Record<string, unknown> = {
         status,
@@ -336,6 +338,7 @@ export async function PATCH(request: NextRequest) {
         updatePayload.desconto = baixa?.desconto ?? 0
         updatePayload.valor_pago = baixa?.valorPago ?? null
       }
+      if (contaFinanceira) updatePayload.conta_financeira_id = contaFinanceira.id
 
       const { error } = await supabase.from('contas_pagar').update(updatePayload).eq('id', id)
       if (error) throw error
@@ -350,6 +353,12 @@ export async function PATCH(request: NextRequest) {
         descricao: status === 'PAGO'
           ? `${contaAtual?.descricao ?? `Conta #${id}`} paga via ${forma}. Original ${formatCurrency(baixa?.valorOriginal ?? 0)}, juros ${formatCurrency(baixa?.juros ?? 0)}, multa ${formatCurrency(baixa?.multa ?? 0)}, desconto ${formatCurrency(baixa?.desconto ?? 0)} e total pago ${formatCurrency(baixa?.valorPago ?? 0)}.`
           : `${contaAtual?.descricao ?? `Conta #${id}`} marcada como ${status}.`,
+      })
+      if (status === 'PAGO' && contaFinanceira) await registrarMovimentoFinanceiro(supabase, {
+        unidadeId: Number((contaAtual as Record<string, unknown>).unidade_id), contaId: contaFinanceira.id,
+        natureza: 'SAIDA', tipo: 'CONTA_PAGAR', forma, valorBruto: baixa?.valorPago ?? toNumber(contaAtual.valor),
+        origemTipo: 'CONTA_PAGAR', origemId: id, descricao: `${contaAtual.descricao ?? `Conta #${id}`} paga via ${forma}.`,
+        usuarioId: auth.usuarioId, nome: auth.nome, email: auth.email,
       })
 
       return NextResponse.json({ ok: true })
@@ -392,7 +401,7 @@ export async function PATCH(request: NextRequest) {
         }
       }
       const { data: ordemAtual, error: ordemAtualError } = await ordemAtualQuery
-        .select(`id, numero_os, status, status_financeiro, total, cliente_total${selectTaxaDiagnostico}${selectValorRecebido}${selectDescontoRecebimento}${selectAcrescimosRecebimento}`)
+        .select(`id, unidade_id, numero_os, status, status_financeiro, total, cliente_total${selectTaxaDiagnostico}${selectValorRecebido}${selectDescontoRecebimento}${selectAcrescimosRecebimento}`)
         .eq('id', id)
         .maybeSingle()
 
@@ -462,6 +471,11 @@ export async function PATCH(request: NextRequest) {
           )
         }
       }
+      const contaFinanceira = pagamento ? await validarContaFinanceira(supabase, Number(ordemAtual?.unidade_id), body?.contaFinanceiraId) : null
+      const parcelasCartao = Math.max(1, Math.min(24, Math.trunc(Number(body?.parcelas) || 1)))
+      const liquidacaoCartao = pagamento && forma === 'CARTAO'
+        ? await calcularLiquidacaoCartao(supabase, { unidadeId: Number(ordemAtual?.unidade_id), operadoraId: body?.operadoraId, modalidade: body?.modalidadeCartao, parcelas: parcelasCartao, valorBruto: baixa?.entradaCaixa ?? 0 })
+        : null
 
       const proximoDesconto = baixa?.desconto ?? (status === 'PENDENTE' ? 0 : descontoAtual)
       const proximoIssRetido = baixa?.issRetido ?? (status === 'PENDENTE' ? 0 : issRetidoAtual)
@@ -508,10 +522,22 @@ export async function PATCH(request: NextRequest) {
         multa: pagamento ? multaLancada : undefined,
         desconto: pagamento ? descontoLancado : undefined,
         issRetido: pagamento ? issRetidoLancado : undefined,
-        valorLiquido: pagamento ? valorLancado + jurosLancados + multaLancada : undefined,
+        valorLiquido: pagamento ? liquidacaoCartao?.valorLiquido ?? valorLancado + jurosLancados + multaLancada : undefined,
+        contaFinanceiraId: contaFinanceira?.id,
+        operadoraId: liquidacaoCartao ? Number(body?.operadoraId) : undefined,
+        taxaCartao: liquidacaoCartao?.taxaValor,
+        parcelasCartao: liquidacaoCartao ? parcelasCartao : undefined,
         descricao: pagamento
           ? `${ordemAtual?.numero_os ?? `OS #${id}`} recebeu principal ${formatCurrency(valorLancado)} via ${forma}, juros ${formatCurrency(jurosLancados)}, multa ${formatCurrency(multaLancada)}, desconto ${formatCurrency(descontoLancado)} e ISS retido ${formatCurrency(issRetidoLancado)}. Entrada no caixa: ${formatCurrency(baixa?.entradaCaixa ?? 0)}. Saldo: ${formatCurrency(baixa?.saldoRestante ?? 0)}.`
           : `${ordemAtual?.numero_os ?? `OS #${id}`} marcada como ${statusFinal}.`,
+      })
+      if (pagamento && contaFinanceira && baixa) await registrarMovimentoFinanceiro(supabase, {
+        unidadeId: Number(ordemAtual?.unidade_id), contaId: contaFinanceira.id, natureza: 'ENTRADA', tipo: 'RECEBIMENTO_OS', forma,
+        valorBruto: baixa.entradaCaixa, taxaValor: liquidacaoCartao?.taxaValor, valorLiquido: liquidacaoCartao?.valorLiquido ?? baixa.entradaCaixa,
+        operadoraId: liquidacaoCartao ? Number(body?.operadoraId) : null, taxaId: liquidacaoCartao?.taxaId,
+        taxaPercentual: liquidacaoCartao?.taxaPercentual, parcelas: parcelasCartao, previsaoCredito: liquidacaoCartao?.previsaoCredito,
+        origemTipo: 'OS', origemId: id, descricao: `${ordemAtual?.numero_os ?? `OS #${id}`} recebida via ${forma} em ${contaFinanceira.nome}.`,
+        usuarioId: auth.usuarioId, nome: auth.nome, email: auth.email,
       })
       return NextResponse.json({ ok: true })
     }
@@ -522,7 +548,7 @@ export async function PATCH(request: NextRequest) {
       const pagoEm = new Date().toISOString()
       const { data: ordemAtual } = await supabase
         .from('ordens_servico')
-        .select('id, numero_os, status_financeiro, tecnico_status_pagamento, tecnico_total, total, parceiros:parceiro_id(tipo_vinculo)')
+        .select('id, unidade_id, numero_os, status_financeiro, tecnico_status_pagamento, tecnico_total, total, parceiros:parceiro_id(tipo_vinculo)')
         .eq('id', id)
         .maybeSingle()
 
@@ -530,6 +556,7 @@ export async function PATCH(request: NextRequest) {
       if (parceiro?.tipo_vinculo === 'PROPRIO') {
         return NextResponse.json({ error: 'Tecnico proprio deve ser pago pelo fechamento de comissoes.' }, { status: 400 })
       }
+      const contaFinanceira = await validarContaFinanceira(supabase, Number(ordemAtual?.unidade_id), body?.contaFinanceiraId)
 
       const documentos = await carregarDocumentosTecnicos(supabase)
       const documentosRecebidos = documentos.data.filter(
@@ -581,6 +608,7 @@ export async function PATCH(request: NextRequest) {
         valor: valorPreferencial(ordemAtual?.tecnico_total, 0),
         descricao: `${ordemAtual?.numero_os ?? `OS #${id}`} paga ao tecnico via ${forma}.`,
       })
+      await registrarMovimentoFinanceiro(supabase, { unidadeId: Number(ordemAtual?.unidade_id), contaId: contaFinanceira.id, natureza: 'SAIDA', tipo: 'PAGAMENTO_TECNICO', forma, valorBruto: valorPreferencial(ordemAtual?.tecnico_total, 0), origemTipo: 'OS_TECNICO', origemId: id, descricao: `${ordemAtual?.numero_os ?? `OS #${id}`} paga ao técnico via ${forma}.`, usuarioId: auth.usuarioId, nome: auth.nome, email: auth.email })
 
       return NextResponse.json({ ok: true })
     }
@@ -590,6 +618,12 @@ export async function PATCH(request: NextRequest) {
       .select('id, os_id, status, valor, nome_arquivo')
       .eq('id', id)
       .maybeSingle()
+    if (!documento) return NextResponse.json({ error: 'Documento não localizado.' }, { status: 404 })
+    const osIdsDocumento = await carregarOsIdsDocumento(supabase, id, Number(documento.os_id) || null)
+    const { data: osDocumento } = osIdsDocumento.length ? await supabase.from('ordens_servico').select('id, unidade_id, numero_os').eq('id', osIdsDocumento[0]).maybeSingle() : { data: null }
+    if (!osDocumento) return NextResponse.json({ error: 'Documento sem OS e unidade financeira vinculadas.' }, { status: 400 })
+    const formaDocumento = normalizarFormaPagamento(body?.forma)
+    const contaFinanceiraDocumento = await validarContaFinanceira(supabase, Number(osDocumento.unidade_id), body?.contaFinanceiraId)
 
     const pagoEm = new Date().toISOString()
     const { error } = await supabase
@@ -599,7 +633,6 @@ export async function PATCH(request: NextRequest) {
 
     if (error) throw error
 
-    const osIdsDocumento = await carregarOsIdsDocumento(supabase, id, Number(documento?.os_id) || null)
     if (osIdsDocumento.length > 0 && await colunaExiste(supabase, 'ordens_servico', 'tecnico_status_pagamento')) {
       const { error: osError } = await supabase
         .from('ordens_servico')
@@ -622,6 +655,7 @@ export async function PATCH(request: NextRequest) {
       valor: toNumber(documento?.valor),
       descricao: `${documento?.nome_arquivo ?? `Documento #${id}`} marcado como pago.`,
     })
+    await registrarMovimentoFinanceiro(supabase, { unidadeId: Number(osDocumento.unidade_id), contaId: contaFinanceiraDocumento.id, natureza: 'SAIDA', tipo: 'DOCUMENTO_TECNICO', forma: formaDocumento, valorBruto: toNumber(documento.valor), origemTipo: 'DOCUMENTO_TECNICO', origemId: id, descricao: `${documento.nome_arquivo ?? `Documento #${id}`} pago via ${formaDocumento}.`, usuarioId: auth.usuarioId, nome: auth.nome, email: auth.email })
 
     return NextResponse.json({ ok: true })
   } catch (error) {
@@ -777,6 +811,10 @@ async function registrarHistoricoFinanceiro(
     desconto?: number
     issRetido?: number
     valorLiquido?: number
+    contaFinanceiraId?: number
+    operadoraId?: number
+    taxaCartao?: number
+    parcelasCartao?: number
   }
 ) {
   const { error } = await supabase.from('financeiro_historico').insert({
@@ -789,6 +827,10 @@ async function registrarHistoricoFinanceiro(
     valor: item.valor,
     descricao: item.descricao,
     responsavel: item.responsavel ?? 'Admin',
+    conta_financeira_id: item.contaFinanceiraId ?? null,
+    operadora_id: item.operadoraId ?? null,
+    taxa_cartao: item.taxaCartao ?? 0,
+    parcelas_cartao: item.parcelasCartao ?? 1,
     ...(item.valorPrincipal === undefined ? {} : {
       valor_principal: item.valorPrincipal,
       juros: item.juros ?? 0,

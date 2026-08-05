@@ -34,7 +34,8 @@ type Parcela = {
   valor_recebido?: number | string | null
   ordens_servico?: { numero_os?: string | null; clientes?: Relacao } | null
 }
-type Baixa = { parcela: Parcela; juros: string; multa: string; desconto: string; issRetido: string }
+type ContaFinanceira = { id: number; nome: string; tipo: string; ativa: boolean }
+type Baixa = { parcela: Parcela; juros: string; multa: string; desconto: string; issRetido: string; contaFinanceiraId?: string }
 
 export default function ParcelamentosPage() {
   const [ordens, setOrdens] = useState<Ordem[]>([])
@@ -51,18 +52,21 @@ export default function ParcelamentosPage() {
   const [intervaloDias, setIntervaloDias] = useState('30')
   const [vencimento, setVencimento] = useState(hoje())
   const [baixa, setBaixa] = useState<Baixa | null>(null)
+  const [contasFinanceiras, setContasFinanceiras] = useState<ContaFinanceira[]>([])
 
   const carregar = useCallback(async () => {
     setLoading(true)
     setErro('')
     try {
-      const response = await adminFetch('/api/admin/parcelamentos')
+      const [response, contasResponse] = await Promise.all([adminFetch('/api/admin/parcelamentos'), adminFetch('/api/admin/financeiro/contas')])
       const payload = await response.json().catch(() => null)
+      const contasPayload = await contasResponse.json().catch(() => null)
       if (!response.ok) throw new Error(payload?.error ?? 'Erro ao carregar parcelamentos.')
       setOrdens(payload?.ordens ?? [])
       setParcelas(payload?.parcelas ?? [])
       setEstruturaPendente(Boolean(payload?.estruturaPendente))
       setAcrescimosPendente(Boolean(payload?.acrescimosPendente))
+      if (contasResponse.ok) setContasFinanceiras((contasPayload?.contas ?? []).filter((item: ContaFinanceira) => item.ativa))
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Erro ao carregar parcelamentos.')
     } finally {
@@ -128,6 +132,7 @@ export default function ParcelamentosPage() {
       multa: numero(baixa.multa),
       desconto: numero(baixa.desconto),
       issRetido: numero(baixa.issRetido),
+      contaFinanceiraId: Number(baixa.contaFinanceiraId),
     }, `Parcela ${baixa.parcela.numero_parcela}/${baixa.parcela.total_parcelas} recebida com os valores atualizados.`)
   }
 
@@ -181,13 +186,13 @@ export default function ParcelamentosPage() {
         </section>
       </div>
 
-      {baixa && <ModalBaixa baixa={baixa} setBaixa={setBaixa} salvando={salvando} confirmar={confirmarBaixa} />}
+      {baixa && <ModalBaixa baixa={baixa} contas={contasFinanceiras} setBaixa={setBaixa} salvando={salvando} confirmar={confirmarBaixa} />}
       <style jsx>{`.input{height:42px;width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:0 12px;font-size:14px}`}</style>
     </main>
   )
 }
 
-function ModalBaixa({ baixa, setBaixa, salvando, confirmar }: { baixa: Baixa; setBaixa: (value: Baixa | null) => void; salvando: boolean; confirmar: () => void }) {
+function ModalBaixa({ baixa, contas, setBaixa, salvando, confirmar }: { baixa: Baixa; contas: ContaFinanceira[]; setBaixa: (value: Baixa | null) => void; salvando: boolean; confirmar: () => void }) {
   const original = numero(baixa.parcela.valor)
   const juros = numero(baixa.juros)
   const multa = numero(baixa.multa)
@@ -199,10 +204,11 @@ function ModalBaixa({ baixa, setBaixa, salvando, confirmar }: { baixa: Baixa; se
   const alterar = (campo: keyof Omit<Baixa, 'parcela'>, value: string) => setBaixa({ ...baixa, [campo]: value })
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"><div className="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl">
     <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase text-emerald-700">Baixa de boleto</p><h2 className="text-xl font-black">Parcela {baixa.parcela.numero_parcela}/{baixa.parcela.total_parcelas}</h2><p className="text-sm text-slate-500">Valor original: {moeda(original)}</p></div><button type="button" onClick={() => setBaixa(null)} className="rounded-lg border px-3 py-1 text-sm font-bold">Fechar</button></div>
+    <Campo label="Conta de destino"><select required value={baixa.contaFinanceiraId ?? ''} onChange={(event) => alterar('contaFinanceiraId', event.target.value)} className="input-modal"><option value="">Selecione onde o valor entrará</option>{contas.map((conta) => <option key={conta.id} value={conta.id}>{conta.nome} · {conta.tipo.replaceAll('_', ' ')}</option>)}</select></Campo>
     <div className="mt-5 grid gap-3 sm:grid-cols-2"><Campo label="Juros recebidos"><input type="number" min="0" step="0.01" value={baixa.juros} onChange={(event) => alterar('juros', event.target.value)} className="input-modal" /></Campo><Campo label="Multa recebida"><input type="number" min="0" step="0.01" value={baixa.multa} onChange={(event) => alterar('multa', event.target.value)} className="input-modal" /></Campo><Campo label="Desconto concedido"><input type="number" min="0" step="0.01" value={baixa.desconto} onChange={(event) => alterar('desconto', event.target.value)} className="input-modal" /></Campo><Campo label="ISS retido pelo tomador"><input type="number" min="0" step="0.01" value={baixa.issRetido} onChange={(event) => alterar('issRetido', event.target.value)} className="input-modal" /></Campo></div>
     <div className="mt-5 grid gap-2 rounded-xl bg-slate-50 p-4 sm:grid-cols-3"><Resumo label="Principal recebido" value={principal} /><Resumo label="ISS retido" value={iss} /><Resumo label="Entrada no caixa" value={caixa} destaque /></div>
     {invalido && <p className="mt-3 text-sm font-bold text-red-700">Desconto e ISS retido, somados, nao podem ultrapassar o valor original.</p>}
-    <button type="button" disabled={salvando || invalido || (caixa <= 0 && iss <= 0)} onClick={confirmar} className="mt-5 w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white disabled:opacity-50">{salvando ? 'Registrando...' : `Confirmar recebimento de ${moeda(caixa)}`}</button>
+    <button type="button" disabled={salvando || invalido || !baixa.contaFinanceiraId || (caixa <= 0 && iss <= 0)} onClick={confirmar} className="mt-5 w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white disabled:opacity-50">{salvando ? 'Registrando...' : `Confirmar recebimento de ${moeda(caixa)}`}</button>
     <style jsx>{`.input-modal{margin-top:4px;height:42px;width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:0 12px;font-size:14px}`}</style>
   </div></div>
 }

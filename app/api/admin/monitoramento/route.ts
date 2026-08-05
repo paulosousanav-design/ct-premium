@@ -20,6 +20,12 @@ const verificacoes = [
   ['backup_storage_arquivos', false],
   ['chat_mensagens', false],
   ['seguranca_rate_limits', false],
+  ['caixa_sessoes', false],
+  ['caixa_movimentos', false],
+  ['contas_financeiras', false],
+  ['movimentos_financeiros', false],
+  ['operadoras_cartao', false],
+  ['operadoras_cartao_taxas', false],
 ] as const
 
 function db() {

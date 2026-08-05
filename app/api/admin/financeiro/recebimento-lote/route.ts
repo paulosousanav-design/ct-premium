@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminEscopoGerencial } from '@/lib/admin-unidade'
 import { calcularBaixaRecebimento } from '@/lib/calculos-financeiros'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
+import { calcularLiquidacaoCartao, registrarMovimentoFinanceiro, validarContaFinanceira } from '@/lib/financeiro-contas'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -125,6 +126,10 @@ export async function POST(request: NextRequest) {
     const unidadeId = new Set((ordens ?? []).map((ordem) => Number(ordem.unidade_id))).size === 1
       ? Number(ordens?.[0]?.unidade_id)
       : null
+    if (!unidadeId) return NextResponse.json({ error: 'Receba em lote somente OS da mesma unidade.' }, { status: 400 })
+    const contaFinanceira = await validarContaFinanceira(supabase, unidadeId, body?.contaFinanceiraId)
+    const parcelasCartao = Math.max(1, Math.min(24, Math.trunc(Number(body?.parcelas) || 1)))
+    const liquidacao = forma === 'CARTAO' ? await calcularLiquidacaoCartao(supabase, { unidadeId, operadoraId: body?.operadoraId, modalidade: body?.modalidadeCartao, parcelas: parcelasCartao, valorBruto: totais.caixa }) : null
     const { data: lote, error: loteError } = await supabase
       .from('recebimentos_lotes')
       .insert({
@@ -132,6 +137,7 @@ export async function POST(request: NextRequest) {
         cliente_id: tipoPagador === 'CLIENTE' ? pagadorId : null,
         garantidor_id: tipoPagador === 'GARANTIDOR' ? pagadorId : null,
         unidade_id: unidadeId,
+        conta_financeira_id: contaFinanceira.id,
         forma_recebimento: forma,
         total_principal: totais.principal,
         total_juros: totais.juros,
@@ -211,6 +217,7 @@ export async function POST(request: NextRequest) {
       .update({ status: 'CONCLUIDO', concluido_em: new Date().toISOString() })
       .eq('id', loteId)
     if (concluirError) throw concluirError
+    await registrarMovimentoFinanceiro(supabase, { unidadeId, contaId: contaFinanceira.id, natureza: 'ENTRADA', tipo: 'RECEBIMENTO_OS_LOTE', forma, valorBruto: totais.caixa, taxaValor: liquidacao?.taxaValor, valorLiquido: liquidacao?.valorLiquido ?? totais.caixa, operadoraId: liquidacao ? Number(body?.operadoraId) : null, taxaId: liquidacao?.taxaId, taxaPercentual: liquidacao?.taxaPercentual, parcelas: parcelasCartao, previsaoCredito: liquidacao?.previsaoCredito, origemTipo: 'RECEBIMENTO_LOTE', origemId: loteId, descricao: `Lote ${loteId} recebido via ${forma} em ${contaFinanceira.nome}.`, usuarioId: auth.usuarioId, nome: auth.nome, email: auth.email })
 
     return NextResponse.json({
       ok: true,

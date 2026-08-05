@@ -8,9 +8,11 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const verificacoes = [
   ['clientes', true], ['ordens_servico', true], ['os_historico', true],
   ['admin_usuarios', true], ['unidades', true], ['financeiro_historico', true],
+  ['contas_financeiras', false], ['movimentos_financeiros', false], ['operadoras_cartao', false],
   ['auditoria_eventos', true], ['sistema_eventos', true], ['backup_execucoes', true],
   ['backup_configuracoes', true], ['backup_storage_arquivos', false],
   ['chat_mensagens', false], ['seguranca_rate_limits', false],
+  ['caixa_sessoes', false], ['caixa_movimentos', false],
 ] as const
 
 export async function GET(request: NextRequest) {
