@@ -8,6 +8,7 @@ import { calcularBaixaContaPagar } from '@/lib/calculos-contas-pagar'
 type AbaFinanceiro = 'receber' | 'tecnicos' | 'contas'
 type FiltroFinanceiro = 'TODOS' | 'PENDENTE' | 'FATURADO' | 'PARCIAL' | 'RECEBIDO'
 type FiltroOrigemRecebimento = 'GERAL' | 'CLIENTE' | 'GARANTIDOR'
+type VisaoRecebimentos = 'mes' | 'acumulado'
 type RecebimentosPorForma = {
   total: number
   PIX: number
@@ -17,6 +18,7 @@ type RecebimentosPorForma = {
   DEPOSITO: number
   OUTROS: number
 }
+type RecebimentoMensalOs = { osId: number; recebido: number; issRetido: number }
 
 type RelacaoNome = { nome?: string | null; responsavel?: string | null; nome_fantasia?: string | null; razao_social?: string | null; tipo_vinculo?: string | null }
 
@@ -204,6 +206,9 @@ export default function FinanceiroPage() {
   const [salvandoLote, setSalvandoLote] = useState(false)
   const [vendasResumo, setVendasResumo] = useState({ total: 0, totalMes: 0, quantidade: 0 })
   const [visaoDre, setVisaoDre] = useState(false)
+  const [competenciaRecebimentos, setCompetenciaRecebimentos] = useState(competenciaAtualInput)
+  const [visaoRecebimentos, setVisaoRecebimentos] = useState<VisaoRecebimentos>('mes')
+  const [recebimentosMensaisPorOs, setRecebimentosMensaisPorOs] = useState<RecebimentoMensalOs[]>([])
   const [recebimentosPorForma, setRecebimentosPorForma] = useState<RecebimentosPorForma>({
     total: 0, PIX: 0, CARTAO: 0, DINHEIRO: 0, BOLETO: 0, DEPOSITO: 0, OUTROS: 0,
   })
@@ -213,7 +218,11 @@ export default function FinanceiroPage() {
     setErro('')
 
     try {
-      const [response, contasResponse] = await Promise.all([adminFetch('/api/admin/financeiro'), adminFetch('/api/admin/financeiro/contas')])
+      const parametros = new URLSearchParams({ competencia: competenciaRecebimentos, visao: visaoRecebimentos })
+      const [response, contasResponse] = await Promise.all([
+        adminFetch(`/api/admin/financeiro?${parametros.toString()}`, { cache: 'no-store' }),
+        adminFetch('/api/admin/financeiro/contas'),
+      ])
       const data = await response.json().catch(() => null)
       const dadosContas = await contasResponse.json().catch(() => null)
 
@@ -234,15 +243,18 @@ export default function FinanceiroPage() {
       setAcrescimosRecebimentoPendente(Boolean(data?.acrescimosRecebimentoPendente))
       setVendasResumo(data?.vendasResumo ?? { total: 0, totalMes: 0, quantidade: 0 })
       setVisaoDre(Boolean(data?.visaoDre))
+      setCompetenciaRecebimentos(String(data?.competenciaRecebimentos ?? competenciaRecebimentos))
+      setVisaoRecebimentos(data?.visaoRecebimentos === 'acumulado' ? 'acumulado' : 'mes')
       setRecebimentosPorForma(data?.recebimentosPorForma ?? {
         total: 0, PIX: 0, CARTAO: 0, DINHEIRO: 0, BOLETO: 0, DEPOSITO: 0, OUTROS: 0,
       })
+      setRecebimentosMensaisPorOs((data?.recebimentosMensaisPorOs ?? []) as RecebimentoMensalOs[])
     } catch (error) {
       setErro(formatarErro(error, 'Erro ao carregar financeiro.'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [competenciaRecebimentos, visaoRecebimentos])
 
   useEffect(() => {
     void Promise.resolve().then(carregarDados)
@@ -274,13 +286,15 @@ export default function FinanceiroPage() {
       const atendeGarantidor = filtroOrigemRecebimento !== 'GARANTIDOR' || filtroGarantidor === 'TODOS' || String(os.garantidor_id ?? '') === filtroGarantidor
       return osRecebivel(os) && atendeOrigem && atendeGarantidor
     })
+    const idsBase = new Set(base.map((os) => os.id))
+    const movimentosMes = recebimentosMensaisPorOs.filter((item) => idsBase.has(item.osId))
     return {
-      total: base.reduce((acc, os) => acc + valorCliente(os), 0),
-      recebido: base.reduce((acc, os) => acc + valorCaixaRecebidoCliente(os), 0),
-      aReceber: base.reduce((acc, os) => acc + saldoCliente(os), 0),
-      descontos: base.reduce((acc, os) => acc + descontoRecebimentoCliente(os), 0),
+      recebidoMes: movimentosMes.reduce((acc, item) => acc + toNumber(item.recebido), 0),
+      aReceberGeral: base.reduce((acc, os) => acc + saldoCliente(os), 0),
+      issRetidoMes: movimentosMes.reduce((acc, item) => acc + toNumber(item.issRetido), 0),
+      quantidadeEmAberto: base.filter((os) => saldoCliente(os) > 0.009).length,
     }
-  }, [filtroGarantidor, filtroOrigemRecebimento, ordens])
+  }, [filtroGarantidor, filtroOrigemRecebimento, ordens, recebimentosMensaisPorOs])
 
   const ordensTecnicos = useMemo(() => {
     return ordens.filter((os) => {
@@ -739,10 +753,49 @@ export default function FinanceiroPage() {
       )}
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-3">
-          <p className="text-xs font-black uppercase tracking-wide text-emerald-700">Operação financeira</p>
-          <h2 className="text-lg font-black text-slate-950">Recebimentos confirmados por forma</h2>
-          <p className="text-xs text-slate-500">Acumulado da unidade, considerando baixas de OS e vendas de balcão.</p>
+        <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wide text-emerald-700">Operação financeira</p>
+            <h2 className="text-lg font-black text-slate-950">
+              Recebimentos confirmados — {visaoRecebimentos === 'acumulado' ? 'histórico completo' : formatarCompetencia(competenciaRecebimentos)}
+            </h2>
+            <p className="text-xs text-slate-500">
+              {visaoRecebimentos === 'acumulado'
+                ? 'Visão gerencial acumulada da unidade, restrita aos usuários com acesso ao DRE.'
+                : 'Valores efetivamente recebidos no mês, considerando baixas de OS e vendas de balcão.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            {visaoRecebimentos === 'mes' && (
+              <label className="text-xs font-black uppercase text-slate-600">
+                Competência
+                <input
+                  type="month"
+                  value={competenciaRecebimentos}
+                  onChange={(event) => setCompetenciaRecebimentos(event.target.value)}
+                  className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500"
+                />
+              </label>
+            )}
+            {visaoDre && (
+              <div className="inline-flex rounded-lg bg-slate-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setVisaoRecebimentos('mes')}
+                  className={`rounded-md px-3 py-2 text-xs font-black ${visaoRecebimentos === 'mes' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
+                >
+                  Por mês
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisaoRecebimentos('acumulado')}
+                  className={`rounded-md px-3 py-2 text-xs font-black ${visaoRecebimentos === 'acumulado' ? 'bg-indigo-700 text-white shadow-sm' : 'text-slate-500'}`}
+                >
+                  Acumulado histórico
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
           <Card titulo="Total recebido" valor={formatCurrency(recebimentosPorForma.total)} cor="green" destaque />
@@ -910,10 +963,10 @@ export default function FinanceiroPage() {
               </button>
             </div>
             <div className="grid grid-cols-2 gap-2 border-b border-slate-200 bg-slate-50/60 p-3 md:grid-cols-4">
-              <MiniFinanceCard label="Valor total" value={formatCurrency(resumoRecebimentosFiltrado.total)} tone="blue" />
-              <MiniFinanceCard label="Recebido" value={formatCurrency(resumoRecebimentosFiltrado.recebido)} tone="green" />
-              <MiniFinanceCard label="A receber" value={formatCurrency(resumoRecebimentosFiltrado.aReceber)} tone="orange" />
-              <MiniFinanceCard label="Descontos" value={formatCurrency(resumoRecebimentosFiltrado.descontos)} tone="slate" />
+              <MiniFinanceCard label={`Recebido em ${formatarCompetenciaCurta(competenciaRecebimentos)}`} value={formatCurrency(resumoRecebimentosFiltrado.recebidoMes)} tone="green" />
+              <MiniFinanceCard label="A receber geral" value={formatCurrency(resumoRecebimentosFiltrado.aReceberGeral)} tone="orange" />
+              <MiniFinanceCard label={`ISS retido em ${formatarCompetenciaCurta(competenciaRecebimentos)}`} value={formatCurrency(resumoRecebimentosFiltrado.issRetidoMes)} tone="blue" />
+              <MiniFinanceCard label="OS em aberto" value={String(resumoRecebimentosFiltrado.quantidadeEmAberto)} tone="slate" />
             </div>
             <RecebimentosTable
               loading={loading}
@@ -2362,6 +2415,23 @@ function escapeHtml(value: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;')
+}
+
+function competenciaAtualInput() {
+  const agora = new Date()
+  return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`
+}
+
+function formatarCompetencia(competencia: string) {
+  const [ano, mes] = competencia.split('-').map(Number)
+  if (!ano || !mes) return competencia
+  const nomeMes = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date(ano, mes - 1, 1))
+  return `${nomeMes.charAt(0).toUpperCase()}${nomeMes.slice(1)}/${ano}`
+}
+
+function formatarCompetenciaCurta(competencia: string) {
+  const [ano, mes] = competencia.split('-')
+  return mes && ano ? `${mes}/${ano}` : competencia
 }
 
 function formatDateFile(date: Date) {

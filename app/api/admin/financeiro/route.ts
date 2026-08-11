@@ -7,6 +7,13 @@ import { calcularLiquidacaoCartao, registrarMovimentoFinanceiro, validarContaFin
 import { calcularBaixaRecebimento } from '@/lib/calculos-financeiros'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
 import { registrarEventoSistema } from '@/lib/monitoramento'
+import {
+  competenciaAtualCuiaba,
+  dataNoPeriodo,
+  intervaloCompetencia,
+  normalizarCompetencia,
+  type IntervaloCompetencia,
+} from '@/lib/periodo-financeiro'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -59,6 +66,12 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdminEscopoGerencial(request, 'financeiro')
     if (!auth.ok) return auth.response
+
+    const visaoDre = auth.permissoes.includes('dre')
+    const competencia = normalizarCompetencia(request.nextUrl.searchParams.get('competencia'))
+    const acumuladoSolicitado = request.nextUrl.searchParams.get('visao') === 'acumulado'
+    const visaoRecebimentos = acumuladoSolicitado && visaoDre ? 'acumulado' : 'mes'
+    const periodoRecebimentos = visaoRecebimentos === 'mes' ? intervaloCompetencia(competencia) : null
 
     const supabase = getSupabaseAdmin()
     const temPagamentoTecnico = await colunaExiste(supabase, 'ordens_servico', 'tecnico_status_pagamento')
@@ -136,7 +149,7 @@ export async function GET(request: NextRequest) {
     const contasIds = new Set(contasPagar.data.map((item) => Number(item.id)))
     const historicoBase = await carregarHistoricoFinanceiro(supabase)
     const historico = { ...historicoBase, data: historicoBase.data.filter((item: { os_id?: number | null; conta_id?: number | null }) => (item.os_id && ordensIds.has(Number(item.os_id))) || (item.conta_id && contasIds.has(Number(item.conta_id)))) }
-    const vendasResumo = await carregarResumoVendas(supabase, auth.unidadeId, auth.unidadesPermitidas)
+    const vendasResumo = await carregarResumoVendas(supabase, auth.unidadeId, auth.unidadesPermitidas, competencia)
     const ordensData = (ordens ?? []) as unknown as OrdemFinanceiro[]
     const ordensComPagamentoTecnico = ordensData.map((ordem) => {
       const documentoPago = documentos.data.some(
@@ -151,11 +164,12 @@ export async function GET(request: NextRequest) {
         tecnico_status_pagamento: 'RECEBIDO',
       }
     })
-    const visaoDre = auth.permissoes.includes('dre')
-    const recebimentosPorForma = await carregarRecebimentosPorForma(
+    const resultadoRecebimentos = await carregarRecebimentosPorForma(
       supabase,
       ordensComPagamentoTecnico,
-      vendasResumo.porForma
+      visaoRecebimentos === 'acumulado' ? vendasResumo.porForma : vendasResumo.porFormaPeriodo,
+      periodoRecebimentos,
+      intervaloCompetencia(competencia)
     )
 
     return NextResponse.json({
@@ -170,7 +184,10 @@ export async function GET(request: NextRequest) {
       descontoRecebimentoPendente: !temDescontoRecebimentoCliente,
       acrescimosRecebimentoPendente: !temAcrescimosRecebimento,
       visaoDre,
-      recebimentosPorForma,
+      competenciaRecebimentos: competencia,
+      visaoRecebimentos,
+      recebimentosPorForma: resultadoRecebimentos.resumo,
+      recebimentosMensaisPorOs: resultadoRecebimentos.porOsPeriodo,
       vendasResumo: visaoDre
         ? { total: vendasResumo.total, totalMes: vendasResumo.totalMes, quantidade: vendasResumo.quantidade }
         : { total: 0, totalMes: 0, quantidade: 0 },
@@ -685,24 +702,36 @@ async function carregarHistoricoFinanceiro(supabase: ReturnType<typeof getSupaba
   return { data: data ?? [], tabelaPendente: false }
 }
 
-async function carregarResumoVendas(supabase: ReturnType<typeof getSupabaseAdmin>, unidadeId: number | null, unidadesPermitidas: number[]) {
+async function carregarResumoVendas(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  unidadeId: number | null,
+  unidadesPermitidas: number[],
+  competencia = competenciaAtualCuiaba()
+) {
   let query = supabase.from('vendas').select('total, forma_recebimento, criado_em').eq('status', 'PAGO')
   query = unidadeId ? query.eq('unidade_id', unidadeId) : query.in('unidade_id', unidadesPermitidas)
   const { data, error } = await query
   if (error) {
     if (String(error.code) === '42P01' || String(error.code) === 'PGRST205') {
-      return { total: 0, totalMes: 0, quantidade: 0, porForma: resumoFormasVazio() }
+      return { total: 0, totalMes: 0, quantidade: 0, porForma: resumoFormasVazio(), porFormaPeriodo: resumoFormasVazio() }
     }
     throw error
   }
-  const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0)
+  const periodo = intervaloCompetencia(competencia)
   const porForma = resumoFormasVazio()
+  const porFormaPeriodo = resumoFormasVazio()
   for (const venda of data ?? []) adicionarForma(porForma, venda.forma_recebimento, toNumber(venda.total))
+  for (const venda of data ?? []) {
+    if (dataNoPeriodo(venda.criado_em, periodo)) {
+      adicionarForma(porFormaPeriodo, venda.forma_recebimento, toNumber(venda.total))
+    }
+  }
   return {
     total: (data ?? []).reduce((acc, venda) => acc + toNumber(venda.total), 0),
-    totalMes: (data ?? []).filter((venda) => venda.criado_em && new Date(venda.criado_em) >= inicioMes).reduce((acc, venda) => acc + toNumber(venda.total), 0),
+    totalMes: porFormaPeriodo.total,
     quantidade: data?.length ?? 0,
     porForma,
+    porFormaPeriodo,
   }
 }
 
@@ -719,18 +748,21 @@ type ResumoFormas = {
 async function carregarRecebimentosPorForma(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   ordens: OrdemFinanceiro[],
-  vendasPorForma: ResumoFormas
+  vendasPorForma: ResumoFormas,
+  periodoResumo: IntervaloCompetencia | null,
+  periodoDetalhe: IntervaloCompetencia
 ) {
   const resumo = { ...vendasPorForma }
+  const porOsPeriodo = new Map<number, { recebido: number; issRetido: number }>()
   const osIds = ordens.map((item) => Number(item.id)).filter(Boolean)
-  if (!osIds.length) return resumo
+  if (!osIds.length) return { resumo, porOsPeriodo: [] }
 
   const temValorLiquido = await colunaExiste(supabase, 'financeiro_historico', 'valor_liquido')
-  const camposExtras = temValorLiquido ? ', valor_principal, juros, multa, valor_liquido' : ''
+  const camposExtras = temValorLiquido ? ', valor_principal, juros, multa, iss_retido, valor_liquido' : ''
   const { data, error } = await supabase
     .from('financeiro_historico')
-    .select(`os_id, tipo, status_novo, valor, descricao${camposExtras}`)
-    .eq('tipo', 'RECEBIMENTO_OS')
+    .select(`os_id, tipo, status_novo, valor, descricao, criado_em${camposExtras}`)
+    .in('tipo', ['RECEBIMENTO_OS', 'RECEBIMENTO_OS_LOTE'])
     .in('os_id', osIds)
     .limit(5000)
 
@@ -746,8 +778,13 @@ async function carregarRecebimentosPorForma(
           ? toNumber(item.valor_principal as never) + toNumber(item.juros as never) + toNumber(item.multa as never)
           : toNumber(item.valor as never)
       if (valorLiquido <= 0) continue
-      adicionarForma(resumo, forma, valorLiquido)
       recebidoHistoricoPorOs.set(osId, (recebidoHistoricoPorOs.get(osId) ?? 0) + valorLiquido)
+      if (!periodoResumo || dataNoPeriodo(item.criado_em, periodoResumo)) {
+        adicionarForma(resumo, forma, valorLiquido)
+      }
+      if (dataNoPeriodo(item.criado_em, periodoDetalhe)) {
+        adicionarRecebimentoOs(porOsPeriodo, osId, valorLiquido, toNumber(item.iss_retido as never))
+      }
     }
   }
 
@@ -755,12 +792,29 @@ async function carregarRecebimentosPorForma(
     const recebidoAcumulado = valorCaixaRecebidoOrdem(ordem)
     const recebidoComFormaNoHistorico = recebidoHistoricoPorOs.get(ordem.id) ?? 0
     const diferencaSemHistorico = Math.max(recebidoAcumulado - recebidoComFormaNoHistorico, 0)
-    if (diferencaSemHistorico > 0.009) {
+    const dataRecebimentoLegado = ordem.data_ultimo_recebimento ?? ordem.data_pagamento
+    if (diferencaSemHistorico > 0.009 && (!periodoResumo || dataNoPeriodo(dataRecebimentoLegado, periodoResumo))) {
       adicionarForma(resumo, ordem.forma_recebimento, diferencaSemHistorico)
+    }
+    if (diferencaSemHistorico > 0.009 && dataNoPeriodo(dataRecebimentoLegado, periodoDetalhe)) {
+      adicionarRecebimentoOs(porOsPeriodo, ordem.id, diferencaSemHistorico, toNumber(ordem.iss_retido_cliente as never))
     }
   }
 
-  return resumo
+  return {
+    resumo,
+    porOsPeriodo: [...porOsPeriodo.entries()].map(([osId, valores]) => ({ osId, ...valores })),
+  }
+}
+
+function adicionarRecebimentoOs(
+  mapa: Map<number, { recebido: number; issRetido: number }>,
+  osId: number,
+  recebido: number,
+  issRetido: number
+) {
+  const atual = mapa.get(osId) ?? { recebido: 0, issRetido: 0 }
+  mapa.set(osId, { recebido: atual.recebido + recebido, issRetido: atual.issRetido + issRetido })
 }
 
 function resumoFormasVazio(): ResumoFormas {
