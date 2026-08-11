@@ -2,6 +2,7 @@
 
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { adminFetch } from '@/lib/admin-fetch'
+import BuscaEquipamentos from './BuscaEquipamentos'
 
 type ClienteResumo = {
   id: number
@@ -369,6 +370,8 @@ export default function ClientesPage() {
           </button>
         </div>
       </form>
+
+      <BuscaEquipamentos />
 
       <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="flex items-center justify-between border-b px-4 py-3">

@@ -33,6 +33,7 @@ type OrdemServico = {
   status: string | null
   prioridade: string | null
   modelo: string | null
+  numero_serie?: string | null
   defeito: string | null
   parceiro_id?: number | null
   cliente_whatsapp?: string | null
@@ -119,6 +120,7 @@ type OrdemServicoTriagemApi = {
   status: string | null
   prioridade: string | null
   modelo: string | null
+  numero_serie?: string | null
   defeito: string | null
   parceiro_id: number | null
   clientes?: {
@@ -260,6 +262,62 @@ export default function OrdensServicoPage() {
   }, [])
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('nova') !== '1') return
+
+    const clienteId = Number(params.get('clienteId'))
+    const equipamentoId = Number(params.get('equipamentoId'))
+    if (!Number.isInteger(clienteId) || clienteId <= 0) return
+
+    queueMicrotask(() => {
+      setMostrarFormulario(true)
+      setBuscandoEquipamentos(true)
+      setErroEquipamentos('')
+
+      void adminFetch(`/api/admin/clientes/equipamentos?clienteId=${clienteId}`, { cache: 'no-store' })
+        .then(async (response) => {
+          const payload = await response.json().catch(() => null)
+          if (!response.ok) throw new Error(payload?.error ?? 'Erro ao carregar cliente e equipamento.')
+
+          const cliente = payload?.cliente as ClienteSugestao | null
+          const equipamentos = (payload?.equipamentos ?? []) as EquipamentoCliente[]
+          const equipamento = equipamentos.find((item) => item.id === equipamentoId) ?? null
+
+          if (!cliente) throw new Error('Cliente não encontrado.')
+          setClienteSelecionado(cliente)
+          setEquipamentosCliente(equipamentos)
+          setEquipamentoSelecionado(equipamento)
+          setForm((prev) => ({
+            ...prev,
+            nomeCliente: cliente.nome ?? '',
+            cpfCnpj: cliente.cpf_cnpj ?? '',
+            whatsapp: cliente.whatsapp ?? '',
+            email: cliente.email ?? '',
+            cep: cliente.cep ?? '',
+            rua: cliente.logradouro ?? '',
+            numero: cliente.numero ?? '',
+            bairro: cliente.bairro ?? '',
+            cidade: cliente.cidade ?? '',
+            estado: cliente.estado ?? '',
+            categoriaId: equipamento?.categoria_id ? String(equipamento.categoria_id) : '',
+            marcaId: equipamento?.marca_id ? String(equipamento.marca_id) : '',
+            modelo: equipamento?.modelo ?? '',
+            numeroSerie: equipamento?.numero_serie ?? '',
+            garantiaAsc: 'NAO',
+            garantiaAscOrigemOsId: equipamento?.garantia_asc?.ativa
+              ? equipamento.garantia_asc.origem_os_id
+              : null,
+          }))
+          setMensagem(equipamento
+            ? 'Cliente e equipamento carregados. Confira os dados e informe o novo defeito.'
+            : 'Cliente carregado. Selecione ou cadastre o equipamento.')
+        })
+        .catch((error) => setErroEquipamentos(error instanceof Error ? error.message : 'Erro ao carregar equipamento.'))
+        .finally(() => setBuscandoEquipamentos(false))
+    })
+  }, [])
+
+  useEffect(() => {
     const cepLimpo = form.cep.replace(/\D/g, '')
     if (cepLimpo.length !== 8) return
 
@@ -300,7 +358,7 @@ export default function OrdensServicoPage() {
   const ordensFiltradas = useMemo(() => {
     return ordens.filter((os) => {
       const texto =
-        `${os.numero_os ?? ''} ${formatarOrigemOs(os.origem_os)} ${os.garantidor_nome ?? ''} ${os.cliente_nome ?? ''} ${os.cliente_endereco ?? ''} ${os.categoria_nome ?? ''} ${os.marca_nome ?? ''} ${os.modelo ?? ''} ${os.tecnico_nome ?? ''}`.toLowerCase()
+        `${os.numero_os ?? ''} ${os.numero_serie ?? ''} ${formatarOrigemOs(os.origem_os)} ${os.garantidor_nome ?? ''} ${os.cliente_nome ?? ''} ${os.cliente_endereco ?? ''} ${os.categoria_nome ?? ''} ${os.marca_nome ?? ''} ${os.modelo ?? ''} ${os.tecnico_nome ?? ''}`.toLowerCase()
 
       const bateBusca = texto.includes(busca.toLowerCase().trim())
       const bateStatus = statusFiltro === 'TODAS' || os.status === statusFiltro
@@ -389,6 +447,7 @@ export default function OrdensServicoPage() {
         status: item.status,
         prioridade: item.prioridade,
         modelo: item.modelo,
+        numero_serie: item.numero_serie ?? null,
         defeito: item.defeito,
         parceiro_id: item.parceiro_id,
         cliente_nome: item.clientes?.nome ?? null,
@@ -1227,7 +1286,7 @@ export default function OrdensServicoPage() {
                 type="text"
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
-                placeholder="Buscar OS, cliente, endereço..."
+                placeholder="Buscar OS, série, cliente, equipamento..."
                 className="w-full rounded-lg border border-slate-300 px-4 py-2 outline-none focus:border-orange-500 md:w-72"
               />
 

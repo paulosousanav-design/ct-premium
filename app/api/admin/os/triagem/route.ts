@@ -53,6 +53,7 @@ type OrdemServico = {
   status: string | null
   prioridade: string | null
   modelo: string | null
+  numero_serie?: string | null
   defeito: string | null
   cliente_id: number | null
   parceiro_id: number | null
@@ -116,6 +117,7 @@ export async function GET(request: NextRequest) {
         status,
         prioridade,
         modelo,
+        numero_serie,
         defeito,
         cliente_id,
         parceiro_id,

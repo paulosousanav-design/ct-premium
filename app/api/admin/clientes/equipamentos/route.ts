@@ -26,9 +26,15 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin()
-    const { data: equipamentos, error: equipamentosError } = await supabase
-      .from('equipamentos_clientes')
-      .select(`
+    const [clienteResultado, equipamentosResultado] = await Promise.all([
+      supabase
+        .from('clientes')
+        .select('id, nome, cpf_cnpj, whatsapp, email, cep, logradouro, numero, bairro, cidade, estado')
+        .eq('id', clienteId)
+        .maybeSingle(),
+      supabase
+        .from('equipamentos_clientes')
+        .select(`
         id,
         cliente_id,
         categoria_id,
@@ -41,9 +47,14 @@ export async function GET(request: NextRequest) {
         categorias:categoria_id(nome),
         marcas:marca_id(nome)
       `)
-      .eq('cliente_id', clienteId)
-      .eq('ativo', true)
-      .order('atualizado_em', { ascending: false })
+        .eq('cliente_id', clienteId)
+        .eq('ativo', true)
+        .order('atualizado_em', { ascending: false }),
+    ])
+
+    if (clienteResultado.error) throw clienteResultado.error
+    const equipamentos = equipamentosResultado.data
+    const equipamentosError = equipamentosResultado.error
 
     if (equipamentosError) {
       if (String(equipamentosError.message ?? '').includes('equipamentos_clientes')) {
@@ -110,7 +121,10 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ equipamentos: resultado })
+    return NextResponse.json(
+      { cliente: clienteResultado.data, equipamentos: resultado },
+      { headers: { 'Cache-Control': 'private, no-store' } }
+    )
   } catch (error) {
     console.error('Erro ao carregar equipamentos do cliente:', error)
     return NextResponse.json(
