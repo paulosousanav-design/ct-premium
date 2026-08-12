@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { adminFetch } from '@/lib/admin-fetch'
 
-type Conversa = { id: number; tipo: 'GERAL' | 'UNIDADE' | 'DIRETA'; titulo: string; naoLidas: number; atualizado_em: string; ultimaMensagem?: Mensagem | null }
+type Conversa = { id: number; tipo: 'GERAL' | 'UNIDADE' | 'DIRETA'; titulo: string; naoLidas: number; atualizado_em: string; arquivada?: boolean; ultimaMensagem?: Mensagem | null }
+type FiltroConversa = 'ATIVAS' | 'NAO_LIDAS' | 'ARQUIVADAS'
 type Usuario = { id: number; nome: string; email: string }
 type Ordem = { id: number; numero_os: string; clientes?: { nome?: string | null } | Array<{ nome?: string | null }> | null }
 type Mensagem = {
@@ -28,35 +29,52 @@ export default function ChatInternoPage() {
   const [conteudo, setConteudo] = useState('')
   const [osId, setOsId] = useState('')
   const [destinatarioId, setDestinatarioId] = useState('')
+  const [busca, setBusca] = useState('')
+  const [filtro, setFiltro] = useState<FiltroConversa>('ATIVAS')
+  const [temMais, setTemMais] = useState(false)
+  const [carregandoAnteriores, setCarregandoAnteriores] = useState(false)
+  const [arquivamentoDisponivel, setArquivamentoDisponivel] = useState(false)
   const [estruturaPendente, setEstruturaPendente] = useState(false)
   const [loading, setLoading] = useState(true)
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState('')
   const fimRef = useRef<HTMLDivElement>(null)
+  const mensagensRef = useRef<HTMLDivElement>(null)
+  const preservarScrollRef = useRef<{ altura: number; topo: number } | null>(null)
 
   useEffect(() => {
     const conversaInicial = Number(new URLSearchParams(window.location.search).get('conversaId'))
     if (conversaInicial) void Promise.resolve().then(() => setConversaId(conversaInicial))
   }, [])
 
-  const carregar = useCallback(async (selecionada: number | null, silencioso = false) => {
+  const carregar = useCallback(async (selecionada: number | null, silencioso = false, antes = '') => {
     if (!silencioso) setLoading(true)
     try {
-      const query = selecionada ? `?conversaId=${selecionada}` : ''
+      const params = new URLSearchParams()
+      if (selecionada) params.set('conversaId', String(selecionada))
+      if (antes) params.set('antes', antes)
+      const query = params.size ? `?${params}` : ''
       const response = await adminFetch(`/api/admin/chat${query}`, { cache: 'no-store' })
       const payload = await response.json().catch(() => null)
       if (!response.ok) throw new Error(payload?.error ?? 'Erro ao carregar chat.')
       const lista = (payload?.conversas ?? []) as Conversa[]
       setConversas(lista)
-      setMensagens(payload?.mensagens ?? [])
+      const recebidas = (payload?.mensagens ?? []) as Mensagem[]
+      setMensagens((atuais) => {
+        if (antes) return unirMensagens(recebidas, atuais)
+        if (silencioso && selecionada) return unirMensagens(atuais, recebidas)
+        return recebidas
+      })
       setUsuarios(payload?.usuarios ?? [])
       setOrdens(payload?.ordens ?? [])
       setUsuarioAtualId(Number(payload?.usuarioAtual?.id ?? 0))
       setEstruturaPendente(Boolean(payload?.estruturaPendente))
+      if (!silencioso || antes) setTemMais(Boolean(payload?.temMais))
+      setArquivamentoDisponivel(Boolean(payload?.arquivamentoDisponivel))
       setErro('')
       if (!selecionada && lista.length) setConversaId(lista[0].id)
-      if (selecionada && payload?.mensagens?.length) {
-        const ultima = payload.mensagens[payload.mensagens.length - 1] as Mensagem
+      if (selecionada && recebidas.length && !antes) {
+        const ultima = recebidas[recebidas.length - 1]
         void adminFetch('/api/admin/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'MARCAR_LIDA', conversaId: selecionada, ultimaMensagemId: ultima.id }) })
       }
     } catch (error) {
@@ -76,12 +94,28 @@ export default function ChatInternoPage() {
   }, [carregar, conversaId])
 
   useEffect(() => {
+    const preservado = preservarScrollRef.current
+    const container = mensagensRef.current
+    if (preservado && container) {
+      container.scrollTop = preservado.topo + (container.scrollHeight - preservado.altura)
+      preservarScrollRef.current = null
+      return
+    }
     fimRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [mensagens.length, conversaId])
 
   const conversaAtual = conversas.find((item) => item.id === conversaId)
-  const canais = useMemo(() => conversas.filter((item) => item.tipo !== 'DIRETA'), [conversas])
-  const diretas = useMemo(() => conversas.filter((item) => item.tipo === 'DIRETA'), [conversas])
+  const conversasFiltradas = useMemo(() => {
+    const termo = busca.trim().toLowerCase()
+    return conversas.filter((item) => {
+      if (filtro === 'ATIVAS' && item.arquivada) return false
+      if (filtro === 'NAO_LIDAS' && (item.arquivada || item.naoLidas === 0)) return false
+      if (filtro === 'ARQUIVADAS' && !item.arquivada) return false
+      return !termo || `${item.titulo} ${item.ultimaMensagem?.conteudo ?? ''}`.toLowerCase().includes(termo)
+    })
+  }, [busca, conversas, filtro])
+  const canais = useMemo(() => conversasFiltradas.filter((item) => item.tipo !== 'DIRETA'), [conversasFiltradas])
+  const diretas = useMemo(() => conversasFiltradas.filter((item) => item.tipo === 'DIRETA'), [conversasFiltradas])
 
   async function enviar(event: FormEvent) {
     event.preventDefault()
@@ -126,6 +160,39 @@ export default function ChatInternoPage() {
     }
   }
 
+  async function carregarAnteriores() {
+    if (!conversaId || !mensagens.length || carregandoAnteriores) return
+    const container = mensagensRef.current
+    if (container) preservarScrollRef.current = { altura: container.scrollHeight, topo: container.scrollTop }
+    setCarregandoAnteriores(true)
+    try {
+      await carregar(conversaId, true, mensagens[0].criado_em)
+    } finally {
+      setCarregandoAnteriores(false)
+    }
+  }
+
+  async function alternarArquivo() {
+    if (!conversaAtual || conversaAtual.tipo !== 'DIRETA') return
+    const arquivando = !conversaAtual.arquivada
+    setEnviando(true)
+    setErro('')
+    try {
+      const response = await adminFetch('/api/admin/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: conversaAtual.arquivada ? 'REABRIR' : 'ARQUIVAR', conversaId: conversaAtual.id }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Nao foi possivel atualizar a conversa.')
+      await carregar(conversaId, true)
+      setFiltro(arquivando ? 'ARQUIVADAS' : 'ATIVAS')
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Nao foi possivel atualizar a conversa.')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-4">
       <header className="flex flex-col gap-3 rounded-xl bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
@@ -142,13 +209,22 @@ export default function ChatInternoPage() {
             <p className="mb-2 text-xs font-black uppercase text-slate-500">Nova conversa direta</p>
             <div className="flex gap-2"><select value={destinatarioId} onChange={(event) => setDestinatarioId(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Selecionar usuario</option>{usuarios.map((usuario) => <option key={usuario.id} value={usuario.id}>{usuario.nome}</option>)}</select><button type="button" disabled={!destinatarioId || enviando} onClick={iniciarDireta} className="rounded-lg bg-orange-600 px-3 text-sm font-black text-white disabled:opacity-50">Abrir</button></div>
           </div>
+          <div className="space-y-2 border-b border-slate-200 p-3">
+            <input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar conversa..." className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-orange-500" />
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-slate-200 p-1">
+              {([['ATIVAS', 'Ativas'], ['NAO_LIDAS', 'Não lidas'], ['ARQUIVADAS', 'Arquivadas']] as const).map(([valor, label]) => (
+                <button key={valor} type="button" onClick={() => setFiltro(valor)} className={`rounded-md px-2 py-2 text-[11px] font-black ${filtro === valor ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}>{label}</button>
+              ))}
+            </div>
+          </div>
           <Lista titulo="Canais" itens={canais} selecionada={conversaId} escolher={setConversaId} />
           <Lista titulo="Conversas diretas" itens={diretas} selecionada={conversaId} escolher={setConversaId} vazio="Nenhuma conversa direta." />
         </aside>
 
         <section className="flex min-h-[600px] min-w-0 flex-col">
-          <div className="border-b border-slate-200 px-5 py-4"><h2 className="font-black text-slate-950">{conversaAtual?.titulo ?? 'Selecione uma conversa'}</h2><p className="text-xs text-slate-500">Atualizacao automatica a cada poucos segundos</p></div>
-          <div className="flex-1 space-y-3 overflow-y-auto bg-slate-100/60 p-4 md:p-6">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4"><div><h2 className="font-black text-slate-950">{conversaAtual?.titulo ?? 'Selecione uma conversa'}</h2><p className="text-xs text-slate-500">30 mensagens recentes · histórico sob demanda</p></div>{arquivamentoDisponivel && conversaAtual?.tipo === 'DIRETA' && <button type="button" onClick={alternarArquivo} disabled={enviando} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-600 disabled:opacity-50">{conversaAtual.arquivada ? 'Reabrir conversa' : 'Arquivar'}</button>}</div>
+          <div ref={mensagensRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-100/60 p-4 md:p-6">
+            {conversaId && temMais && <div className="text-center"><button type="button" onClick={carregarAnteriores} disabled={carregandoAnteriores} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-black text-slate-600 shadow-sm disabled:opacity-50">{carregandoAnteriores ? 'Carregando...' : 'Carregar mensagens anteriores'}</button></div>}
             {loading && <p className="text-sm font-bold text-slate-500">Carregando mensagens...</p>}
             {!loading && conversaId && mensagens.length === 0 && <div className="mx-auto mt-20 max-w-sm rounded-xl bg-white p-5 text-center text-sm text-slate-500 shadow-sm">Ainda nao ha mensagens nesta conversa. Envie a primeira.</div>}
             {mensagens.map((mensagem) => <MensagemItem key={mensagem.id} mensagem={mensagem} propria={mensagem.autor_id === usuarioAtualId} />)}
@@ -177,3 +253,8 @@ function MensagemItem({ mensagem, propria }: { mensagem: Mensagem; propria: bool
 
 function relacao<T>(valor?: T | T[] | null) { return Array.isArray(valor) ? valor[0] : valor }
 function nomeCliente(valor?: Ordem['clientes']) { return relacao(valor)?.nome ?? 'Cliente nao informado' }
+function unirMensagens(...listas: Mensagem[][]) {
+  const porId = new Map<number, Mensagem>()
+  listas.flat().forEach((mensagem) => porId.set(mensagem.id, mensagem))
+  return [...porId.values()].sort((a, b) => new Date(a.criado_em).getTime() - new Date(b.criado_em).getTime())
+}

@@ -11,7 +11,7 @@ export const TABELAS_BACKUP = [
   'movimentos_financeiros', 'caixa_sessoes', 'caixa_movimentos', 'auditoria_eventos', 'sistema_eventos',
   'backup_execucoes', 'backup_configuracoes', 'backup_storage_arquivos',
   'tecnico_documentos', 'admin_usuarios',
-  'chat_conversas', 'chat_participantes', 'chat_mensagens', 'chat_leituras',
+  'chat_conversas', 'chat_participantes', 'chat_mensagens', 'chat_leituras', 'chat_arquivamentos',
   'recebimento_parcelas', 'vendas', 'venda_itens',
 ] as const
 
