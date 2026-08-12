@@ -291,10 +291,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const numeroOS = gerarNumeroOS()
     const origemOs = garantiaAsc ? 'GARANTIA_ASC' : garantia ? 'GARANTIA_SEGURADORA' : 'ABERTURA_INTERNA'
     const osPayload: Record<string, unknown> = {
-      numero_os: numeroOS,
       cliente_id: Number(clienteId),
       equipamento_id: equipamentoId,
       categoria_id: categoriaId,
@@ -325,13 +323,15 @@ export async function POST(request: NextRequest) {
     const { data: osCriada, error: osError } = await supabase
       .from('ordens_servico')
       .insert(osPayload)
-      .select('id')
+      .select('id, numero_os')
       .single()
 
     if (osError) throw osError
     if (!osCriada?.id) throw new Error('A OS foi criada, mas o ID nao retornou.')
 
-    return NextResponse.json({ ok: true, id: osCriada.id, numeroOS })
+    if (!osCriada.numero_os) throw new Error('A OS foi criada, mas o numero sequencial nao retornou.')
+
+    return NextResponse.json({ ok: true, id: osCriada.id, numeroOS: osCriada.numero_os })
   } catch (error) {
     console.error('Erro ao criar OS:', error)
     await registrarEventoSistema({ error, modulo: 'ORDEM_SERVICO', gravidade: 'CRITICO', request })
@@ -344,16 +344,6 @@ export async function POST(request: NextRequest) {
 
 function apenasNumeros(value: string) {
   return value.replace(/\D/g, '')
-}
-
-function gerarNumeroOS() {
-  const agora = new Date()
-  const ano = String(agora.getFullYear()).slice(-2)
-  const mes = String(agora.getMonth() + 1).padStart(2, '0')
-  const dia = String(agora.getDate()).padStart(2, '0')
-  const sequencia = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
-
-  return `CT${ano}${mes}${dia}${sequencia}`
 }
 
 function formatarErro(error: unknown, fallback: string) {

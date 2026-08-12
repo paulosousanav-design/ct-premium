@@ -961,15 +961,15 @@ export default function OrdemServicoAtendimentoPage() {
             .logo { width: 150px; height: auto; display: block; }
             .header-title { text-align: center; }
             .header-title p { color: #0f172a; font-size: 15px; font-weight: 700; }
-            .meta { text-align: right; color: #475569; font-size: 10px; }
-            .meta strong { display: block; margin-top: 5px; color: #0f172a; font-size: 12px; }
+            .meta { text-align: right; color: #64748b; font-size: 8px; line-height: 1.35; }
+            .meta strong { display: block; margin-bottom: 3px; color: #0f172a; font-size: 12px; }
             .box { border: 1px solid #d9e0e7; border-radius: 10px; padding: 11px 12px; margin-bottom: 9px; break-inside: avoid; }
             .box h2 { margin-bottom: 8px; font-size: 17px; line-height: 1.1; }
             .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
             .budget-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 14px; }
             .budget-total { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 10px; padding: 8px 11px; border: 1px solid #cbd5e1; border-left: 4px solid #64748b; border-radius: 6px; background: #f8fafc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .budget-total-label { font-size: 11px; font-weight: 700; color: #334155; }
-            .budget-total-value { font-size: 17px; line-height: 1; font-weight: 800; color: #0f172a; white-space: nowrap; }
+            .budget-total-value { font-size: 15px; line-height: 1; font-weight: 800; color: #0f172a; white-space: nowrap; }
             .wide { grid-column: 1 / -1; }
             .label { font-size: 9px; color: #475569; text-transform: uppercase; margin-bottom: 2px; }
             .value { font-size: 11px; font-weight: 700; white-space: pre-wrap; }
@@ -1000,8 +1000,8 @@ export default function OrdemServicoAtendimentoPage() {
               <p>Atendimento técnico, garantia e resumo do chamado</p>
             </div>
             <div class="meta">
-              <span>${new Date().toLocaleString('pt-BR')}</span>
-              <strong>${os.numero_os ?? 'OS'}</strong>
+              <strong>OS ${os.numero_os ?? '-'}</strong>
+              <span>Aberta em ${formatDate(os.created_at)}</span>
             </div>
           </div>
 

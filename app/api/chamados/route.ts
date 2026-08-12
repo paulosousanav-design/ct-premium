@@ -128,10 +128,8 @@ export async function POST(request: NextRequest) {
 
     if (clienteError) throw clienteError
 
-    const numeroOS = gerarNumeroOS()
     const origemOs = garantia ? 'GARANTIA_SEGURADORA' : 'PORTAL_CLIENTE'
     const osPayload: Record<string, unknown> = {
-      numero_os: numeroOS,
       cliente_id: novoCliente.id,
       categoria_id: categoriaId,
       marca_id: marcaId,
@@ -156,11 +154,14 @@ export async function POST(request: NextRequest) {
     const { data: osCriada, error: osError } = await supabase
       .from('ordens_servico')
       .insert(osPayload)
-      .select('id')
+      .select('id, numero_os')
       .single()
 
     if (osError) throw osError
     if (!osCriada?.id) throw new Error('Chamado criado, mas sem ID de OS.')
+    if (!osCriada.numero_os) throw new Error('Chamado criado, mas sem numero sequencial de OS.')
+
+    const numeroOS = osCriada.numero_os
 
     const arquivos = dados.formData?.getAll('anexos').filter((item): item is File => item instanceof File && item.size > 0) ?? []
     await salvarAnexos(supabase, osCriada.id, arquivos)
@@ -242,16 +243,6 @@ async function salvarAnexos(
 
 function getCampo(dados: Awaited<ReturnType<typeof lerDadosChamado>>, nome: string) {
   return String(dados.body[nome] ?? '').trim()
-}
-
-function gerarNumeroOS() {
-  const agora = new Date()
-  const ano = String(agora.getFullYear()).slice(-2)
-  const mes = String(agora.getMonth() + 1).padStart(2, '0')
-  const dia = String(agora.getDate()).padStart(2, '0')
-  const sequencia = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
-
-  return `CT${ano}${mes}${dia}${sequencia}`
 }
 
 function validarAreaAtendimento(cidade: string, estado: string) {
