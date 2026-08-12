@@ -142,6 +142,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (
+      garantia &&
+      (!String(body?.dataCompra ?? '').trim() ||
+        !String(body?.numeroNf ?? '').trim() ||
+        !String(body?.localCompra ?? '').trim())
+    ) {
+      return NextResponse.json(
+        { error: 'Para garantia/seguradora, informe a revenda, o número da NF e a data da compra.' },
+        { status: 400 }
+      )
+    }
+
     const supabase = getSupabaseAdmin(request, auth)
     const email = String(body?.email ?? '').trim()
     const clientePayload = {

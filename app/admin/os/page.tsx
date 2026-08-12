@@ -656,6 +656,13 @@ export default function OrdensServicoPage() {
         throw new Error('Preencha os campos obrigatórios da OS.')
       }
 
+      if (
+        form.garantia === 'SIM' &&
+        (!form.dataCompra.trim() || !form.numeroNf.trim() || !form.localCompra.trim())
+      ) {
+        throw new Error('Para garantia/seguradora, informe a revenda, o número da NF e a data da compra.')
+      }
+
       const response = await adminFetch('/api/admin/os/criar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1178,7 +1185,7 @@ export default function OrdensServicoPage() {
             )}
 
             <section>
-              <SectionTitle title="Garantia" />
+              <SectionTitle title="Garantia/Seguradora" />
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <Select
                   label="OS em garantia?"
@@ -1193,7 +1200,8 @@ export default function OrdensServicoPage() {
                 />
 
                 {form.garantia === 'SIM' && (
-                  <>
+                  <div className="grid gap-4 rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2 md:grid-cols-3 xl:col-span-4">
+                    <p className="text-xs font-black uppercase tracking-wide text-blue-800 md:col-span-3">Dados da compra</p>
                     <Input
                       label="Data da compra"
                       name="dataCompra"
@@ -1202,8 +1210,8 @@ export default function OrdensServicoPage() {
                       type="date"
                     />
                     <Input label="Número da NF" name="numeroNf" value={form.numeroNf} onChange={handleChange} />
-                    <Input label="Local de compra" name="localCompra" value={form.localCompra} onChange={handleChange} />
-                  </>
+                    <Input label="Revenda/Loja de origem" name="localCompra" value={form.localCompra} onChange={handleChange} />
+                  </div>
                 )}
               </div>
             </section>

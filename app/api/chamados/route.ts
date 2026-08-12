@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
 
     if (garantia && (!getCampo(dados, 'dataCompra') || !getCampo(dados, 'numeroNf') || !getCampo(dados, 'localCompra'))) {
       return NextResponse.json(
-        { error: 'Para garantia, informe data da compra, numero da NF e local da compra.' },
+        { error: 'Para garantia, informe a revenda, o numero da NF e a data da compra.' },
         { status: 400 }
       )
     }

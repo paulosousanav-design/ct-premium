@@ -348,7 +348,7 @@ export default function AbrirChamadoPage() {
 
           <aside className="space-y-3 sm:space-y-4">
             <section className="rounded-xl bg-white p-4 shadow-sm sm:p-5">
-              <h2 className="text-base font-black text-slate-950 sm:text-lg">Garantia</h2>
+              <h2 className="text-base font-black text-slate-950 sm:text-lg">Garantia/Seguradora</h2>
               <div className="garantia-toggle mt-3 grid grid-cols-2 gap-2">
                 {(['NAO', 'SIM'] as const).map((valor) => (
                   <label
@@ -376,10 +376,11 @@ export default function AbrirChamadoPage() {
                 ))}
               </div>
 
-              <div className="garantia-campos is-hidden mt-4 space-y-3" data-garantia-campos>
+              <div className="garantia-campos is-hidden mt-4 space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-3" data-garantia-campos>
+                  <p className="text-xs font-black uppercase tracking-wide text-blue-800">Dados da compra</p>
                   <Field label="Data da compra" name="dataCompra" value={form.dataCompra} onChange={handleChange} type="date" />
                   <Field label="Numero da NF" name="numeroNf" value={form.numeroNf} onChange={handleChange} />
-                  <Field label="Local da compra" name="localCompra" value={form.localCompra} onChange={handleChange} />
+                  <Field label="Revenda/Loja de origem" name="localCompra" value={form.localCompra} onChange={handleChange} />
               </div>
             </section>
 

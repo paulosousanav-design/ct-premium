@@ -34,6 +34,9 @@ type OrdemServico = {
   parceiro_id?: number | null
   garantidor_id?: number | null
   referencia_garantidor?: string | null
+  data_compra?: string | null
+  numero_nf?: string | null
+  local_compra?: string | null
   valor_pecas?: number | string | null
   valor_mao_obra?: number | string | null
   desconto?: number | string | null
@@ -205,6 +208,9 @@ export async function GET(request: NextRequest) {
         status,
         prioridade,
         garantia,
+        data_compra,
+        numero_nf,
+        local_compra,
         ${colunaReferenciaGarantidorExiste ? 'referencia_garantidor,' : ''}
         bloqueada,
         finalizada_em,
@@ -750,6 +756,18 @@ export async function PATCH(request: NextRequest) {
     const tecnicoTotal = Math.max(0, tecnicoValorPecas + tecnicoValorMaoObra - tecnicoDesconto)
     const bloqueada = statusFinal === 'FINALIZADA'
 
+    if (
+      body?.garantia === 'SIM' &&
+      (!String(body?.dataCompra ?? '').trim() ||
+        !String(body?.numeroNf ?? '').trim() ||
+        !String(body?.localCompra ?? '').trim())
+    ) {
+      return NextResponse.json(
+        { error: 'Para garantia/seguradora, informe a revenda, o número da NF e a data da compra.' },
+        { status: 400 }
+      )
+    }
+
     const pecasResumo = pecas
       .map((p) => {
         const descricao = String(p.descricao ?? '').trim()
@@ -763,6 +781,9 @@ export async function PATCH(request: NextRequest) {
       status: statusFinal,
       prioridade,
       garantia: body?.garantia === 'SIM',
+      data_compra: body?.garantia === 'SIM' ? String(body?.dataCompra ?? '').trim() || null : null,
+      numero_nf: body?.garantia === 'SIM' ? String(body?.numeroNf ?? '').trim() || null : null,
+      local_compra: body?.garantia === 'SIM' ? String(body?.localCompra ?? '').trim() || null : null,
       categoria_id: body?.categoriaId ? Number(body.categoriaId) : null,
       marca_id: body?.marcaId ? Number(body.marcaId) : null,
       modelo: String(body?.modelo ?? '').trim() || null,

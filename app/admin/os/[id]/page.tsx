@@ -40,6 +40,12 @@ type Marca = {
   categoria_id?: number | null
 }
 
+function formatDateOnly(data?: string | null) {
+  if (!data) return '-'
+  const [ano, mes, dia] = data.slice(0, 10).split('-')
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : data
+}
+
 type Garantidor = {
   id: number
   nome: string | null
@@ -97,6 +103,9 @@ type OrdemServico = {
   status: string | null
   prioridade: string | null
   garantia: boolean | null
+  data_compra?: string | null
+  numero_nf?: string | null
+  local_compra?: string | null
   referencia_garantidor?: string | null
   bloqueada: boolean | null
   finalizada_em: string | null
@@ -180,6 +189,9 @@ type FormState = {
   garantia: string
   garantidorId: string
   referenciaGarantidor: string
+  dataCompra: string
+  numeroNf: string
+  localCompra: string
   categoriaId: string
   marcaId: string
   modelo: string
@@ -342,6 +354,9 @@ export default function OrdemServicoAtendimentoPage() {
     garantia: 'NAO',
     garantidorId: '',
     referenciaGarantidor: '',
+    dataCompra: '',
+    numeroNf: '',
+    localCompra: '',
     categoriaId: '',
     marcaId: '',
     modelo: '',
@@ -480,6 +495,9 @@ export default function OrdemServicoAtendimentoPage() {
         garantia: osPayloadRelacoes.garantia ? 'SIM' : 'NAO',
         garantidorId: osPayloadRelacoes.garantidor_id ? String(osPayloadRelacoes.garantidor_id) : '',
         referenciaGarantidor: osPayloadRelacoes.referencia_garantidor ?? '',
+        dataCompra: osPayloadRelacoes.data_compra?.slice(0, 10) ?? '',
+        numeroNf: osPayloadRelacoes.numero_nf ?? '',
+        localCompra: osPayloadRelacoes.local_compra ?? '',
         categoriaId: osPayloadRelacoes.categoria_id ? String(osPayloadRelacoes.categoria_id) : '',
         marcaId: osPayloadRelacoes.marca_id ? String(osPayloadRelacoes.marca_id) : '',
         modelo: osPayloadRelacoes.modelo ?? '',
@@ -527,7 +545,15 @@ export default function OrdemServicoAtendimentoPage() {
     }
 
     if (name === 'garantia' && value === 'NAO') {
-      setForm((prev) => ({ ...prev, garantia: value, garantidorId: '', referenciaGarantidor: '' }))
+      setForm((prev) => ({
+        ...prev,
+        garantia: value,
+        garantidorId: '',
+        referenciaGarantidor: '',
+        dataCompra: '',
+        numeroNf: '',
+        localCompra: '',
+      }))
       return
     }
 
@@ -720,6 +746,14 @@ export default function OrdemServicoAtendimentoPage() {
       return
     }
 
+    if (
+      form.garantia === 'SIM' &&
+      (!form.dataCompra.trim() || !form.numeroNf.trim() || !form.localCompra.trim())
+    ) {
+      setErro('Para garantia/seguradora, informe a revenda, o número da NF e a data da compra.')
+      return
+    }
+
     setSalvando(true)
     setErro('')
     setMensagem('')
@@ -737,6 +771,9 @@ export default function OrdemServicoAtendimentoPage() {
           garantia: form.garantia,
           garantidorId: form.garantidorId,
           referenciaGarantidor: form.referenciaGarantidor,
+          dataCompra: form.dataCompra,
+          numeroNf: form.numeroNf,
+          localCompra: form.localCompra,
           categoriaId: form.categoriaId,
           marcaId: form.marcaId,
           modelo: form.modelo,
@@ -861,6 +898,9 @@ export default function OrdemServicoAtendimentoPage() {
           garantia: form.garantia,
           garantidorId: form.garantidorId,
           referenciaGarantidor: form.referenciaGarantidor,
+          dataCompra: form.dataCompra,
+          numeroNf: form.numeroNf,
+          localCompra: form.localCompra,
           categoriaId: form.categoriaId,
           marcaId: form.marcaId,
           modelo: form.modelo,
@@ -1056,7 +1096,11 @@ export default function OrdemServicoAtendimentoPage() {
           <div class="box">
             <h2>Registro de garantia</h2>
             <div class="grid">
-              <div class="wide"><div class="label">OS/Sinistro do garantidor</div><div class="value">${os.referencia_garantidor ?? '-'}</div></div>
+              <div><div class="label">Condição do atendimento</div><div class="value">Garantia/Seguradora</div></div>
+              <div><div class="label">OS/Sinistro do garantidor</div><div class="value">${os.referencia_garantidor ?? '-'}</div></div>
+              <div><div class="label">Revenda/Loja de origem</div><div class="value">${os.local_compra ?? '-'}</div></div>
+              <div><div class="label">Número da NF</div><div class="value">${os.numero_nf ?? '-'}</div></div>
+              <div><div class="label">Data da compra</div><div class="value">${formatDateOnly(os.data_compra)}</div></div>
             </div>
             <div class="grid">
               <div class="wide"><div class="label">Serviço executado</div><div class="value">${os.servico_executado ?? '-'}</div></div>
@@ -1994,6 +2038,26 @@ export default function OrdemServicoAtendimentoPage() {
                 </div>
               </div>
 
+              {form.garantia === 'SIM' && (
+                <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <p className="mb-3 text-xs font-black uppercase tracking-wide text-blue-800">Dados da compra</p>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <label>
+                      <span className="mb-1 block text-sm font-medium text-slate-700">Revenda/Loja de origem</span>
+                      <input name="localCompra" value={form.localCompra} onChange={handleChange} disabled={isLocked} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500 disabled:bg-slate-100" />
+                    </label>
+                    <label>
+                      <span className="mb-1 block text-sm font-medium text-slate-700">Número da nota fiscal</span>
+                      <input name="numeroNf" value={form.numeroNf} onChange={handleChange} disabled={isLocked} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500 disabled:bg-slate-100" />
+                    </label>
+                    <label>
+                      <span className="mb-1 block text-sm font-medium text-slate-700">Data da compra</span>
+                      <input type="date" name="dataCompra" value={form.dataCompra} onChange={handleChange} disabled={isLocked} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500 disabled:bg-slate-100" />
+                    </label>
+                  </div>
+                </div>
+              )}
+
               <div className="mt-4 flex flex-wrap gap-3">
                 <button
                   type="button"
@@ -2117,6 +2181,9 @@ export default function OrdemServicoAtendimentoPage() {
                 {form.garantia === 'SIM' && (
                   <SummaryItem label="OS/Sinistro garantidor" value={form.referenciaGarantidor || '-'} />
                 )}
+                {form.garantia === 'SIM' && <SummaryItem label="Revenda/Loja de origem" value={form.localCompra || '-'} />}
+                {form.garantia === 'SIM' && <SummaryItem label="Número da NF" value={form.numeroNf || '-'} />}
+                {form.garantia === 'SIM' && <SummaryItem label="Data da compra" value={formatDateOnly(form.dataCompra)} />}
                 <SummaryItem label="Finalizada em" value={os.finalizada_em ? new Date(os.finalizada_em).toLocaleString('pt-BR') : '-'} />
                 <SummaryItem label="Defeito" value={os.defeito ?? '-'} />
               </div>
