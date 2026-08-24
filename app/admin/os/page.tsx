@@ -38,6 +38,7 @@ type OrdemServico = {
   parceiro_id?: number | null
   cliente_whatsapp?: string | null
   cliente_endereco?: string | null
+  cliente_cidade?: string | null
   cliente_nome?: string | null
   categoria_nome?: string | null
   marca_nome?: string | null
@@ -255,6 +256,7 @@ export default function OrdensServicoPage() {
   const [busca, setBusca] = useState('')
   const [statusFiltro, setStatusFiltro] = useState('TODAS')
   const [origemFiltro, setOrigemFiltro] = useState('TODAS')
+  const [cidadeFiltro, setCidadeFiltro] = useState('TODAS')
   const [notificacoesAberta, setNotificacoesAberta] = useState(false)
 
   useEffect(() => {
@@ -363,10 +365,21 @@ export default function OrdensServicoPage() {
       const bateBusca = texto.includes(busca.toLowerCase().trim())
       const bateStatus = statusFiltro === 'TODAS' || os.status === statusFiltro
       const bateOrigem = origemFiltro === 'TODAS' || getOrigemOsVisual(os) === origemFiltro
+      const bateCidade = cidadeFiltro === 'TODAS' || os.cliente_cidade === cidadeFiltro
 
-      return bateBusca && bateStatus && bateOrigem
+      return bateBusca && bateStatus && bateOrigem && bateCidade
     })
-  }, [ordens, busca, statusFiltro, origemFiltro])
+  }, [ordens, busca, statusFiltro, origemFiltro, cidadeFiltro])
+
+  const cidadesDisponiveis = useMemo(() => {
+    return Array.from(
+      new Set(
+        ordens
+          .map((ordem) => ordem.cliente_cidade?.trim())
+          .filter((cidade): cidade is string => Boolean(cidade))
+      )
+    ).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }, [ordens])
 
   const resumoStatus = useMemo(() => {
     return STATUS_FILTROS.map((status) => ({
@@ -453,6 +466,7 @@ export default function OrdensServicoPage() {
         cliente_nome: item.clientes?.nome ?? null,
         cliente_whatsapp: item.clientes?.whatsapp ?? null,
         cliente_endereco: formatarEnderecoCliente(item.clientes),
+        cliente_cidade: item.clientes?.cidade?.trim() || null,
         categoria_nome: item.categorias?.nome ?? null,
         marca_nome: item.marcas?.nome ?? null,
         tecnico_nome: getNomeTecnico(item.parceiros),
@@ -1322,6 +1336,20 @@ export default function OrdensServicoPage() {
                 {ORIGEM_FILTROS.map((origem) => (
                   <option key={origem.value} value={origem.value}>
                     {origem.label}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={cidadeFiltro}
+                onChange={(e) => setCidadeFiltro(e.target.value)}
+                aria-label="Filtrar por cidade"
+                className="rounded-lg border border-slate-300 px-4 py-2 outline-none focus:border-orange-500"
+              >
+                <option value="TODAS">Todas as cidades</option>
+                {cidadesDisponiveis.map((cidade) => (
+                  <option key={cidade} value={cidade}>
+                    {cidade}
                   </option>
                 ))}
               </select>

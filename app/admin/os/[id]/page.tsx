@@ -13,6 +13,7 @@ function formatDate(data?: string | null) {
 
 import { type ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import QRCode from 'qrcode'
 import { adminFetch } from '@/lib/admin-fetch'
 
 type Cliente = {
@@ -977,11 +978,31 @@ export default function OrdemServicoAtendimentoPage() {
     }
   }
 
-  function imprimirOS() {
+  async function gerarQrCodeOS() {
+    if (!os) return ''
+
+    const consultaUrl = new URL('/consulta', window.location.origin)
+    consultaUrl.searchParams.set('os', os.numero_os ?? String(os.id))
+
+    return QRCode.toDataURL(consultaUrl.toString(), {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 280,
+    })
+  }
+
+  async function imprimirOS() {
     if (!os) return
 
     const janela = window.open('', '_blank', 'width=900,height=700')
     if (!janela) return
+
+    let qrCodeUrl = ''
+    try {
+      qrCodeUrl = await gerarQrCodeOS()
+    } catch (error) {
+      console.error('Erro ao gerar QR Code da OS:', error)
+    }
 
     const logoUrl = `${window.location.origin}/logo-chame-o-tecnico.png`
     const valorPecasImpressao = toNumber(os.cliente_valor_pecas ?? os.valor_pecas)
@@ -1001,8 +1022,11 @@ export default function OrdemServicoAtendimentoPage() {
             .logo { width: 150px; height: auto; display: block; }
             .header-title { text-align: center; }
             .header-title p { color: #0f172a; font-size: 15px; font-weight: 700; }
+            .header-side { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+            .qr-code { width: 62px; height: 62px; }
             .meta { text-align: right; color: #64748b; font-size: 8px; line-height: 1.35; }
             .meta strong { display: block; margin-bottom: 3px; color: #0f172a; font-size: 12px; }
+            .qr-label { display: block; margin-top: 2px; font-size: 7px; font-weight: 700; color: #475569; }
             .box { border: 1px solid #d9e0e7; border-radius: 10px; padding: 11px 12px; margin-bottom: 9px; break-inside: avoid; }
             .box h2 { margin-bottom: 8px; font-size: 17px; line-height: 1.1; }
             .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
@@ -1039,9 +1063,13 @@ export default function OrdemServicoAtendimentoPage() {
             <div class="header-title">
               <p>Atendimento técnico, garantia e resumo do chamado</p>
             </div>
-            <div class="meta">
-              <strong>OS ${os.numero_os ?? '-'}</strong>
-              <span>Aberta em ${formatDate(os.created_at)}</span>
+            <div class="header-side">
+              <div class="meta">
+                <strong>OS ${os.numero_os ?? '-'}</strong>
+                <span>Aberta em ${formatDate(os.created_at)}</span>
+                ${qrCodeUrl ? '<span class="qr-label">Escaneie para consultar</span>' : ''}
+              </div>
+              ${qrCodeUrl ? `<img class="qr-code" src="${qrCodeUrl}" alt="QR Code da OS" />` : ''}
             </div>
           </div>
 
@@ -1206,6 +1234,75 @@ export default function OrdemServicoAtendimentoPage() {
     janela.document.close()
   }
 
+  async function imprimirEtiqueta() {
+    if (!os) return
+
+    const janela = window.open('', '_blank', 'width=700,height=500')
+    if (!janela) return
+
+    try {
+      const qrCodeUrl = await gerarQrCodeOS()
+      const logoUrl = `${window.location.origin}/logo-chame-o-tecnico.png`
+      const numeroOs = escapeHtml(os.numero_os ?? String(os.id))
+      const cliente = escapeHtml(os.cliente?.nome ?? '-')
+      const equipamento = escapeHtml(
+        [os.categoria?.nome, os.marca?.nome, os.modelo].filter(Boolean).join(' - ') || '-'
+      )
+      const numeroSerie = escapeHtml(os.numero_serie ?? 'Não informado')
+
+      janela.document.open()
+      janela.document.write(`
+        <!doctype html>
+        <html>
+          <head>
+            <title>Etiqueta ${numeroOs}</title>
+            <style>
+              @page { size: 80mm 40mm; margin: 2mm; }
+              * { box-sizing: border-box; }
+              html, body { width: 76mm; height: 36mm; margin: 0; }
+              body { font-family: Arial, sans-serif; color: #0f172a; }
+              .label { display: grid; grid-template-columns: 1fr 23mm; gap: 2mm; width: 100%; height: 100%; overflow: hidden; border: 0.35mm solid #0f172a; border-radius: 1.5mm; padding: 2mm; }
+              .content { min-width: 0; display: flex; flex-direction: column; }
+              .brand { display: flex; align-items: center; gap: 1.5mm; padding-bottom: 1mm; border-bottom: 0.25mm solid #cbd5e1; }
+              .logo { width: 20mm; max-height: 6mm; object-fit: contain; object-position: left center; }
+              .os { margin-left: auto; font-size: 9pt; font-weight: 900; white-space: nowrap; }
+              .field { margin-top: 1mm; min-width: 0; }
+              .field span { display: block; font-size: 4.5pt; font-weight: 700; color: #64748b; text-transform: uppercase; }
+              .field strong { display: block; overflow: hidden; font-size: 6.5pt; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
+              .qr { display: flex; flex-direction: column; align-items: center; justify-content: center; border-left: 0.25mm solid #cbd5e1; padding-left: 2mm; text-align: center; }
+              .qr img { width: 20mm; height: 20mm; }
+              .qr strong { margin-top: 0.7mm; font-size: 5.5pt; }
+              .qr span { margin-top: 0.3mm; font-size: 4.5pt; color: #475569; }
+            </style>
+          </head>
+          <body>
+            <div class="label">
+              <div class="content">
+                <div class="brand">
+                  <img class="logo" src="${logoUrl}" alt="Chame o Técnico" />
+                  <div class="os">OS ${numeroOs}</div>
+                </div>
+                <div class="field"><span>Cliente</span><strong>${cliente}</strong></div>
+                <div class="field"><span>Equipamento</span><strong>${equipamento}</strong></div>
+                <div class="field"><span>Número de série</span><strong>${numeroSerie}</strong></div>
+              </div>
+              <div class="qr">
+                <img src="${qrCodeUrl}" alt="QR Code da OS" />
+                <strong>Consultar OS</strong>
+                <span>${numeroOs}</span>
+              </div>
+            </div>
+            <script>window.onload = () => window.print();</script>
+          </body>
+        </html>
+      `)
+      janela.document.close()
+    } catch (error) {
+      janela.close()
+      setErro(error instanceof Error ? error.message : 'Erro ao gerar a etiqueta da OS.')
+    }
+  }
+
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-100 p-6">
@@ -1271,10 +1368,17 @@ export default function OrdemServicoAtendimentoPage() {
             </button>
 
             <button
-              onClick={imprimirOS}
+              onClick={() => void imprimirOS()}
               className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white shadow-sm"
             >
               Imprimir OS
+            </button>
+
+            <button
+              onClick={() => void imprimirEtiqueta()}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm"
+            >
+              Imprimir etiqueta (opcional)
             </button>
 
             <button
@@ -2498,6 +2602,16 @@ function formatCurrency(value: number) {
     style: 'currency',
     currency: 'BRL',
   }).format(value || 0)
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>'"]/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;',
+  })[character] ?? character)
 }
 
 function valorRecebidoCliente(os: OrdemServico | null, totalAtual: number) {
