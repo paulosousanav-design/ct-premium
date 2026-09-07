@@ -3,7 +3,9 @@ import { request as httpsRequest } from 'node:https'
 import * as tls from 'node:tls'
 import { SignedXml } from 'xml-crypto'
 
-const ENDPOINTS_POR_UF: Record<string, string> = { MS: 'https://nfe.sefaz.ms.gov.br/ws/NFeRecepcaoEvento4' }
+// A manifestação do destinatário (2102xx) é registrada no Ambiente Nacional.
+// O endpoint estadual rejeita esse tpEvento com cStat 491.
+const ENDPOINT_AMBIENTE_NACIONAL = 'https://www.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx'
 const SOAP_ACTION = 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEventoNF'
 // A cadeia ICP-Brasil v10 é apresentada pela SEFAZ-MS, mas não está no armazenamento
 // padrão de todas as plataformas de hospedagem. Mantemos rejectUnauthorized ativo.
@@ -64,7 +66,7 @@ export async function manifestarCienciaDaOperacao(entrada: EntradaManifestacao) 
   const xmlAssinado = assinarEvento(evento, chavePrivada, certificado)
   const idLote = String(Date.now()).slice(-15).padStart(15, '0')
   const corpo = `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4"><envEvento versao="1.00" xmlns="http://www.portalfiscal.inf.br/nfe"><idLote>${idLote}</idLote>${xmlAssinado}</envEvento></nfeDadosMsg></soap12:Body></soap12:Envelope>`
-  const endpoint = process.env.NFE_RECEPCAO_EVENTO_URL || ENDPOINTS_POR_UF[String(entrada.uf).trim().toUpperCase()]
+  const endpoint = process.env.NFE_RECEPCAO_EVENTO_URL || ENDPOINT_AMBIENTE_NACIONAL
   if (!endpoint) throw new Error('O endpoint de manifestação desta UF não está configurado.')
   const resposta = await requisicaoMtls(endpoint, corpo, entrada.pfx, entrada.senha)
   const codigo = tag(primeiroBloco(resposta, 'retEvento'), 'cStat') || tag(resposta, 'cStat')
