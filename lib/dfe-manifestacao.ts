@@ -1,5 +1,6 @@
 import forge from 'node-forge'
 import { request as httpsRequest } from 'node:https'
+import * as tls from 'node:tls'
 import { SignedXml } from 'xml-crypto'
 
 const ENDPOINTS_POR_UF: Record<string, string> = { MS: 'https://nfe.sefaz.ms.gov.br/ws/NFeRecepcaoEvento4' }
@@ -52,7 +53,8 @@ function extrairCredenciais(pfx: Buffer, senha: string) {
 function requisicaoMtls(urlTexto: string, corpo: string, pfx: Buffer, senha: string) {
   return new Promise<string>((resolve, reject) => {
     const url = new URL(urlTexto)
-    const request = httpsRequest({ protocol: url.protocol, hostname: url.hostname, port: url.port ? Number(url.port) : 443, path: `${url.pathname}${url.search}`, method: 'POST', pfx, passphrase: senha, minVersion: 'TLSv1.2', rejectUnauthorized: true, timeout: 60_000, headers: { 'Content-Type': `application/soap+xml; charset=utf-8; action="${SOAP_ACTION}"`, 'Content-Length': Buffer.byteLength(corpo), 'User-Agent': 'CT-Premium/1.2' } }, (response) => {
+    const certificadosDoSistema = (tls as unknown as { getCACertificates?: (tipo: 'system') => string[] }).getCACertificates?.('system')
+    const request = httpsRequest({ protocol: url.protocol, hostname: url.hostname, port: url.port ? Number(url.port) : 443, path: `${url.pathname}${url.search}`, method: 'POST', pfx, passphrase: senha, ca: certificadosDoSistema?.length ? certificadosDoSistema : undefined, minVersion: 'TLSv1.2', rejectUnauthorized: true, timeout: 60_000, headers: { 'Content-Type': `application/soap+xml; charset=utf-8; action="${SOAP_ACTION}"`, 'Content-Length': Buffer.byteLength(corpo), 'User-Agent': 'CT-Premium/1.2' } }, (response) => {
       const partes: Buffer[] = []
       response.on('data', (parte: Buffer) => partes.push(parte))
       response.on('end', () => { const texto = Buffer.concat(partes).toString('utf8'); if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) return reject(new Error(`SEFAZ HTTP ${response.statusCode ?? '-'}: ${tag(texto, 'faultstring') || tag(texto, 'Text') || 'falha na manifestação.'}`)); resolve(texto) })
