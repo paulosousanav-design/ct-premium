@@ -3,8 +3,9 @@ import { createSecureContext } from 'node:tls'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
-import { criptografarSegredo } from '@/lib/google-drive'
+import { criptografarSegredo, descriptografarSegredo } from '@/lib/google-drive'
 import { sincronizarDocumentosDfe } from '@/lib/dfe-sync'
+import { manifestarCienciaDaOperacao } from '@/lib/dfe-manifestacao'
 import { registrarEventoSistema } from '@/lib/monitoramento'
 
 export const runtime = 'nodejs'
@@ -142,6 +143,24 @@ export async function POST(request: NextRequest) {
       if (!configuracao) return NextResponse.json({ error: 'Configure o certificado A1 desta unidade.' }, { status: 400 })
       const resultado = await sincronizarDocumentosDfe(supabase, configuracao)
       return NextResponse.json({ ok: true, resultado })
+    }
+
+    if (acao === 'MANIFESTAR_CIENCIA') {
+      const id = Number(body?.id)
+      if (!id) return NextResponse.json({ error: 'Documento fiscal inválido.' }, { status: 400 })
+      const [{ data: documento, error: documentoError }, { data: configuracao, error: configError }] = await Promise.all([
+        supabase.from('dfe_documentos').select('id, tipo_documento, chave_acesso').eq('id', id).eq('unidade_id', auth.unidadeId).maybeSingle(),
+        supabase.from('dfe_configuracoes').select('*').eq('unidade_id', auth.unidadeId).maybeSingle(),
+      ])
+      if (documentoError || configError) throw documentoError || configError
+      if (!documento || documento.tipo_documento !== 'RESUMO_NFE' || !documento.chave_acesso) return NextResponse.json({ error: 'A manifestação só está disponível para resumos de NF-e com chave válida.' }, { status: 400 })
+      if (!configuracao) return NextResponse.json({ error: 'Configure o certificado A1 desta unidade.' }, { status: 400 })
+      const resultadoManifestacao = await manifestarCienciaDaOperacao({
+        cnpj: configuracao.cnpj, uf: configuracao.uf, chaveAcesso: documento.chave_acesso,
+        pfx: Buffer.from(descriptografarSegredo(configuracao.certificado_pfx_criptografado), 'base64'), senha: descriptografarSegredo(configuracao.certificado_senha_criptografada),
+      })
+      const resultadoSincronizacao = await sincronizarDocumentosDfe(supabase, configuracao)
+      return NextResponse.json({ ok: true, mensagem: `${resultadoManifestacao.motivo} ${resultadoSincronizacao.completos ? 'O XML completo já foi localizado.' : 'A busca do XML foi iniciada; ele aparecerá assim que a SEFAZ o disponibilizar.'}` })
     }
 
     if (['ARQUIVAR', 'REABRIR', 'IGNORAR'].includes(acao)) {
