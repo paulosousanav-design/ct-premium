@@ -5,6 +5,7 @@
 1. Acesse o Google Cloud Console e crie ou selecione um projeto.
 2. Em APIs e serviços, ative a **Google Drive API**.
 3. Configure a tela de consentimento OAuth.
+   - Em producao, publique o aplicativo em **Publishing status: In production**. Em modo **Testing**, autorizacoes de contas externas podem expirar em 7 dias.
 4. Crie uma credencial **OAuth Client ID** do tipo **Web application**.
 5. Em **Authorized redirect URIs**, informe o endereço mostrado na Central de Backups.
 
@@ -32,5 +33,7 @@ Não coloque os valores em arquivos versionados e não envie essas credenciais p
 4. Autorize a pasta do Chame o Técnico.
 5. Clique em **Testar envio agora**.
 6. Confirme o arquivo no Drive e então ative o backup diário.
+
+Se a Central mostrar que a autorizacao expirou, clique em **Reconectar Google Drive agora**, autorize novamente e execute **Testar envio agora**. A reconexao preserva a configuracao da rotina automatica.
 
 O agendamento executa diariamente às 08:00 UTC, aproximadamente 04:00 em Cuiabá. No plano Hobby da Vercel, a execução pode ocorrer dentro da hora programada.

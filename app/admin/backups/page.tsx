@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { adminFetch } from '@/lib/admin-fetch'
+import { autorizacaoGoogleInvalida } from '@/lib/google-oauth-error'
 
 type ExecucaoBackup = {
   id: number
@@ -205,7 +206,7 @@ export default function BackupsPage() {
 
   const ultimo = useMemo(() => execucoes.find((item) => item.status === 'CONCLUIDO' && item.integridade === 'VALIDA') ?? null, [execucoes])
   const situacaoVisual = visualSituacao(resumo.situacao)
-  const autorizacaoGoogleExpirada = tokenGoogleExpirado(google?.configuracao?.ultimo_backup_automatico_erro)
+  const autorizacaoGoogleExpirada = autorizacaoGoogleInvalida(google?.configuracao?.ultimo_backup_automatico_erro)
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5">
@@ -375,13 +376,9 @@ function visualSituacao(situacao: ResumoBackup['situacao']) {
   return { rotulo: 'Sem backup', classe: 'border-amber-200 bg-amber-50 text-amber-900' }
 }
 
-function tokenGoogleExpirado(mensagem?: string | null) {
-  return /expired|revoked|invalid_grant|expirad|revogad/i.test(mensagem ?? '')
-}
-
 function mensagemErroGoogle(error: unknown) {
   const mensagem = error instanceof Error ? error.message : 'Erro no teste do Google Drive.'
-  if (tokenGoogleExpirado(mensagem)) {
+  if (autorizacaoGoogleInvalida(mensagem)) {
     return 'A autorização do Google Drive expirou ou foi revogada. Clique em Reconectar Google Drive e autorize novamente.'
   }
   return mensagem

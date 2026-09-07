@@ -486,6 +486,14 @@ export default function Home() {
           </div>
 
         </div>
+
+        <footer className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-8 text-sm text-slate-600">
+          <span>© 2026 Chame o Técnico</span>
+          <nav aria-label="Informações legais" className="flex flex-wrap gap-5 font-bold">
+            <Link href="/privacidade" className="hover:text-blue-700">Política de Privacidade</Link>
+            <Link href="/termos" className="hover:text-blue-700">Termos de Serviço</Link>
+          </nav>
+        </footer>
       </section>
     </main>
   )

@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { mensagemErroOAuth } from './google-oauth-error.ts'
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
 
@@ -39,8 +40,8 @@ export async function trocarCodigoPorTokens(code: string, redirectUri: string) {
       grant_type: 'authorization_code',
     }),
   })
-  const data = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(`Google OAuth: ${String(data?.error_description ?? data?.error ?? response.status)}`)
+  const { data, corpo } = await lerRespostaOAuth(response)
+  if (!response.ok) throw new Error(mensagemErroOAuth(response.status, data, corpo))
   if (!data?.refresh_token) throw new Error('O Google nao retornou acesso offline. Revogue o acesso anterior e tente conectar novamente.')
   return { accessToken: String(data.access_token), refreshToken: String(data.refresh_token) }
 }
@@ -57,9 +58,18 @@ export async function renovarAccessToken(refreshToken: string) {
       grant_type: 'refresh_token',
     }),
   })
-  const data = await response.json().catch(() => null)
-  if (!response.ok || !data?.access_token) throw new Error(`Google OAuth: ${String(data?.error_description ?? data?.error ?? response.status)}`)
+  const { data, corpo } = await lerRespostaOAuth(response)
+  if (!response.ok || !data?.access_token) throw new Error(mensagemErroOAuth(response.status, data, corpo))
   return String(data.access_token)
+}
+
+async function lerRespostaOAuth(response: Response) {
+  const corpo = await response.text()
+  try {
+    return { data: JSON.parse(corpo) as Record<string, unknown>, corpo }
+  } catch {
+    return { data: null, corpo }
+  }
 }
 
 export async function obterContaGoogle(accessToken: string) {

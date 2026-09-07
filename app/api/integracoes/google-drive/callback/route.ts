@@ -36,7 +36,15 @@ export async function GET(request: NextRequest) {
     const pastaPrincipal = await localizarOuCriarPasta(tokens.accessToken, 'Chame o Tecnico - Backups')
     const pastaBanco = await localizarOuCriarPasta(tokens.accessToken, 'Banco de dados', pastaPrincipal.id)
     const pastaStorage = await localizarOuCriarPasta(tokens.accessToken, 'Fotos e documentos', pastaPrincipal.id)
-    const { error } = await db().from('backup_configuracoes').upsert({
+    const supabase = db()
+    const { data: configuracaoAtual, error: configuracaoError } = await supabase
+      .from('backup_configuracoes')
+      .select('automatico_ativo')
+      .eq('id', 1)
+      .maybeSingle()
+    if (configuracaoError) throw configuracaoError
+
+    const { error } = await supabase.from('backup_configuracoes').upsert({
       id: 1,
       google_refresh_token_criptografado: criptografarSegredo(tokens.refreshToken),
       google_email: conta.user?.emailAddress ?? payload.usuarioEmail,
@@ -44,7 +52,7 @@ export async function GET(request: NextRequest) {
       google_pasta_banco_id: pastaBanco.id,
       google_pasta_storage_id: pastaStorage.id,
       google_conectado_em: new Date().toISOString(),
-      automatico_ativo: false,
+      automatico_ativo: Boolean(configuracaoAtual?.automatico_ativo),
       ultimo_backup_automatico_status: null,
       ultimo_backup_automatico_erro: null,
       atualizado_em: new Date().toISOString(),
