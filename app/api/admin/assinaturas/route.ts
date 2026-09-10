@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const supabase = supabaseAdmin()
     const { data, error } = await supabase
       .from('saas_assinaturas')
-      .select('id, plano, ciclo, status, valor, proximo_vencimento, asaas_subscription_id, criado_em, saas_clientes(nome, email, cnpj)')
+      .select('id, plano, ciclo, status, valor, proximo_vencimento, asaas_subscription_id, observacao, criado_em, saas_clientes(nome, email, cnpj)')
       .order('criado_em', { ascending: false })
       .limit(100)
     if (error) throw error

@@ -10,6 +10,7 @@ type Assinatura = {
   status: string
   valor: number
   proximo_vencimento: string
+  observacao?: string | null
   saas_clientes?: { nome?: string; email?: string; cnpj?: string } | Array<{ nome?: string; email?: string; cnpj?: string }>
 }
 
@@ -115,7 +116,7 @@ export default function AssinaturasPage() {
           <button type="button" onClick={() => void carregar()} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">Atualizar</button>
         </div>
         {carregando ? <p className="p-5 text-sm text-slate-500">Carregando...</p> : assinaturas.length === 0 ? <p className="p-5 text-sm text-slate-500">Nenhuma assinatura cadastrada ainda.</p> : (
-          <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Plano</th><th className="px-5 py-3">Valor</th><th className="px-5 py-3">Vencimento</th><th className="px-5 py-3">Status</th></tr></thead><tbody>{assinaturas.map((assinatura) => { const cliente = Array.isArray(assinatura.saas_clientes) ? assinatura.saas_clientes[0] : assinatura.saas_clientes; return <tr key={assinatura.id} className="border-t border-slate-100"><td className="px-5 py-4 font-bold text-slate-900"><div>{cliente?.nome ?? 'Cliente'}</div><div className="text-xs font-normal text-slate-500">{cliente?.email}</div></td><td className="px-5 py-4">{assinatura.plano} · {assinatura.ciclo}</td><td className="px-5 py-4">{Number(assinatura.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td className="px-5 py-4">{assinatura.proximo_vencimento}</td><td className="px-5 py-4"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-700">{assinatura.status.replaceAll('_', ' ')}</span></td></tr> })}</tbody></table></div>
+          <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Plano</th><th className="px-5 py-3">Valor</th><th className="px-5 py-3">Vencimento</th><th className="px-5 py-3">Status</th></tr></thead><tbody>{assinaturas.map((assinatura) => { const cliente = Array.isArray(assinatura.saas_clientes) ? assinatura.saas_clientes[0] : assinatura.saas_clientes; return <tr key={assinatura.id} className="border-t border-slate-100"><td className="px-5 py-4 font-bold text-slate-900"><div>{cliente?.nome ?? 'Cliente'}</div><div className="text-xs font-normal text-slate-500">{cliente?.email}</div></td><td className="px-5 py-4">{assinatura.plano} · {assinatura.ciclo}</td><td className="px-5 py-4">{Number(assinatura.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td className="px-5 py-4">{assinatura.proximo_vencimento}</td><td className="px-5 py-4"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-700">{assinatura.status.replaceAll('_', ' ')}</span>{assinatura.observacao && <p className="mt-2 max-w-xs text-xs font-medium text-red-700">{assinatura.observacao}</p>}</td></tr> })}</tbody></table></div>
         )}
       </section>
     </div>
