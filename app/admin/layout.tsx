@@ -72,6 +72,7 @@ const menu: MenuItem[] = [
   { label: 'Documentos Tecnicos', href: '/admin/documentos', permissao: 'documentos' },
   { label: 'Chat interno', href: '/admin/chat', permissao: 'chat', contador: 'chat' },
   { label: 'Configuracoes', href: '/admin/configuracoes', permissao: 'configuracoes' },
+  { label: 'Assinaturas CT Premium', href: '/admin/assinaturas', permissao: 'configuracoes' },
 ]
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
