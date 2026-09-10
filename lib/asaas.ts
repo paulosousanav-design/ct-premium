@@ -51,6 +51,26 @@ export async function criarClienteAsaas(input: {
   })
 }
 
+export async function atualizarClienteAsaas(input: {
+  id: string
+  name: string
+  cpfCnpj?: string
+  email?: string
+  mobilePhone?: string
+  externalReference: string
+}) {
+  return asaasRequest<AsaasCustomer>(`/customers/${encodeURIComponent(input.id)}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      name: input.name,
+      cpfCnpj: input.cpfCnpj || undefined,
+      email: input.email || undefined,
+      mobilePhone: input.mobilePhone || undefined,
+      externalReference: input.externalReference,
+    }),
+  })
+}
+
 export async function criarAssinaturaAsaas(input: {
   customer: string
   billingType: AsaasBillingType

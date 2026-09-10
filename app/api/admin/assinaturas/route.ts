@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { criarAssinaturaAsaas, criarClienteAsaas, asaasConfigured, asaasEnvironment, type AsaasBillingType } from '@/lib/asaas'
+import { atualizarClienteAsaas, criarAssinaturaAsaas, criarClienteAsaas, asaasConfigured, asaasEnvironment, type AsaasBillingType } from '@/lib/asaas'
 import { requireAdminPermission } from '@/lib/admin-auth'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -73,12 +73,14 @@ export async function POST(request: NextRequest) {
     if (clienteError) throw clienteError
 
     let asaasCustomerId = String(cliente.asaas_customer_id ?? '')
+    const externo = `ct-cliente-${cliente.id}`
     if (!asaasCustomerId) {
-      const externo = `ct-cliente-${cliente.id}`
       const asaasCliente = await criarClienteAsaas({ name: nome, email, cpfCnpj: cnpj, mobilePhone: telefone, externalReference: externo })
       asaasCustomerId = asaasCliente.id
       const { error } = await supabase.from('saas_clientes').update({ asaas_customer_id: asaasCustomerId, atualizado_em: new Date().toISOString() }).eq('id', cliente.id)
       if (error) throw error
+    } else {
+      await atualizarClienteAsaas({ id: asaasCustomerId, name: nome, email, cpfCnpj: cnpj, mobilePhone: telefone, externalReference: externo })
     }
 
     const valor = ciclo === 'ANUAL' ? planos[plano].anual : planos[plano].mensal
