@@ -16,7 +16,7 @@ type UsuarioAdmin = {
   atualizado_em: string
 }
 
-type Unidade = { id: number; codigo: string; tipo: 'MATRIZ' | 'FILIAL'; nome_fantasia: string; ativa: boolean }
+type Unidade = { id: number; codigo: string; tipo: 'EMPRESA'; nome_fantasia: string; ativa: boolean; empresa_principal?: boolean }
 
 type FormState = {
   id: number | null
@@ -43,7 +43,7 @@ const permissoes = [
   { id: 'pecas', label: 'Pecas e estoque' },
   { id: 'documentos_fiscais', label: 'Documentos fiscais recebidos' },
   { id: 'clientes', label: 'Clientes' },
-  { id: 'unidades', label: 'Matriz e Filiais' },
+  { id: 'unidades', label: 'Empresas do grupo' },
   { id: 'usuarios', label: 'Usuarios e acessos' },
   { id: 'relatorios', label: 'Relatorios' },
   { id: 'academia', label: 'Academia Tecnica' },
@@ -94,8 +94,8 @@ export default function UsuariosAdminPage() {
       const unidadesData = (data?.unidades ?? []) as Unidade[]
       setUnidades(unidadesData)
       setUnidadesPendente(Boolean(data?.unidadesPendente))
-      const matriz = unidadesData.find((item) => item.tipo === 'MATRIZ' && item.ativa)
-      if (matriz) setForm((atual) => atual.id === null && atual.unidadeIds.length === 0 ? { ...atual, unidadeIds: [matriz.id], unidadePadraoId: matriz.id } : atual)
+      const principal = unidadesData.find((item) => item.empresa_principal && item.ativa) ?? unidadesData.find((item) => item.ativa)
+      if (principal) setForm((atual) => atual.id === null && atual.unidadeIds.length === 0 ? { ...atual, unidadeIds: [principal.id], unidadePadraoId: principal.id } : atual)
       setTabelaPendente(Boolean(data?.tabelaPendente))
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Erro ao carregar usuarios.')

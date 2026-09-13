@@ -238,12 +238,12 @@ async function unidadesExistem(supabase: ReturnType<typeof getSupabaseAdmin>) {
 
 async function normalizarSelecaoUnidades(supabase: ReturnType<typeof getSupabaseAdmin>, value: unknown, padraoValue: unknown) {
   let ids = Array.isArray(value) ? [...new Set(value.map(Number).filter(Boolean))] : []
-  const { data: ativas } = await supabase.from('unidades').select('id, tipo').eq('ativa', true)
+  const { data: ativas } = await supabase.from('unidades').select('id, empresa_principal').eq('ativa', true)
   const idsAtivas = new Set((ativas ?? []).map((unidade) => Number(unidade.id)))
   ids = ids.filter((id) => idsAtivas.has(id))
   if (!ids.length) {
-    const matriz = (ativas ?? []).find((unidade) => unidade.tipo === 'MATRIZ')
-    if (matriz) ids = [Number(matriz.id)]
+    const principal = (ativas ?? []).find((unidade) => unidade.empresa_principal) ?? ativas?.[0]
+    if (principal) ids = [Number(principal.id)]
   }
   const padraoInformado = Number(padraoValue)
   return { ids, padraoId: ids.includes(padraoInformado) ? padraoInformado : ids[0] ?? null }

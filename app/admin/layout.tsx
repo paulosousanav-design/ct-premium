@@ -26,7 +26,7 @@ type MenuItem = {
 type UnidadeAcesso = {
   id: number
   codigo: string
-  tipo: 'MATRIZ' | 'FILIAL'
+  tipo: 'EMPRESA'
   nome_fantasia: string
   ativa: boolean
 }
@@ -62,7 +62,7 @@ const menu: MenuItem[] = [
   { label: 'Pecas', href: '/admin/pecas', permissao: 'pecas' },
   { label: 'Documentos recebidos', href: '/admin/documentos-fiscais', permissao: 'documentos_fiscais' },
   { label: 'Clientes', href: '/admin/clientes', permissao: 'clientes' },
-  { label: 'Matriz e Filiais', href: '/admin/unidades', permissao: 'unidades' },
+  { label: 'Empresas do grupo', href: '/admin/unidades', permissao: 'unidades' },
   { label: 'Usuarios', href: '/admin/usuarios', permissao: 'usuarios' },
   { label: 'Auditoria', href: '/admin/auditoria', permissao: 'usuarios' },
   { label: 'Monitoramento', href: '/admin/monitoramento', permissao: 'usuarios', contador: 'monitoramento' },
@@ -397,7 +397,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <div className="border-t border-slate-200 px-4 py-2">
                 <div className="mx-auto flex max-w-7xl items-center justify-end gap-2">
                   <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                    {visaoGerencial ? 'Visão gerencial' : 'Unidade ativa — OS, estoque e vendas'}
+                    {visaoGerencial ? 'Visão gerencial' : 'Empresa ativa — OS, estoque e vendas'}
                   </span>
                   <select
                     value={visaoGerencial ? escopoGerencial : unidadeSelecionadaId ?? ''}
@@ -409,7 +409,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     {visaoGerencial && <option value={ESCOPO_CONSOLIDADO}>Consolidado — todas as unidades</option>}
                     {unidades.map((unidade) => (
                       <option key={unidade.id} value={unidade.id}>
-                        {unidade.tipo === 'MATRIZ' ? 'Matriz' : 'Filial'} - {unidade.nome_fantasia}
+                        {unidade.nome_fantasia}
                       </option>
                     ))}
                   </select>
