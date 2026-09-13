@@ -15,6 +15,20 @@ type Peca = {
   estoque: number | string | null
   estoque_minimo: number | string | null
   localizacao: string | null
+  ncm?: string | null
+  cest?: string | null
+  gtin?: string | null
+  origem_mercadoria?: string | null
+  unidade_tributavel?: string | null
+  cfop_entrada?: string | null
+  cfop_saida?: string | null
+  cst_icms?: string | null
+  csosn?: string | null
+  ipi_cst?: string | null
+  pis_cst?: string | null
+  cofins_cst?: string | null
+  perfil_fiscal?: string | null
+  observacao_fiscal?: string | null
   ativo: boolean | null
 }
 
@@ -42,6 +56,8 @@ const novaPecaInicial = {
   estoque: '',
   estoque_minimo: '',
   localizacao: '',
+  ncm: '', cest: '', gtin: '', origem_mercadoria: '0', unidade_tributavel: 'UN',
+  cfop_entrada: '', cfop_saida: '', cst_icms: '', csosn: '', ipi_cst: '', pis_cst: '', cofins_cst: '', perfil_fiscal: '', observacao_fiscal: '',
   ativo: true,
 }
 
@@ -64,6 +80,7 @@ export default function PecasPage() {
   const [mensagem, setMensagem] = useState('')
   const [tabelaPendente, setTabelaPendente] = useState(false)
   const [movimentacoesPendente, setMovimentacoesPendente] = useState(false)
+  const [fiscalPendente, setFiscalPendente] = useState(false)
   const [editandoId, setEditandoId] = useState<number | null>(null)
 
   useEffect(() => {
@@ -106,6 +123,7 @@ export default function PecasPage() {
       setMovimentacoes((payload?.movimentacoes ?? []) as MovimentoPeca[])
       setTabelaPendente(Boolean(payload?.tabelaPendente))
       setMovimentacoesPendente(Boolean(payload?.movimentacoesPendente))
+      setFiscalPendente(Boolean(payload?.fiscalPendente))
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Erro ao carregar pecas.')
     } finally {
@@ -113,9 +131,10 @@ export default function PecasPage() {
     }
   }
 
-  function handleChange(event: ChangeEvent<HTMLInputElement>) {
-    const { name, value, checked, type } = event.target
-    setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
+  function handleChange(event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
+    const { name, value, type } = event.target
+    const marcado = type === 'checkbox' ? (event.target as HTMLInputElement).checked : false
+    setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? marcado : value }))
   }
 
   function handleAjusteChange(event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
@@ -163,6 +182,8 @@ export default function PecasPage() {
       estoque: String(peca.estoque ?? ''),
       estoque_minimo: String(peca.estoque_minimo ?? ''),
       localizacao: peca.localizacao ?? '',
+      ncm: peca.ncm ?? '', cest: peca.cest ?? '', gtin: peca.gtin ?? '', origem_mercadoria: peca.origem_mercadoria ?? '0', unidade_tributavel: peca.unidade_tributavel ?? 'UN',
+      cfop_entrada: peca.cfop_entrada ?? '', cfop_saida: peca.cfop_saida ?? '', cst_icms: peca.cst_icms ?? '', csosn: peca.csosn ?? '', ipi_cst: peca.ipi_cst ?? '', pis_cst: peca.pis_cst ?? '', cofins_cst: peca.cofins_cst ?? '', perfil_fiscal: peca.perfil_fiscal ?? '', observacao_fiscal: peca.observacao_fiscal ?? '',
       ativo: peca.ativo !== false,
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -271,6 +292,7 @@ export default function PecasPage() {
           Rode o SQL atualizado para criar a tabela pecas.
         </div>
       )}
+      {fiscalPendente && !tabelaPendente && <div className="rounded-xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-800">Para liberar a ficha fiscal das peças, execute <code>supabase-add-dados-fiscais-pecas.sql</code> no Supabase.</div>}
 
       <section className="grid gap-3 md:grid-cols-4">
         <Card label="Total" value={String(resumo.total)} />
@@ -427,6 +449,26 @@ export default function PecasPage() {
             <Input label="Estoque" name="estoque" value={form.estoque} onChange={handleChange} type="number" step="1" />
             <Input label="Estoque minimo" name="estoque_minimo" value={form.estoque_minimo} onChange={handleChange} type="number" step="1" />
             <Input label="Localizacao" name="localizacao" value={form.localizacao} onChange={handleChange} className="sm:col-span-2" />
+            <details className="sm:col-span-2 rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+              <summary className="cursor-pointer text-sm font-black text-blue-950">Dados fiscais da peça <span className="font-medium text-blue-700">— para futura API fiscal</span></summary>
+              <p className="mt-2 text-xs text-blue-800">Preencha conforme orientação do contador. Estes dados não calculam tributos dentro do CT Premium.</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Input label="NCM (8 dígitos)" name="ncm" value={form.ncm} onChange={handleChange} />
+                <Input label="CEST (7 dígitos, se aplicável)" name="cest" value={form.cest} onChange={handleChange} />
+                <Input label="GTIN / código de barras" name="gtin" value={form.gtin} onChange={handleChange} />
+                <Input label="Unidade tributável" name="unidade_tributavel" value={form.unidade_tributavel} onChange={handleChange} />
+                <label className="block text-sm font-bold text-slate-700">Origem da mercadoria<select name="origem_mercadoria" value={form.origem_mercadoria} onChange={handleChange} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-500"><option value="0">0 - Nacional</option><option value="1">1 - Importada diretamente</option><option value="2">2 - Estrangeira adquirida no mercado interno</option></select></label>
+                <Input label="Perfil fiscal" name="perfil_fiscal" value={form.perfil_fiscal} onChange={handleChange} />
+                <Input label="CFOP padrão entrada" name="cfop_entrada" value={form.cfop_entrada} onChange={handleChange} />
+                <Input label="CFOP padrão saída" name="cfop_saida" value={form.cfop_saida} onChange={handleChange} />
+                <Input label="CST ICMS" name="cst_icms" value={form.cst_icms} onChange={handleChange} />
+                <Input label="CSOSN" name="csosn" value={form.csosn} onChange={handleChange} />
+                <Input label="CST IPI" name="ipi_cst" value={form.ipi_cst} onChange={handleChange} />
+                <Input label="CST PIS" name="pis_cst" value={form.pis_cst} onChange={handleChange} />
+                <Input label="CST COFINS" name="cofins_cst" value={form.cofins_cst} onChange={handleChange} />
+                <label className="block text-sm font-bold text-slate-700 sm:col-span-2">Observação fiscal<textarea name="observacao_fiscal" value={form.observacao_fiscal} onChange={handleChange} rows={2} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-500" /></label>
+              </div>
+            </details>
             <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 sm:col-span-2">
               <input type="checkbox" name="ativo" checked={form.ativo} onChange={handleChange} />
               Peca ativa

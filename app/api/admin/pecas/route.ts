@@ -57,11 +57,13 @@ export async function GET(request: NextRequest) {
     if (error) throw error
 
     const movimentacoes = await carregarMovimentacoes(supabase, temUnidade ? auth.unidadeId : null)
+    const fiscalPendente = !(await colunaExiste(supabase, 'pecas', 'ncm'))
 
     return NextResponse.json({
       data: data ?? [],
       movimentacoes: movimentacoes.data,
       movimentacoesPendente: movimentacoes.tabelaPendente,
+      fiscalPendente,
       tabelaPendente: false,
     })
   } catch (error) {
@@ -104,6 +106,7 @@ export async function POST(request: NextRequest) {
       ativo: body?.ativo !== false,
     }
     if (await colunaExiste(supabase, 'pecas', 'unidade_id')) payload.unidade_id = auth.unidadeId
+    if (await colunaExiste(supabase, 'pecas', 'ncm')) Object.assign(payload, dadosFiscais(body))
 
     const { data, error } = await supabase.from('pecas').insert(payload).select('*').single()
     if (error) throw error
@@ -156,6 +159,7 @@ export async function PATCH(request: NextRequest) {
       localizacao: texto(body?.localizacao) || null,
       ativo: body?.ativo !== false,
     }
+    if (await colunaExiste(supabase, 'pecas', 'ncm')) Object.assign(payload, dadosFiscais(body))
 
     let atualizarQuery = supabase
       .from('pecas')
@@ -282,6 +286,33 @@ function texto(value: unknown) {
 function numero(value: unknown) {
   const parsed = Number(String(value ?? '0').replace(',', '.'))
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function dadosFiscais(body: Record<string, unknown> | null) {
+  const ncm = somenteDigitos(texto(body?.ncm))
+  const cest = somenteDigitos(texto(body?.cest))
+  if (ncm && ncm.length !== 8) throw new Error('NCM deve ter 8 dígitos.')
+  if (cest && cest.length !== 7) throw new Error('CEST deve ter 7 dígitos.')
+  return {
+    ncm: ncm || null,
+    cest: cest || null,
+    gtin: somenteDigitos(texto(body?.gtin)) || null,
+    origem_mercadoria: texto(body?.origem_mercadoria) || null,
+    unidade_tributavel: texto(body?.unidade_tributavel) || null,
+    cfop_entrada: somenteDigitos(texto(body?.cfop_entrada)) || null,
+    cfop_saida: somenteDigitos(texto(body?.cfop_saida)) || null,
+    cst_icms: texto(body?.cst_icms) || null,
+    csosn: texto(body?.csosn) || null,
+    ipi_cst: texto(body?.ipi_cst) || null,
+    pis_cst: texto(body?.pis_cst) || null,
+    cofins_cst: texto(body?.cofins_cst) || null,
+    perfil_fiscal: texto(body?.perfil_fiscal) || null,
+    observacao_fiscal: texto(body?.observacao_fiscal) || null,
+  }
+}
+
+function somenteDigitos(value: string) {
+  return value.replace(/\D/g, '')
 }
 
 function formatarErro(error: unknown, fallback: string) {
