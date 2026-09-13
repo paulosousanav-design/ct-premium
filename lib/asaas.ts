@@ -76,7 +76,7 @@ export async function criarAssinaturaAsaas(input: {
   billingType: AsaasBillingType
   value: number
   nextDueDate: string
-  cycle: 'MONTHLY' | 'YEARLY'
+  cycle: 'MONTHLY' | 'SEMIANNUALLY'
   description: string
   externalReference: string
 }) {

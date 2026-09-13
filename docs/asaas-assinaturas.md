@@ -38,6 +38,6 @@ Selecione, no mínimo, estes eventos:
 
 ## 4. Uso
 
-No menu administrativo, abra **Assinaturas CT Premium**, informe o cliente, plano, ciclo, forma de pagamento e primeiro vencimento. O Asaas cria a primeira cobrança e as seguintes recorrências. O webhook atualiza o status local para ativa, em atraso ou cancelada.
+No menu administrativo, abra **Assinaturas CT Premium**, informe o cliente, plano, ciclo, forma de pagamento e primeiro vencimento. Os ciclos comerciais disponíveis são mensal e semestral antecipado. O Asaas cria a primeira cobrança e as seguintes recorrências. O webhook atualiza o status local para ativa, em atraso ou cancelada.
 
 Na primeira versão há Pix e boleto. Cobrança recorrente no cartão depende de tokenização segura do cartão e será adicionada numa etapa própria.

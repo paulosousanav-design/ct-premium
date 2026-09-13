@@ -14,7 +14,7 @@ create table if not exists saas_assinaturas (
   id bigserial primary key,
   cliente_id bigint not null references saas_clientes(id) on delete restrict,
   plano text not null check (plano in ('ESSENCIAL', 'PROFISSIONAL', 'COMPLETO')),
-  ciclo text not null check (ciclo in ('MENSAL', 'ANUAL')),
+  ciclo text not null check (ciclo in ('MENSAL', 'SEMESTRAL')),
   forma_pagamento text not null check (forma_pagamento in ('PIX', 'BOLETO')),
   status text not null default 'PENDENTE' check (status in ('PENDENTE', 'AGUARDANDO_PAGAMENTO', 'ATIVA', 'EM_ATRASO', 'CANCELADA', 'FALHA_CRIACAO')),
   valor numeric(12,2) not null check (valor > 0),

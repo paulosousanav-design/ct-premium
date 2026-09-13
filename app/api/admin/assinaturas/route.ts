@@ -7,9 +7,9 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 const planos = {
-  ESSENCIAL: { nome: 'Essencial', mensal: 79, anual: 664 },
-  PROFISSIONAL: { nome: 'Profissional', mensal: 129, anual: 1084 },
-  COMPLETO: { nome: 'Completo', mensal: 179, anual: 1504 },
+  ESSENCIAL: { nome: 'Essencial', mensal: 79, semestral: 419 },
+  PROFISSIONAL: { nome: 'Profissional', mensal: 129, semestral: 684 },
+  COMPLETO: { nome: 'Completo', mensal: 179, semestral: 949 },
 } as const
 
 type Plano = keyof typeof planos
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const cnpj = somenteDigitos(texto(body?.cnpj))
     const telefone = somenteDigitos(texto(body?.telefone))
     const plano = texto(body?.plano) as Plano
-    const ciclo = texto(body?.ciclo) === 'ANUAL' ? 'ANUAL' : 'MENSAL'
+    const ciclo = texto(body?.ciclo) === 'SEMESTRAL' ? 'SEMESTRAL' : 'MENSAL'
     const formaPagamento = texto(body?.formaPagamento) as AsaasBillingType
     const proximoVencimento = texto(body?.proximoVencimento)
 
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
       await atualizarClienteAsaas({ id: asaasCustomerId, name: nome, email, cpfCnpj: cnpj, mobilePhone: telefone, externalReference: externo })
     }
 
-    const valor = ciclo === 'ANUAL' ? planos[plano].anual : planos[plano].mensal
+    const valor = ciclo === 'SEMESTRAL' ? planos[plano].semestral : planos[plano].mensal
     const { data: assinaturaLocal, error: assinaturaError } = await supabase
       .from('saas_assinaturas')
       .insert({ cliente_id: cliente.id, plano, ciclo, status: 'PENDENTE', valor, forma_pagamento: formaPagamento, proximo_vencimento: proximoVencimento })
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
         billingType: formaPagamento,
         value: valor,
         nextDueDate: proximoVencimento,
-        cycle: ciclo === 'ANUAL' ? 'YEARLY' : 'MONTHLY',
+        cycle: ciclo === 'SEMESTRAL' ? 'SEMIANNUALLY' : 'MONTHLY',
         description: `CT Premium — Plano ${planos[plano].nome}`,
         externalReference: `ct-assinatura-${assinaturaLocal.id}`,
       })

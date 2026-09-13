@@ -98,8 +98,8 @@ export default function AssinaturasPage() {
           <Campo label="E-mail para cobrança" value={form.email} type="email" required onChange={(email) => setForm({ ...form, email })} />
           <Campo label="CPF ou CNPJ (opcional)" value={form.cnpj} onChange={(cnpj) => setForm({ ...form, cnpj })} />
           <Campo label="Celular (opcional)" value={form.telefone} onChange={(telefone) => setForm({ ...form, telefone })} />
-          <Selecao label="Plano" value={form.plano} onChange={(plano) => setForm({ ...form, plano })} options={[['ESSENCIAL', 'Essencial — R$ 79/mês'], ['PROFISSIONAL', 'Profissional — R$ 129/mês'], ['COMPLETO', 'Completo — R$ 179/mês']]} />
-          <Selecao label="Ciclo" value={form.ciclo} onChange={(ciclo) => setForm({ ...form, ciclo })} options={[['MENSAL', 'Mensal'], ['ANUAL', 'Anual com promoção']]} />
+          <Selecao label="Plano" value={form.plano} onChange={(plano) => setForm({ ...form, plano })} options={[['ESSENCIAL', 'Essencial — R$ 79/mês · R$ 419/semestre'], ['PROFISSIONAL', 'Profissional — R$ 129/mês · R$ 684/semestre'], ['COMPLETO', 'Completo — R$ 179/mês · R$ 949/semestre']]} />
+          <Selecao label="Ciclo" value={form.ciclo} onChange={(ciclo) => setForm({ ...form, ciclo })} options={[['MENSAL', 'Mensal'], ['SEMESTRAL', 'Semestral antecipado — 6 meses']]} />
           <Selecao label="Forma de pagamento" value={form.formaPagamento} onChange={(formaPagamento) => setForm({ ...form, formaPagamento })} options={[['PIX', 'Pix'], ['BOLETO', 'Boleto']]} />
           <Campo label="Primeiro vencimento" value={form.proximoVencimento} type="date" required onChange={(proximoVencimento) => setForm({ ...form, proximoVencimento })} />
           <div className="md:col-span-2 xl:col-span-4 flex justify-end">
