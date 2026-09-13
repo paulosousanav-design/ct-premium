@@ -17,10 +17,19 @@ type ItemConferencia = {
   numeroItem: number
   codigo: string
   codigoBarras: string
+  codigoBarrasTributavel: string
   descricao: string
   ncm: string
+  cest: string
   cfop: string
   unidade: string
+  unidadeTributavel: string
+  origemMercadoria: string
+  cstIcms: string
+  csosn: string
+  ipiCst: string
+  pisCst: string
+  cofinsCst: string
   quantidade: number
   valorUnitario: number
   valorTotal: number
@@ -73,6 +82,7 @@ export default function ImportarXmlNfePage() {
   const [ratearDiferenca, setRatearDiferenca] = useState(true)
   const [historico, setHistorico] = useState<Importacao[]>([])
   const [estruturaPendente, setEstruturaPendente] = useState(false)
+  const [fiscalPendente, setFiscalPendente] = useState(false)
   const [processando, setProcessando] = useState(false)
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
@@ -96,6 +106,7 @@ export default function ImportarXmlNfePage() {
       if (!response.ok) throw new Error(payload?.error ?? 'Erro ao carregar importacoes.')
       setHistorico(payload?.importacoes ?? [])
       setEstruturaPendente(Boolean(payload?.estruturaPendente))
+      setFiscalPendente(Boolean(payload?.fiscalPendente))
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Erro ao carregar importacoes.')
     }
@@ -251,6 +262,7 @@ export default function ImportarXmlNfePage() {
       {erro && <Aviso cor="red">{erro}</Aviso>}
       {mensagem && <Aviso cor="green">{mensagem}</Aviso>}
       {estruturaPendente && <Aviso cor="amber">Rode o arquivo supabase-add-importacao-xml-nfe.sql no Supabase antes de usar esta tela.</Aviso>}
+      {fiscalPendente && !estruturaPendente && <Aviso cor="amber">Para confirmar entradas com todos os dados fiscais do XML, execute <code>supabase-update-importacao-xml-dados-fiscais.sql</code> no Supabase.</Aviso>}
 
       <section className="rounded-xl bg-white p-5 shadow-sm">
         <h2 className="text-lg font-black text-slate-950">1. Selecionar a NF-e de compra</h2>
@@ -306,7 +318,8 @@ export default function ImportarXmlNfePage() {
                       <div>
                         <p className="text-xs font-black uppercase text-orange-600">Item {item.numeroItem} · codigo {item.codigo || '-'}</p>
                         <p className="font-black text-slate-950">{item.descricao}</p>
-                        <p className="text-xs text-slate-500">NCM {item.ncm || '-'} · CFOP {item.cfop || '-'} · GTIN {item.codigoBarras || '-'}</p>
+                        <p className="text-xs text-slate-500">NCM {item.ncm || '-'} · CEST {item.cest || '-'} · CFOP {item.cfop || '-'} · GTIN {item.codigoBarras || '-'}</p>
+                        <p className="text-xs text-slate-400">Origem {item.origemMercadoria || '-'} · ICMS {item.cstIcms || item.csosn || '-'} · IPI {item.ipiCst || '-'} · PIS/COFINS {item.pisCst || '-'}/{item.cofinsCst || '-'}</p>
                       </div>
                       <Campo label="Peca no sistema">
                         <select value={item.pecaId} onChange={(event) => atualizarItem(index, 'pecaId', event.target.value)} className={inputClass}>
@@ -368,7 +381,7 @@ export default function ImportarXmlNfePage() {
           <section className="rounded-xl border-2 border-slate-900 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-black text-slate-950">Confirmar entrada</h2>
             <p className="mt-1 text-sm text-slate-500">Ao confirmar, o estoque sera atualizado e esta chave nao podera ser importada novamente.</p>
-            <button type="button" disabled={processando || (gerarContas && Math.abs(totalParcelas - nfe.valorTotal) > 0.02)} onClick={confirmar} className="mt-4 w-full rounded-lg bg-orange-600 px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" disabled={processando || fiscalPendente || (gerarContas && Math.abs(totalParcelas - nfe.valorTotal) > 0.02)} onClick={confirmar} className="mt-4 w-full rounded-lg bg-orange-600 px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
               {processando ? 'Confirmando...' : 'Confirmar importacao da NF-e'}
             </button>
           </section>

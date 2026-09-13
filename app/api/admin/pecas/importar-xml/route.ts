@@ -12,10 +12,19 @@ type ItemXml = {
   numeroItem: number
   codigo: string
   codigoBarras: string
+  codigoBarrasTributavel: string
   descricao: string
   ncm: string
+  cest: string
   cfop: string
   unidade: string
+  unidadeTributavel: string
+  origemMercadoria: string
+  cstIcms: string
+  csosn: string
+  ipiCst: string
+  pisCst: string
+  cofinsCst: string
   quantidade: number
   valorUnitario: number
   valorTotal: number
@@ -48,7 +57,7 @@ export async function GET(request: NextRequest) {
       .select('id, chave_acesso, numero, serie, data_emissao, fornecedor_cnpj, fornecedor_nome, valor_total, importado_por, importado_em')
       .eq('unidade_id', auth.unidadeId).order('importado_em', { ascending: false }).limit(30)
     if (error) throw error
-    return NextResponse.json({ estruturaPendente: false, importacoes: data ?? [] })
+    return NextResponse.json({ estruturaPendente: false, fiscalPendente: !(await dadosFiscaisImportacaoDisponiveis(supabase)), importacoes: data ?? [] })
   } catch (error) {
     return NextResponse.json({ error: mensagem(error, 'Erro ao carregar importacoes de NF-e.') }, { status: 500 })
   }
@@ -106,6 +115,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (acao !== 'CONFIRMAR') return NextResponse.json({ error: 'Acao invalida.' }, { status: 400 })
+    if (!(await dadosFiscaisImportacaoDisponiveis(supabase))) {
+      return NextResponse.json({ error: 'Rode o arquivo supabase-update-importacao-xml-dados-fiscais.sql antes de confirmar a importação.' }, { status: 400 })
+    }
     const itensTela = Array.isArray(body?.itens) ? body.itens : []
     if (itensTela.length !== nfe.itens.length) return NextResponse.json({ error: 'A quantidade de itens nao corresponde ao XML analisado.' }, { status: 400 })
     const itensRpc = nfe.itens.map((item) => {
@@ -118,8 +130,12 @@ export async function POST(request: NextRequest) {
       if (!pecaId && !descricaoNova) throw new Error(`Informe a descricao da nova peca no item ${item.numeroItem}.`)
       return {
         numero_item: item.numeroItem, peca_id: pecaId, codigo: item.codigo,
-        codigo_barras: item.codigoBarras, descricao: descricaoNova, ncm: item.ncm,
-        cfop: item.cfop, unidade: item.unidade, quantidade: item.quantidade,
+        codigo_barras: item.codigoBarras, codigo_barras_tributavel: item.codigoBarrasTributavel,
+        descricao: descricaoNova, ncm: item.ncm, cest: item.cest, cfop: item.cfop,
+        unidade: item.unidade, unidade_tributavel: item.unidadeTributavel,
+        origem_mercadoria: item.origemMercadoria, cst_icms: item.cstIcms,
+        csosn: item.csosn, ipi_cst: item.ipiCst, pis_cst: item.pisCst, cofins_cst: item.cofinsCst,
+        quantidade: item.quantidade,
         valor_unitario_xml: item.valorUnitario, valor_total_xml: item.valorTotal,
         custo_unitario: custo, valor_venda: Math.max(0, numero(tela.valorVenda)),
         categoria: String(tela.categoria ?? '').trim(), marca: String(tela.marca ?? '').trim(),
@@ -177,6 +193,14 @@ export async function POST(request: NextRequest) {
   }
 }
 
+async function dadosFiscaisImportacaoDisponiveis(supabase: ReturnType<typeof db>) {
+  const [pecas, itens] = await Promise.all([
+    supabase.from('pecas').select('cest, gtin, cfop_entrada').limit(0),
+    supabase.from('nfe_importacao_itens').select('cest, codigo_barras_tributavel, cst_icms').limit(0),
+  ])
+  return !pecas.error && !itens.error
+}
+
 function interpretarNfe(xml: string) {
   const infNfe = primeiroBloco(xml, 'infNFe') || xml
   const ide = primeiroBloco(infNfe, 'ide')
@@ -187,11 +211,19 @@ function interpretarNfe(xml: string) {
   const chaveProtocolo = tag(primeiroBloco(xml, 'infProt'), 'chNFe')
   const itens = blocos(infNfe, 'det').map((det, index) => {
     const prod = primeiroBloco(det, 'prod')
+    const imposto = primeiroBloco(det, 'imposto')
+    const icms = primeiroBloco(imposto, 'ICMS')
+    const ipi = primeiroBloco(imposto, 'IPI')
+    const pis = primeiroBloco(imposto, 'PIS')
+    const cofins = primeiroBloco(imposto, 'COFINS')
     return {
       numeroItem: Number(atributo(det, 'det', 'nItem')) || index + 1,
       codigo: tag(prod, 'cProd'), codigoBarras: codigoBarrasValido(tag(prod, 'cEAN')),
-      descricao: tag(prod, 'xProd'), ncm: tag(prod, 'NCM'), cfop: tag(prod, 'CFOP'),
-      unidade: tag(prod, 'uCom'), quantidade: numero(tag(prod, 'qCom')),
+      codigoBarrasTributavel: codigoBarrasValido(tag(prod, 'cEANTrib')),
+      descricao: tag(prod, 'xProd'), ncm: tag(prod, 'NCM'), cest: tag(prod, 'CEST'), cfop: tag(prod, 'CFOP'),
+      unidade: tag(prod, 'uCom'), unidadeTributavel: tag(prod, 'uTrib'), origemMercadoria: tag(icms, 'orig'),
+      cstIcms: tag(icms, 'CST'), csosn: tag(icms, 'CSOSN'), ipiCst: tag(ipi, 'CST'),
+      pisCst: tag(pis, 'CST'), cofinsCst: tag(cofins, 'CST'), quantidade: numero(tag(prod, 'qCom')),
       valorUnitario: numero(tag(prod, 'vUnCom')), valorTotal: numero(tag(prod, 'vProd')),
     } satisfies ItemXml
   })
