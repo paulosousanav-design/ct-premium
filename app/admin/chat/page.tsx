@@ -38,7 +38,6 @@ export default function ChatInternoPage() {
   const [loading, setLoading] = useState(true)
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState('')
-  const fimRef = useRef<HTMLDivElement>(null)
   const mensagensRef = useRef<HTMLDivElement>(null)
   const preservarScrollRef = useRef<{ altura: number; topo: number } | null>(null)
 
@@ -101,7 +100,7 @@ export default function ChatInternoPage() {
       preservarScrollRef.current = null
       return
     }
-    fimRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
   }, [mensagens.length, conversaId])
 
   const conversaAtual = conversas.find((item) => item.id === conversaId)
@@ -194,7 +193,7 @@ export default function ChatInternoPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1500px] space-y-4">
+    <div className="mx-auto max-w-[1500px] space-y-4 lg:flex lg:h-[calc(100dvh-10rem)] lg:flex-col lg:overflow-hidden lg:space-y-0 lg:gap-4">
       <header className="flex flex-col gap-3 rounded-xl bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
         <div><p className="text-xs font-black uppercase text-orange-600">Comunicacao administrativa</p><h1 className="text-2xl font-black text-slate-950">Chat interno</h1><p className="text-sm text-slate-500">Canais da empresa, unidades e conversas diretas.</p></div>
         <Link href="/admin/dashboard" className="rounded-lg bg-slate-900 px-4 py-2 text-center text-sm font-bold text-white">Voltar ao Dashboard</Link>
@@ -203,8 +202,8 @@ export default function ChatInternoPage() {
       {estruturaPendente && <div className="rounded-xl bg-amber-50 p-4 text-sm font-bold text-amber-800">Execute o arquivo supabase-add-chat-interno.sql no Supabase para liberar o chat.</div>}
       {erro && <div className="rounded-xl bg-red-50 p-4 text-sm font-bold text-red-700">{erro}</div>}
 
-      <div className="grid min-h-[680px] overflow-hidden rounded-2xl bg-white shadow-sm lg:grid-cols-[320px_1fr]">
-        <aside className="border-b border-slate-200 bg-slate-50 lg:border-b-0 lg:border-r">
+      <div className="grid min-h-[680px] overflow-hidden rounded-2xl bg-white shadow-sm lg:min-h-0 lg:flex-1 lg:grid-cols-[320px_1fr]">
+        <aside className="border-b border-slate-200 bg-slate-50 lg:min-h-0 lg:overflow-y-auto lg:border-b-0 lg:border-r">
           <div className="border-b border-slate-200 p-4">
             <p className="mb-2 text-xs font-black uppercase text-slate-500">Nova conversa direta</p>
             <div className="flex gap-2"><select value={destinatarioId} onChange={(event) => setDestinatarioId(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Selecionar usuario</option>{usuarios.map((usuario) => <option key={usuario.id} value={usuario.id}>{usuario.nome}</option>)}</select><button type="button" disabled={!destinatarioId || enviando} onClick={iniciarDireta} className="rounded-lg bg-orange-600 px-3 text-sm font-black text-white disabled:opacity-50">Abrir</button></div>
@@ -221,14 +220,13 @@ export default function ChatInternoPage() {
           <Lista titulo="Conversas diretas" itens={diretas} selecionada={conversaId} escolher={setConversaId} vazio="Nenhuma conversa direta." />
         </aside>
 
-        <section className="flex min-h-[600px] min-w-0 flex-col">
+        <section className="flex min-h-[600px] min-w-0 flex-col lg:min-h-0">
           <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4"><div><h2 className="font-black text-slate-950">{conversaAtual?.titulo ?? 'Selecione uma conversa'}</h2><p className="text-xs text-slate-500">30 mensagens recentes · histórico sob demanda</p></div>{arquivamentoDisponivel && conversaAtual?.tipo === 'DIRETA' && <button type="button" onClick={alternarArquivo} disabled={enviando} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-600 disabled:opacity-50">{conversaAtual.arquivada ? 'Reabrir conversa' : 'Arquivar'}</button>}</div>
           <div ref={mensagensRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-100/60 p-4 md:p-6">
             {conversaId && temMais && <div className="text-center"><button type="button" onClick={carregarAnteriores} disabled={carregandoAnteriores} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-black text-slate-600 shadow-sm disabled:opacity-50">{carregandoAnteriores ? 'Carregando...' : 'Carregar mensagens anteriores'}</button></div>}
             {loading && <p className="text-sm font-bold text-slate-500">Carregando mensagens...</p>}
             {!loading && conversaId && mensagens.length === 0 && <div className="mx-auto mt-20 max-w-sm rounded-xl bg-white p-5 text-center text-sm text-slate-500 shadow-sm">Ainda nao ha mensagens nesta conversa. Envie a primeira.</div>}
             {mensagens.map((mensagem) => <MensagemItem key={mensagem.id} mensagem={mensagem} propria={mensagem.autor_id === usuarioAtualId} />)}
-            <div ref={fimRef} />
           </div>
           <form onSubmit={enviar} className="border-t border-slate-200 bg-white p-4">
             <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center"><select value={osId} onChange={(event) => setOsId(event.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm sm:max-w-md"><option value="">Sem OS vinculada</option>{ordens.map((ordem) => <option key={ordem.id} value={ordem.id}>{ordem.numero_os} - {nomeCliente(ordem.clientes)}</option>)}</select>{osId && <span className="text-xs font-bold text-orange-700">A OS sera anexada à mensagem.</span>}</div>
