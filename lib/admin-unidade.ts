@@ -65,6 +65,18 @@ async function resolverEscopo(request: NextRequest, permissao: string, permiteCo
     return { ...auth, unidadeId: null, unidadesPermitidas: permitidas, consolidado: true as const }
   }
   const solicitada = Number(cabecalho)
+  if (cabecalho && (!Number.isInteger(solicitada) || solicitada <= 0)) {
+    return {
+      ok: false as const,
+      response: NextResponse.json({ error: 'Empresa selecionada inválida.' }, { status: 400 }),
+    }
+  }
+  if (solicitada > 0 && !permitidas.includes(solicitada)) {
+    return {
+      ok: false as const,
+      response: NextResponse.json({ error: 'Seu usuário não tem acesso à empresa selecionada. Solicite a liberação em Usuários e acessos.' }, { status: 403 }),
+    }
+  }
   const padrao = Number(usuario?.unidade_padrao_id)
   const unidadeId = permitidas.includes(solicitada)
     ? solicitada
