@@ -396,9 +396,9 @@ export default function PecasPage() {
           ) : movimentacoes.length === 0 ? (
             <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">Nenhuma movimentacao registrada ainda.</p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <div className="max-h-[420px] overflow-auto rounded-lg border border-slate-200" aria-label="Histórico rolável de movimentações de peças">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase text-slate-500 shadow-sm">
                   <tr>
                     <th className="p-3">Data</th>
                     <th className="p-3">Peca</th>
