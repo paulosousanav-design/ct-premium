@@ -1285,9 +1285,9 @@ function RecebimentosTable({
   const primeiraSelecionada = ordens.find((os) => os.id === selecionadas[0])
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
+    <div className="max-h-[520px] overflow-auto rounded-xl border border-slate-200">
+      <table className="w-full min-w-[1520px] text-sm">
+        <thead className="sticky top-0 z-10 shadow-sm">
           <tr className="bg-slate-50 text-left text-xs uppercase text-slate-500">
             <th className="p-3">Lote</th>
             <th className="p-3">OS</th>
@@ -1401,9 +1401,9 @@ function PagamentosTecnicoTable({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200">
-        <table className="w-full text-sm">
-          <thead>
+      <div className="max-h-[520px] overflow-auto rounded-xl border border-slate-200">
+        <table className="w-full min-w-[1260px] text-sm">
+          <thead className="sticky top-0 z-10 shadow-sm">
             <tr className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <th className="p-3">OS</th>
               <th className="p-3">Tecnico</th>
@@ -1588,9 +1588,9 @@ function ContasPagarPanel({
         </button>
       </form>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200">
-        <table className="w-full text-sm">
-          <thead>
+      <div className="max-h-[520px] overflow-auto rounded-xl border border-slate-200">
+        <table className="w-full min-w-[1260px] text-sm">
+          <thead className="sticky top-0 z-10 shadow-sm">
             <tr className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <th className="p-3">Conta</th>
               <th className="p-3">Categoria</th>
