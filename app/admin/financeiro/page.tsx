@@ -835,15 +835,15 @@ export default function FinanceiroPage() {
 
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="inline-flex rounded-lg bg-slate-100 p-1">
+          <div className="inline-flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1.5 shadow-inner">
             <button
               type="button"
               onClick={() => {
                 setAba('receber')
                 setFiltro('TODOS')
               }}
-              className={`rounded-md px-3 py-1.5 text-xs font-black transition ${
-                aba === 'receber' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              className={`rounded-lg border px-3 py-2 text-xs font-black transition ${
+                aba === 'receber' ? 'border-emerald-600 bg-emerald-600 text-white shadow-md shadow-emerald-200' : 'border-emerald-100 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100'
               }`}
             >
               Recebimentos
@@ -854,8 +854,8 @@ export default function FinanceiroPage() {
                 setAba('tecnicos')
                 setFiltro('TODOS')
               }}
-              className={`rounded-md px-3 py-1.5 text-xs font-black transition ${
-                aba === 'tecnicos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              className={`rounded-lg border px-3 py-2 text-xs font-black transition ${
+                aba === 'tecnicos' ? 'border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-200' : 'border-blue-100 bg-blue-50 text-blue-800 hover:border-blue-300 hover:bg-blue-100'
               }`}
             >
               Pagamento tecnicos
@@ -866,8 +866,8 @@ export default function FinanceiroPage() {
                 setAba('contas')
                 setFiltro('TODOS')
               }}
-              className={`rounded-md px-3 py-1.5 text-xs font-black transition ${
-                aba === 'contas' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              className={`rounded-lg border px-3 py-2 text-xs font-black transition ${
+                aba === 'contas' ? 'border-orange-500 bg-orange-500 text-white shadow-md shadow-orange-200' : 'border-orange-100 bg-orange-50 text-orange-800 hover:border-orange-300 hover:bg-orange-100'
               }`}
             >
               Contas a pagar
