@@ -276,6 +276,7 @@ export default function PecasPage() {
           <p className="text-sm text-slate-500">Pecas cadastradas ficam disponiveis para uso nas ordens de servico pelo admin.</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          <Link href="/admin/pecas/transferencias" className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-center text-sm font-bold text-blue-700">Transferir entre empresas</Link>
           <Link href="/admin/pecas/importar-xml" className="rounded-lg bg-orange-600 px-4 py-2 text-center text-sm font-bold text-white">
             Importar XML da NF-e
           </Link>
