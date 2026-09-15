@@ -20,6 +20,7 @@ type MenuItem = {
   label: string
   href: string
   permissao: string
+  icone: string
   contador?: 'chat' | 'monitoramento'
 }
 
@@ -48,31 +49,31 @@ type ChatConversaResumo = {
 type ChatAlerta = { conversaId: number; titulo: string; autor: string; conteudo: string }
 
 const menu: MenuItem[] = [
-  { label: 'Dashboard', href: '/admin/dashboard', permissao: 'dashboard' },
-  { label: 'Ordens de Servico', href: '/admin/os', permissao: 'os' },
-  { label: 'Finalizadas', href: '/admin/finalizadas', permissao: 'finalizadas' },
-  { label: 'Retirada de Equipamentos', href: '/admin/retiradas', permissao: 'os' },
-  { label: 'Tecnicos', href: '/admin/parceiros', permissao: 'tecnicos' },
-  { label: 'Garantidores', href: '/admin/garantidores', permissao: 'garantidores' },
-  { label: 'Aprovacao', href: '/admin/aprovacao', permissao: 'aprovacao' },
-  { label: 'Financeiro', href: '/admin/financeiro', permissao: 'financeiro' },
-  { label: 'DRE Gerencial', href: '/admin/financeiro/dre', permissao: 'dre' },
-  { label: 'Gestao de Rotas', href: '/admin/rotas', permissao: 'rotas' },
-  { label: 'Vendas', href: '/admin/vendas', permissao: 'vendas' },
-  { label: 'Pecas', href: '/admin/pecas', permissao: 'pecas' },
-  { label: 'Documentos recebidos', href: '/admin/documentos-fiscais', permissao: 'documentos_fiscais' },
-  { label: 'Clientes', href: '/admin/clientes', permissao: 'clientes' },
-  { label: 'Empresas do grupo', href: '/admin/unidades', permissao: 'unidades' },
-  { label: 'Usuarios', href: '/admin/usuarios', permissao: 'usuarios' },
-  { label: 'Auditoria', href: '/admin/auditoria', permissao: 'usuarios' },
-  { label: 'Monitoramento', href: '/admin/monitoramento', permissao: 'usuarios', contador: 'monitoramento' },
-  { label: 'Central de Backups', href: '/admin/backups', permissao: 'usuarios' },
-  { label: 'Relatorios', href: '/admin/relatorios', permissao: 'relatorios' },
-  { label: 'Academia Tecnica', href: '/admin/academia', permissao: 'academia' },
-  { label: 'Documentos Tecnicos', href: '/admin/documentos', permissao: 'documentos' },
-  { label: 'Chat interno', href: '/admin/chat', permissao: 'chat', contador: 'chat' },
-  { label: 'Configuracoes', href: '/admin/configuracoes', permissao: 'configuracoes' },
-  { label: 'Assinaturas CT Premium', href: '/admin/assinaturas', permissao: 'configuracoes' },
+  { label: 'Dashboard', href: '/admin/dashboard', permissao: 'dashboard', icone: '▦' },
+  { label: 'Ordens de Servico', href: '/admin/os', permissao: 'os', icone: '▤' },
+  { label: 'Finalizadas', href: '/admin/finalizadas', permissao: 'finalizadas', icone: '✓' },
+  { label: 'Retirada de Equipamentos', href: '/admin/retiradas', permissao: 'os', icone: '↗' },
+  { label: 'Tecnicos', href: '/admin/parceiros', permissao: 'tecnicos', icone: '♙' },
+  { label: 'Garantidores', href: '/admin/garantidores', permissao: 'garantidores', icone: '◆' },
+  { label: 'Aprovacao', href: '/admin/aprovacao', permissao: 'aprovacao', icone: '✓' },
+  { label: 'Financeiro', href: '/admin/financeiro', permissao: 'financeiro', icone: '$' },
+  { label: 'DRE Gerencial', href: '/admin/financeiro/dre', permissao: 'dre', icone: '▥' },
+  { label: 'Gestao de Rotas', href: '/admin/rotas', permissao: 'rotas', icone: '⌖' },
+  { label: 'Vendas', href: '/admin/vendas', permissao: 'vendas', icone: '▣' },
+  { label: 'Pecas', href: '/admin/pecas', permissao: 'pecas', icone: '⚙' },
+  { label: 'Documentos recebidos', href: '/admin/documentos-fiscais', permissao: 'documentos_fiscais', icone: '⌑' },
+  { label: 'Clientes', href: '/admin/clientes', permissao: 'clientes', icone: '◉' },
+  { label: 'Empresas do grupo', href: '/admin/unidades', permissao: 'unidades', icone: '⌂' },
+  { label: 'Usuarios', href: '/admin/usuarios', permissao: 'usuarios', icone: '◌' },
+  { label: 'Auditoria', href: '/admin/auditoria', permissao: 'usuarios', icone: '◈' },
+  { label: 'Monitoramento', href: '/admin/monitoramento', permissao: 'usuarios', icone: '!', contador: 'monitoramento' },
+  { label: 'Central de Backups', href: '/admin/backups', permissao: 'usuarios', icone: '⇧' },
+  { label: 'Relatorios', href: '/admin/relatorios', permissao: 'relatorios', icone: '▧' },
+  { label: 'Academia Tecnica', href: '/admin/academia', permissao: 'academia', icone: '✦' },
+  { label: 'Documentos Tecnicos', href: '/admin/documentos', permissao: 'documentos', icone: '▤' },
+  { label: 'Chat interno', href: '/admin/chat', permissao: 'chat', icone: '◍', contador: 'chat' },
+  { label: 'Configuracoes', href: '/admin/configuracoes', permissao: 'configuracoes', icone: '⚙' },
+  { label: 'Assinaturas CT Premium', href: '/admin/assinaturas', permissao: 'configuracoes', icone: '$' },
 ]
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
@@ -344,25 +345,34 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   <li key={item.href}>
                     <Link
                       href={item.href}
-                      className={`flex items-center justify-between gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${
-                        active ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-900 hover:text-white'
+                      className={`group relative flex items-center justify-between gap-3 overflow-hidden rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
+                        active ? 'border-orange-400/40 bg-slate-800 text-white shadow-lg shadow-black/20' : 'border-transparent text-slate-300 hover:border-slate-700 hover:bg-slate-900 hover:text-white'
                       }`}
                     >
-                      <span>{item.label}</span>
-                      {contador > 0 && (
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[11px] font-black text-white ${
-                            item.contador === 'monitoramento' && monitoramentoCriticos > 0
-                              ? 'animate-pulse bg-red-600'
-                              : 'bg-orange-600'
-                          }`}
-                          title={item.contador === 'monitoramento' && monitoramentoCriticos > 0
-                            ? `${monitoramentoCriticos} alerta(s) critico(s)`
-                            : undefined}
-                        >
-                          {contador > 99 ? '99+' : contador}
+                      {active && <span className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-orange-500" aria-hidden="true" />}
+                      <span className="flex min-w-0 items-center gap-3">
+                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base font-black transition-transform duration-200 group-hover:scale-110 ${active ? 'bg-orange-500 text-white shadow-md shadow-orange-900/40' : 'bg-slate-800 text-slate-300 group-hover:bg-slate-700 group-hover:text-white'}`} aria-hidden="true">
+                          {item.icone}
                         </span>
-                      )}
+                        <span className="truncate tracking-[0.01em]">{item.label}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        {contador > 0 && (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-black text-white ${
+                              item.contador === 'monitoramento' && monitoramentoCriticos > 0
+                                ? 'animate-pulse bg-red-600'
+                                : 'bg-orange-600'
+                            }`}
+                            title={item.contador === 'monitoramento' && monitoramentoCriticos > 0
+                              ? `${monitoramentoCriticos} alerta(s) critico(s)`
+                              : undefined}
+                          >
+                            {contador > 99 ? '99+' : contador}
+                          </span>
+                        )}
+                        <span className={`text-sm transition-transform duration-200 ${active ? 'text-orange-400' : 'text-slate-600 group-hover:translate-x-0.5 group-hover:text-slate-300'}`} aria-hidden="true">›</span>
+                      </span>
                     </Link>
                   </li>
                 )
