@@ -5,7 +5,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 type AdminAuthResult =
-  | { ok: true; usuarioId: number; email: string; nome: string; permissoes: string[] }
+  | { ok: true; usuarioId: number; email: string; nome: string; permissoes: string[]; organizacaoId: number | null; acessoPlataforma: boolean }
   | { ok: false; response: NextResponse }
 
 function getSupabaseAdminAuth() {
@@ -72,8 +72,22 @@ export async function requireAdminUser(request: NextRequest): Promise<AdminAuthR
       }
     }
 
+    const { data: escopo } = await supabase
+      .from('admin_usuarios')
+      .select('organizacao_id, acesso_plataforma')
+      .eq('id', data.id)
+      .maybeSingle()
+
     const permissoes = Array.isArray(data.permissoes) ? data.permissoes.map(String) : []
-    return { ok: true, usuarioId: Number(data.id), email, nome: String(data.nome ?? email), permissoes }
+    return {
+      ok: true,
+      usuarioId: Number(data.id),
+      email,
+      nome: String(data.nome ?? email),
+      permissoes,
+      organizacaoId: Number(escopo?.organizacao_id) || null,
+      acessoPlataforma: escopo?.acesso_plataforma === true,
+    }
   } catch (error) {
     return {
       ok: false,

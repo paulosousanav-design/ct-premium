@@ -49,7 +49,7 @@ async function resolverEscopo(request: NextRequest, permissao: string, permiteCo
 
   const { data: vinculos, error: vinculosError } = await supabase
     .from('admin_usuario_unidades')
-    .select('unidade_id')
+    .select('unidade_id, unidades(organizacao_id)')
     .eq('admin_usuario_id', auth.usuarioId)
 
   if (vinculosError) {
@@ -59,7 +59,10 @@ async function resolverEscopo(request: NextRequest, permissao: string, permiteCo
     }
   }
 
-  const permitidas = (vinculos ?? []).map((item) => Number(item.unidade_id)).filter(Boolean)
+  const permitidas = (vinculos ?? [])
+    .filter((item) => auth.acessoPlataforma || !auth.organizacaoId || Number(relacaoUnidade(item.unidades)?.organizacao_id) === auth.organizacaoId)
+    .map((item) => Number(item.unidade_id))
+    .filter(Boolean)
   const cabecalho = String(request.headers.get('x-unidade-id') ?? '').trim().toUpperCase()
   if (permiteConsolidado && cabecalho === 'CONSOLIDADO') {
     return { ...auth, unidadeId: null, unidadesPermitidas: permitidas, consolidado: true as const }
@@ -92,4 +95,8 @@ async function resolverEscopo(request: NextRequest, permissao: string, permiteCo
   }
 
   return { ...auth, unidadeId, unidadesPermitidas: permitidas, consolidado: false as const }
+}
+
+function relacaoUnidade(value: unknown) {
+  return Array.isArray(value) ? value[0] : value as { organizacao_id?: number | null } | null
 }
