@@ -57,6 +57,7 @@ const menu: MenuItem[] = [
   { label: 'Garantidores', href: '/admin/garantidores', permissao: 'garantidores', icone: '◆' },
   { label: 'Aprovacao', href: '/admin/aprovacao', permissao: 'aprovacao', icone: '✓' },
   { label: 'Financeiro', href: '/admin/financeiro', permissao: 'financeiro', icone: '$' },
+  { label: 'Fechamento de Caixa', href: '/admin/financeiro/caixa', permissao: 'financeiro', icone: '▣' },
   { label: 'DRE Gerencial', href: '/admin/financeiro/dre', permissao: 'dre', icone: '▥' },
   { label: 'Gestao de Rotas', href: '/admin/rotas', permissao: 'rotas', icone: '⌖' },
   { label: 'Vendas', href: '/admin/vendas', permissao: 'vendas', icone: '▣' },
