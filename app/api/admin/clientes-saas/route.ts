@@ -46,6 +46,14 @@ export async function POST(request: NextRequest) {
     if (!['ESSENCIAL', 'PROFISSIONAL', 'COMPLETO'].includes(plano)) return NextResponse.json({ error: 'Plano inválido.' }, { status: 400 })
 
     const supabase = db()
+    const { data: usuarioExistente, error: usuarioExistenteError } = await supabase
+      .from('admin_usuarios')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle()
+    if (usuarioExistenteError) throw usuarioExistenteError
+    if (usuarioExistente) return NextResponse.json({ error: 'Este e-mail já possui acesso ao CT Premium. Use outro e-mail para a oficina de teste.' }, { status: 409 })
+
     const { data: cliente, error: clienteError } = await supabase.from('saas_clientes').upsert({ nome, email, cnpj, telefone, atualizado_em: new Date().toISOString() }, { onConflict: 'email' }).select('id').single()
     if (clienteError) throw clienteError
 
@@ -83,4 +91,11 @@ async function proximoSlug(supabase: ReturnType<typeof db>, nome: string) {
 
 function texto(value: unknown) { return String(value ?? '').trim() }
 function digitos(value: string) { return value.replace(/\D/g, '') }
-function mensagem(error: unknown) { return error instanceof Error ? error.message : 'Não foi possível criar a oficina cliente.' }
+function mensagem(error: unknown) {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error) {
+    const dados = error as Record<string, unknown>
+    return [dados.message, dados.details, dados.hint, dados.code].filter(Boolean).map(String).join(' | ') || 'Não foi possível criar a oficina cliente.'
+  }
+  return 'Não foi possível criar a oficina cliente.'
+}

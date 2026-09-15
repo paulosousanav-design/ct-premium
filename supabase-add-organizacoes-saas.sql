@@ -16,6 +16,12 @@ alter table public.unidades add column if not exists organizacao_id bigint refer
 alter table public.admin_usuarios add column if not exists organizacao_id bigint references public.saas_organizacoes(id);
 alter table public.admin_usuarios add column if not exists acesso_plataforma boolean not null default false;
 
+-- A empresa principal é única dentro de cada organização, e não em toda a plataforma.
+drop index if exists public.unidades_uma_principal_idx;
+create unique index if not exists unidades_organizacao_uma_principal_idx
+  on public.unidades (organizacao_id)
+  where empresa_principal;
+
 -- Cria a organização interna e associa os dados já existentes a ela.
 insert into public.saas_organizacoes (nome, slug, plano, status)
 select 'Grupo interno CT Premium', 'grupo-interno', 'COMPLETO', 'ATIVA'
