@@ -58,12 +58,14 @@ export async function GET(request: NextRequest) {
 
     const movimentacoes = await carregarMovimentacoes(supabase, temUnidade ? auth.unidadeId : null)
     const fiscalPendente = !(await colunaExiste(supabase, 'pecas', 'ncm'))
+    const operacionalPendente = !(await colunaExiste(supabase, 'pecas', 'fornecedor_principal'))
 
     return NextResponse.json({
       data: data ?? [],
       movimentacoes: movimentacoes.data,
       movimentacoesPendente: movimentacoes.tabelaPendente,
       fiscalPendente,
+      operacionalPendente,
       tabelaPendente: false,
     })
   } catch (error) {
@@ -107,6 +109,7 @@ export async function POST(request: NextRequest) {
     }
     if (await colunaExiste(supabase, 'pecas', 'unidade_id')) payload.unidade_id = auth.unidadeId
     if (await colunaExiste(supabase, 'pecas', 'ncm')) Object.assign(payload, dadosFiscais(body))
+    if (await colunaExiste(supabase, 'pecas', 'fornecedor_principal')) Object.assign(payload, dadosOperacionais(body))
 
     const { data, error } = await supabase.from('pecas').insert(payload).select('*').single()
     if (error) throw error
@@ -160,6 +163,7 @@ export async function PATCH(request: NextRequest) {
       ativo: body?.ativo !== false,
     }
     if (await colunaExiste(supabase, 'pecas', 'ncm')) Object.assign(payload, dadosFiscais(body))
+    if (await colunaExiste(supabase, 'pecas', 'fornecedor_principal')) Object.assign(payload, dadosOperacionais(body))
 
     let atualizarQuery = supabase
       .from('pecas')
@@ -308,6 +312,31 @@ function dadosFiscais(body: Record<string, unknown> | null) {
     cofins_cst: texto(body?.cofins_cst) || null,
     perfil_fiscal: texto(body?.perfil_fiscal) || null,
     observacao_fiscal: texto(body?.observacao_fiscal) || null,
+  }
+}
+
+function dadosOperacionais(body: Record<string, unknown> | null) {
+  const dataUltimaCompra = texto(body?.data_ultima_compra)
+  const fotoUrl = texto(body?.foto_url)
+  const valorUltimaCompra = texto(body?.valor_ultima_compra)
+
+  if (dataUltimaCompra && !/^\d{4}-\d{2}-\d{2}$/.test(dataUltimaCompra)) {
+    throw new Error('Informe uma data válida para a última compra.')
+  }
+  if (fotoUrl && !/^(https?:\/\/|\/)/i.test(fotoUrl)) {
+    throw new Error('A foto deve ser informada por um link válido.')
+  }
+
+  const valor = valorUltimaCompra ? numero(valorUltimaCompra) : null
+  if (valor !== null && valor < 0) {
+    throw new Error('O custo da última compra não pode ser negativo.')
+  }
+
+  return {
+    fornecedor_principal: texto(body?.fornecedor_principal) || null,
+    data_ultima_compra: dataUltimaCompra || null,
+    valor_ultima_compra: valor,
+    foto_url: fotoUrl || null,
   }
 }
 

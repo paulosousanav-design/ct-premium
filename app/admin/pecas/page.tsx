@@ -15,6 +15,10 @@ type Peca = {
   estoque: number | string | null
   estoque_minimo: number | string | null
   localizacao: string | null
+  fornecedor_principal?: string | null
+  data_ultima_compra?: string | null
+  valor_ultima_compra?: number | string | null
+  foto_url?: string | null
   ncm?: string | null
   cest?: string | null
   gtin?: string | null
@@ -56,6 +60,10 @@ const novaPecaInicial = {
   estoque: '',
   estoque_minimo: '',
   localizacao: '',
+  fornecedor_principal: '',
+  data_ultima_compra: '',
+  valor_ultima_compra: '',
+  foto_url: '',
   ncm: '', cest: '', gtin: '', origem_mercadoria: '0', unidade_tributavel: 'UN',
   cfop_entrada: '', cfop_saida: '', cst_icms: '', csosn: '', ipi_cst: '', pis_cst: '', cofins_cst: '', perfil_fiscal: '', observacao_fiscal: '',
   ativo: true,
@@ -81,6 +89,7 @@ export default function PecasPage() {
   const [tabelaPendente, setTabelaPendente] = useState(false)
   const [movimentacoesPendente, setMovimentacoesPendente] = useState(false)
   const [fiscalPendente, setFiscalPendente] = useState(false)
+  const [operacionalPendente, setOperacionalPendente] = useState(false)
   const [editandoId, setEditandoId] = useState<number | null>(null)
 
   useEffect(() => {
@@ -124,6 +133,7 @@ export default function PecasPage() {
       setTabelaPendente(Boolean(payload?.tabelaPendente))
       setMovimentacoesPendente(Boolean(payload?.movimentacoesPendente))
       setFiscalPendente(Boolean(payload?.fiscalPendente))
+      setOperacionalPendente(Boolean(payload?.operacionalPendente))
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Erro ao carregar pecas.')
     } finally {
@@ -182,6 +192,10 @@ export default function PecasPage() {
       estoque: String(peca.estoque ?? ''),
       estoque_minimo: String(peca.estoque_minimo ?? ''),
       localizacao: peca.localizacao ?? '',
+      fornecedor_principal: peca.fornecedor_principal ?? '',
+      data_ultima_compra: peca.data_ultima_compra ?? '',
+      valor_ultima_compra: String(peca.valor_ultima_compra ?? ''),
+      foto_url: peca.foto_url ?? '',
       ncm: peca.ncm ?? '', cest: peca.cest ?? '', gtin: peca.gtin ?? '', origem_mercadoria: peca.origem_mercadoria ?? '0', unidade_tributavel: peca.unidade_tributavel ?? 'UN',
       cfop_entrada: peca.cfop_entrada ?? '', cfop_saida: peca.cfop_saida ?? '', cst_icms: peca.cst_icms ?? '', csosn: peca.csosn ?? '', ipi_cst: peca.ipi_cst ?? '', pis_cst: peca.pis_cst ?? '', cofins_cst: peca.cofins_cst ?? '', perfil_fiscal: peca.perfil_fiscal ?? '', observacao_fiscal: peca.observacao_fiscal ?? '',
       ativo: peca.ativo !== false,
@@ -294,6 +308,7 @@ export default function PecasPage() {
         </div>
       )}
       {fiscalPendente && !tabelaPendente && <div className="rounded-xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-800">Para liberar a ficha fiscal das peças, execute <code>supabase-add-dados-fiscais-pecas.sql</code> no Supabase.</div>}
+      {operacionalPendente && !tabelaPendente && <div className="rounded-xl bg-violet-50 px-4 py-3 text-sm font-bold text-violet-800">Para liberar fornecedor, última compra e foto da peça, execute <code>supabase-add-detalhes-operacionais-pecas.sql</code> no Supabase.</div>}
 
       <section className="grid gap-3 md:grid-cols-4">
         <Card label="Total" value={String(resumo.total)} />
@@ -450,6 +465,15 @@ export default function PecasPage() {
             <Input label="Estoque" name="estoque" value={form.estoque} onChange={handleChange} type="number" step="1" />
             <Input label="Estoque minimo" name="estoque_minimo" value={form.estoque_minimo} onChange={handleChange} type="number" step="1" />
             <Input label="Localizacao" name="localizacao" value={form.localizacao} onChange={handleChange} className="sm:col-span-2" />
+            <details className="sm:col-span-2 rounded-xl border border-violet-100 bg-violet-50/50 p-3">
+              <summary className="cursor-pointer text-sm font-black text-violet-950">Compra e identificação da peça <span className="font-medium text-violet-700">— para reposição mais rápida</span></summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Input label="Fornecedor principal" name="fornecedor_principal" value={form.fornecedor_principal} onChange={handleChange} />
+                <Input label="Data da última compra" name="data_ultima_compra" value={form.data_ultima_compra} onChange={handleChange} type="date" />
+                <Input label="Custo da última compra" name="valor_ultima_compra" value={form.valor_ultima_compra} onChange={handleChange} type="number" step="0.01" />
+                <Input label="Foto da peça (URL)" name="foto_url" value={form.foto_url} onChange={handleChange} placeholder="https://..." />
+              </div>
+            </details>
             <details className="sm:col-span-2 rounded-xl border border-blue-100 bg-blue-50/50 p-3">
               <summary className="cursor-pointer text-sm font-black text-blue-950">Dados fiscais da peça <span className="font-medium text-blue-700">— para futura API fiscal</span></summary>
               <p className="mt-2 text-xs text-blue-800">Preencha conforme orientação do contador. Estes dados não calculam tributos dentro do CT Premium.</p>
@@ -535,6 +559,7 @@ export default function PecasPage() {
                       <td className="p-3">
                         <div className="font-black text-slate-950">{peca.descricao}</div>
                         <div className="text-xs text-slate-500">{peca.codigo || 'Sem codigo'} • {peca.marca || 'Sem marca'}</div>
+                        {(peca.fornecedor_principal || peca.foto_url) && <div className="mt-1 text-xs text-violet-700">{peca.fornecedor_principal ? `Fornecedor: ${peca.fornecedor_principal}` : ''}{peca.fornecedor_principal && peca.foto_url ? ' • ' : ''}{peca.foto_url && <a href={peca.foto_url} target="_blank" rel="noreferrer" className="font-bold underline">Ver foto</a>}</div>}
                       </td>
                       <td className="p-3 text-slate-600">{peca.categoria || '-'}</td>
                       <td className="p-3">
@@ -586,6 +611,7 @@ function Input({
   required = false,
   step,
   className = '',
+  placeholder,
 }: {
   label: string
   name: string
@@ -595,6 +621,7 @@ function Input({
   required?: boolean
   step?: string
   className?: string
+  placeholder?: string
 }) {
   return (
     <label className={`block text-sm font-bold text-slate-700 ${className}`}>
@@ -606,6 +633,7 @@ function Input({
         type={type}
         required={required}
         step={step}
+        placeholder={placeholder}
         className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-500"
       />
     </label>
