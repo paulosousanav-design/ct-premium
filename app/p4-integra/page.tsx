@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import Link from 'next/link'
 
 const recursos = [
@@ -22,8 +23,7 @@ export default function P4IntegraPage() {
         <div className="mx-auto max-w-7xl px-6 pb-20 pt-6 lg:px-8 lg:pb-28">
           <nav className="flex items-center justify-between gap-4">
             <Link href="/" className="flex items-center gap-3" aria-label="P4 Integra, início">
-              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-cyan-300 to-blue-600 text-lg font-black text-slate-950 shadow-lg shadow-cyan-500/20">P4</span>
-              <span className="text-xl font-black tracking-tight">Integra</span>
+              <Image src="/p4-integra-logo.png" alt="P4 Integra" width={280} height={94} priority className="h-11 w-auto" />
             </Link>
             <div className="flex items-center gap-3">
               <a href="#planos" className="hidden text-sm font-bold text-slate-300 transition hover:text-white sm:block">Planos</a>
