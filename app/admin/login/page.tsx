@@ -11,6 +11,7 @@ export default function AdminLoginPage() {
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
+  const [aviso, setAviso] = useState('')
   const [entrando, setEntrando] = useState(false)
   const [acessoP4, setAcessoP4] = useState(false)
 
@@ -27,6 +28,7 @@ export default function AdminLoginPage() {
   async function entrar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setErro('')
+    setAviso('')
     setEntrando(true)
 
     const { error } = await supabase.auth.signInWithPassword({
@@ -42,6 +44,28 @@ export default function AdminLoginPage() {
     }
 
     router.replace('/admin/dashboard')
+  }
+
+  async function solicitarRedefinicao() {
+    const emailNormalizado = email.trim().toLowerCase()
+    if (!emailNormalizado) {
+      setErro('Informe seu e-mail para receber o link de redefinicao.')
+      return
+    }
+
+    setErro('')
+    setAviso('')
+    const origem = window.location.origin
+    const { error } = await supabase.auth.resetPasswordForEmail(emailNormalizado, {
+      redirectTo: `${origem}/admin/redefinir-senha`,
+    })
+
+    if (error) {
+      setErro('Nao foi possivel enviar o link agora. Tente novamente em instantes.')
+      return
+    }
+
+    setAviso('Se o e-mail estiver cadastrado, enviamos um link para criar uma nova senha.')
   }
 
   return (
@@ -67,6 +91,7 @@ export default function AdminLoginPage() {
         </div>
 
         {erro && <div className="mb-4 rounded-lg bg-red-500/15 px-4 py-3 text-sm font-bold text-red-100">{erro}</div>}
+        {aviso && <div className="mb-4 rounded-lg bg-emerald-500/15 px-4 py-3 text-sm font-bold text-emerald-100">{aviso}</div>}
 
         <form onSubmit={entrar} className="space-y-4">
           <label className="block text-sm font-bold text-slate-200">
@@ -99,6 +124,14 @@ export default function AdminLoginPage() {
             {entrando ? 'Entrando...' : acessoP4 ? 'Entrar na plataforma' : 'Entrar no admin'}
           </button>
         </form>
+
+        <button
+          type="button"
+          onClick={solicitarRedefinicao}
+          className={`mt-4 w-full text-center text-sm font-bold ${acessoP4 ? 'text-cyan-300 hover:text-cyan-200' : 'text-orange-300 hover:text-orange-200'}`}
+        >
+          Esqueci minha senha
+        </button>
 
         <Link href="/" className="mt-5 block text-center text-xs font-bold text-slate-400 hover:text-white">
           {acessoP4 ? 'Voltar ao site P4 Integra' : 'Voltar ao portal publico'}
