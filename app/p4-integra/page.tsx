@@ -18,12 +18,13 @@ const whatsapp = 'https://wa.me/5567992058808?text=Olá!%20Quero%20conhecer%20o%
 
 export default function P4IntegraPage() {
   return (
-    <main className="min-h-screen overflow-hidden bg-[#07111f] text-white">
-      <section className="relative isolate border-b border-white/10 bg-[radial-gradient(circle_at_72%_18%,#1c5de8_0,transparent_28%),radial-gradient(circle_at_20%_80%,#0ea5a4_0,transparent_34%),#07111f]">
+    <main className="min-h-screen overflow-hidden bg-[#0b1e4a] text-white">
+      <section className="relative isolate border-b border-white/10 bg-[radial-gradient(circle_at_72%_18%,#347cf4_0,transparent_30%),radial-gradient(circle_at_20%_80%,#16b9c4_0,transparent_35%),#102b62]">
         <div className="mx-auto max-w-7xl px-6 pb-20 pt-6 lg:px-8 lg:pb-28">
           <nav className="flex items-center justify-between gap-4">
             <Link href="/" className="flex items-center gap-3" aria-label="P4 Integra, início">
-              <Image src="/p4-integra-logo.png" alt="P4 Integra" width={280} height={94} priority className="h-11 w-auto" />
+              <span className="h-12 w-12 overflow-hidden"><Image src="/p4-integra-logo.png" alt="Símbolo P4 Integra" width={180} height={60} priority className="h-12 w-[180px] max-w-none" /></span>
+              <span className="text-2xl font-black tracking-[-.05em] text-white">P4 <span className="text-cyan-300">Integra</span></span>
             </Link>
             <div className="flex items-center gap-3">
               <a href="#planos" className="hidden text-sm font-bold text-slate-300 transition hover:text-white sm:block">Planos</a>
@@ -45,7 +46,7 @@ export default function P4IntegraPage() {
 
             <div className="relative mx-auto w-full max-w-xl">
               <div className="absolute -inset-5 rounded-[2.5rem] bg-gradient-to-br from-cyan-300/20 to-blue-600/30 blur-2xl" />
-              <div className="relative rounded-[2rem] border border-white/15 bg-slate-950/70 p-4 shadow-2xl backdrop-blur">
+              <div className="relative rounded-[2rem] border border-white/15 bg-[#0a204c]/75 p-4 shadow-2xl backdrop-blur">
                 <div className="flex items-center gap-2 border-b border-white/10 px-2 pb-4"><i className="h-2.5 w-2.5 rounded-full bg-rose-400" /><i className="h-2.5 w-2.5 rounded-full bg-amber-300" /><i className="h-2.5 w-2.5 rounded-full bg-emerald-400" /><span className="ml-3 text-xs font-bold text-slate-500">Visão da operação</span></div>
                 <div className="grid gap-3 p-2 pt-5 sm:grid-cols-2">
                   <Metric label="Ordens em andamento" value="24" color="text-cyan-300" />
