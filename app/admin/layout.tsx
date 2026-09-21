@@ -64,6 +64,7 @@ const menu: MenuItem[] = [
   { label: 'Pecas', href: '/admin/pecas', permissao: 'pecas', icone: '⚙' },
   { label: 'Documentos recebidos', href: '/admin/documentos-fiscais', permissao: 'documentos_fiscais', icone: '⌑' },
   { label: 'Clientes', href: '/admin/clientes', permissao: 'clientes', icone: '◉' },
+  { label: 'Minha oficina', href: '/admin/minha-oficina', permissao: 'minha_oficina', icone: '⌂' },
   { label: 'Empresas do grupo', href: '/admin/unidades', permissao: 'unidades', icone: '⌂' },
   { label: 'Usuarios', href: '/admin/usuarios', permissao: 'usuarios', icone: '◌' },
   { label: 'Auditoria', href: '/admin/auditoria', permissao: 'usuarios', icone: '◈' },

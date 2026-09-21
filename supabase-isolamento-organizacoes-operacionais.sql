@@ -22,3 +22,10 @@ create index if not exists garantidores_organizacao_idx on public.garantidores(o
 create index if not exists documentos_tecnicos_organizacao_idx on public.documentos_tecnicos(organizacao_id);
 create index if not exists documento_emissores_organizacao_idx on public.documento_emissores(organizacao_id);
 create index if not exists documento_carimbos_organizacao_idx on public.documento_carimbos(organizacao_id);
+
+-- Libera somente a configuração da própria oficina para administradores de clientes.
+update public.admin_usuarios
+set permissoes = array_append(permissoes, 'minha_oficina'), atualizado_em = now()
+where organizacao_id is not null
+  and organizacao_id <> (select id from public.saas_organizacoes where slug = 'grupo-interno')
+  and not ('minha_oficina' = any(permissoes));

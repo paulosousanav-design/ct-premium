@@ -4,7 +4,7 @@ import { requireAdminPermission } from '@/lib/admin-auth'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-const permissoesCliente = ['dashboard', 'os', 'finalizadas', 'tecnicos', 'garantidores', 'aprovacao', 'financeiro', 'dre', 'rotas', 'vendas', 'pecas', 'documentos_fiscais', 'clientes', 'relatorios', 'academia', 'documentos', 'chat']
+const permissoesCliente = ['dashboard', 'os', 'finalizadas', 'tecnicos', 'garantidores', 'aprovacao', 'financeiro', 'dre', 'rotas', 'vendas', 'pecas', 'documentos_fiscais', 'clientes', 'relatorios', 'academia', 'documentos', 'chat', 'minha_oficina']
 
 function db() {
   if (!supabaseUrl || !serviceRoleKey) throw new Error('Configuração do Supabase ausente no servidor.')
