@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'clientes')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) return NextResponse.json({ error: 'Organização do usuário não localizada.' }, { status: 403 })
 
     const supabase = getSupabaseAdmin()
     const inicio = request.nextUrl.searchParams.get('inicio')
@@ -72,6 +73,7 @@ export async function GET(request: NextRequest) {
     const { data: clientesData, error: clientesError } = await supabase
       .from('clientes')
       .select('*')
+      .eq('organizacao_id', auth.organizacaoId)
       .order('nome', { ascending: true })
 
     if (clientesError) throw clientesError
@@ -157,6 +159,7 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'clientes')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) return NextResponse.json({ error: 'Organização do usuário não localizada.' }, { status: 403 })
 
     const body = await request.json().catch(() => null)
     const nome = limparTexto(body?.nome)
@@ -180,6 +183,7 @@ export async function POST(request: NextRequest) {
     const { data: candidatos, error: candidatosError } = await supabase
       .from('clientes')
       .select('id, nome, cpf_cnpj, whatsapp')
+      .eq('organizacao_id', auth.organizacaoId)
 
     if (candidatosError) throw candidatosError
 
@@ -202,6 +206,7 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = {
+      organizacao_id: auth.organizacaoId,
       nome,
       cpf_cnpj: cpfCnpj || null,
       whatsapp: whatsapp || null,
@@ -235,6 +240,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'clientes')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) return NextResponse.json({ error: 'Organização do usuário não localizada.' }, { status: 403 })
 
     const body = await request.json().catch(() => null)
     const ids = Array.isArray(body?.ids)
@@ -268,6 +274,7 @@ export async function PATCH(request: NextRequest) {
       .from('clientes')
       .update(payload)
       .in('id', Array.from(new Set(ids)))
+      .eq('organizacao_id', auth.organizacaoId)
 
     if (error) throw error
 

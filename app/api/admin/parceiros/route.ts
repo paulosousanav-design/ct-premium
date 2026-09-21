@@ -33,11 +33,13 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'tecnicos')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) return NextResponse.json({ error: 'Organização do usuário não localizada.' }, { status: 403 })
 
     const supabase = getSupabaseAdmin()
     const { data, error } = await supabase
       .from('parceiros')
       .select('*')
+      .eq('organizacao_id', auth.organizacaoId)
       .order('responsavel', { ascending: true })
 
     if (error) throw error
@@ -56,6 +58,7 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'tecnicos')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) return NextResponse.json({ error: 'Organização do usuário não localizada.' }, { status: 403 })
 
     const body = await request.json().catch(() => null)
     const nome = String(body?.nome ?? '').trim()
@@ -82,6 +85,7 @@ export async function POST(request: NextRequest) {
     const observacoes = String(body?.observacoes ?? '').trim()
     const avisos: string[] = []
     const payload: Record<string, unknown> = {
+      organizacao_id: auth.organizacaoId,
       razao_social: empresa || nome,
       nome_fantasia: empresa || nome,
       responsavel: nome,
@@ -151,6 +155,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'tecnicos')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) return NextResponse.json({ error: 'Organização do usuário não localizada.' }, { status: 403 })
 
     const body = await request.json().catch(() => null)
     const id = Number(body?.id)
@@ -286,6 +291,7 @@ export async function PATCH(request: NextRequest) {
       .from('parceiros')
       .update(updatePayload)
       .eq('id', id)
+      .eq('organizacao_id', auth.organizacaoId)
 
     if (error) throw error
 

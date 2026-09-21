@@ -18,7 +18,8 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'garantidores')
     if (!auth.ok) return auth.response
-    const { data, error } = await db().from('garantidores').select('*').order('nome')
+    if (!auth.organizacaoId) return NextResponse.json({ error: 'Organização do usuário não localizada.' }, { status: 403 })
+    const { data, error } = await db().from('garantidores').select('*').eq('organizacao_id', auth.organizacaoId).order('nome')
     if (error) throw error
     return NextResponse.json({ data: data ?? [] })
   } catch (error) {
@@ -30,10 +31,11 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'garantidores')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) return NextResponse.json({ error: 'Organização do usuário não localizada.' }, { status: 403 })
     const body = await request.json().catch(() => null)
     const payload = validarPayload(body)
     if (!payload.nome) return NextResponse.json({ error: 'Informe o nome do garantidor.' }, { status: 400 })
-    const { error } = await db(request, auth).from('garantidores').insert(payload)
+    const { error } = await db(request, auth).from('garantidores').insert({ ...payload, organizacao_id: auth.organizacaoId })
     if (error) throw error
     return NextResponse.json({ ok: true }, { status: 201 })
   } catch (error) {
@@ -45,6 +47,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'garantidores')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) return NextResponse.json({ error: 'Organização do usuário não localizada.' }, { status: 403 })
     const body = await request.json().catch(() => null)
     const id = Number(body?.id)
     if (!id) return NextResponse.json({ error: 'Garantidor invalido.' }, { status: 400 })
@@ -54,7 +57,7 @@ export async function PATCH(request: NextRequest) {
     if (!body?.somenteStatus && !('nome' in payload && payload.nome)) {
       return NextResponse.json({ error: 'Informe o nome do garantidor.' }, { status: 400 })
     }
-    const { data, error } = await db(request, auth).from('garantidores').update(payload).eq('id', id).select('id').maybeSingle()
+    const { data, error } = await db(request, auth).from('garantidores').update(payload).eq('id', id).eq('organizacao_id', auth.organizacaoId).select('id').maybeSingle()
     if (error) throw error
     if (!data) return NextResponse.json({ error: 'Garantidor nao encontrado.' }, { status: 404 })
     return NextResponse.json({ ok: true })
