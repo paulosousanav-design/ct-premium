@@ -102,7 +102,7 @@ async function liberarAcessoPendente(supabase: ReturnType<typeof db>, organizaca
   if (organizacaoError) throw organizacaoError
   if (!organizacao) return NextResponse.json({ error: 'Oficina não encontrada.' }, { status: 404 })
 
-  const { data: cliente, error: clienteError } = await supabase.from('saas_clientes').select('nome, email').eq('id', organizacao.cliente_id).maybeSingle()
+  const { data: cliente, error: clienteError } = await supabase.from('saas_clientes').select('nome, email, cnpj, telefone').eq('id', organizacao.cliente_id).maybeSingle()
   if (clienteError) throw clienteError
   const email = texto(cliente?.email).toLowerCase()
   if (!email) return NextResponse.json({ error: 'Esta oficina não possui e-mail de acesso.' }, { status: 400 })
@@ -111,10 +111,18 @@ async function liberarAcessoPendente(supabase: ReturnType<typeof db>, organizaca
   if (administradorError) throw administradorError
   if (administrador) return NextResponse.json({ error: 'Esta oficina já possui acesso administrativo.' }, { status: 409 })
 
-  const { data: unidades, error: unidadesError } = await supabase.from('unidades').select('id').eq('organizacao_id', organizacao.id).eq('empresa_principal', true).limit(1)
+  const { data: unidades, error: unidadesError } = await supabase.from('unidades').select('id, empresa_principal').eq('organizacao_id', organizacao.id).limit(1)
   if (unidadesError) throw unidadesError
-  const unidade = unidades?.[0]
-  if (!unidade) return NextResponse.json({ error: 'A empresa principal da oficina não foi localizada.' }, { status: 400 })
+  let unidadeId = unidades?.[0]?.id
+  if (unidadeId && !unidades?.[0]?.empresa_principal) {
+    const { error } = await supabase.from('unidades').update({ empresa_principal: true }).eq('id', unidadeId)
+    if (error) throw error
+  }
+  if (!unidadeId) {
+    const { data, error } = await supabase.from('unidades').insert({ organizacao_id: organizacao.id, codigo: `CLI-${organizacao.id}`, tipo: 'EMPRESA', nome_fantasia: organizacao.nome, razao_social: organizacao.nome, cnpj: cliente?.cnpj ?? null, telefone: cliente?.telefone ?? null, email, ativa: true, empresa_principal: true }).select('id').single()
+    if (error) throw error
+    unidadeId = data.id
+  }
 
   const { data: listaAuth, error: listaAuthError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 })
   if (listaAuthError) throw listaAuthError
@@ -122,9 +130,9 @@ async function liberarAcessoPendente(supabase: ReturnType<typeof db>, organizaca
   const authUser = existente ?? (await supabase.auth.admin.createUser({ email, password: senha, email_confirm: true, user_metadata: { nome: cliente?.nome ?? organizacao.nome } })).data.user
   if (!authUser) throw new Error('Não foi possível criar o usuário de acesso.')
 
-  const { data: usuario, error: usuarioError } = await supabase.from('admin_usuarios').insert({ auth_user_id: authUser.id, organizacao_id: organizacao.id, unidade_padrao_id: unidade.id, nome: cliente?.nome ?? organizacao.nome, email, ativo: true, permissoes: permissoesCliente, acesso_plataforma: false, atualizado_em: new Date().toISOString() }).select('id').single()
+  const { data: usuario, error: usuarioError } = await supabase.from('admin_usuarios').insert({ auth_user_id: authUser.id, organizacao_id: organizacao.id, unidade_padrao_id: unidadeId, nome: cliente?.nome ?? organizacao.nome, email, ativo: true, permissoes: permissoesCliente, acesso_plataforma: false, atualizado_em: new Date().toISOString() }).select('id').single()
   if (usuarioError) throw usuarioError
-  const { error: vinculoError } = await supabase.from('admin_usuario_unidades').insert({ admin_usuario_id: usuario.id, unidade_id: unidade.id })
+  const { error: vinculoError } = await supabase.from('admin_usuario_unidades').insert({ admin_usuario_id: usuario.id, unidade_id: unidadeId })
   if (vinculoError) throw vinculoError
 
   return NextResponse.json({ ok: true, mensagem: 'Acesso administrativo liberado para esta oficina.' })
