@@ -18,16 +18,28 @@ export async function GET(request: NextRequest) {
     const supabase = db()
     if (!(await estruturaExiste(supabase))) return NextResponse.json({ estruturaPendente: true, conversas: [], mensagens: [], usuarios: [], ordens: [], totalNaoLidas: 0 })
 
-    await garantirCanais(supabase, auth.usuarioId, auth.unidadeId)
+    await garantirCanais(supabase, auth.usuarioId, auth.unidadeId, auth.acessoPlataforma)
     const [{ data: conversas, error: conversasError }, { data: participantes, error: participantesError }, { data: leituras, error: leiturasError }] = await Promise.all([
       supabase.from('chat_conversas').select('id, tipo, nome, unidade_id, chave_unica, atualizado_em').order('atualizado_em', { ascending: false }),
-      supabase.from('chat_participantes').select('conversa_id, admin_usuario_id, admin_usuarios:admin_usuario_id(id, nome, email, ativo, permissoes)'),
+      supabase.from('chat_participantes').select('conversa_id, admin_usuario_id, admin_usuarios:admin_usuario_id(id, nome, email, ativo, permissoes, organizacao_id)'),
       supabase.from('chat_leituras').select('conversa_id, ultima_leitura_em, ultima_mensagem_id').eq('admin_usuario_id', auth.usuarioId),
     ])
     if (conversasError || participantesError || leiturasError) throw conversasError || participantesError || leiturasError
 
-    const diretasDoUsuario = new Set((participantes ?? []).filter((item) => Number(item.admin_usuario_id) === auth.usuarioId).map((item) => Number(item.conversa_id)))
-    const permitidas = (conversas ?? []).filter((conversa) => conversa.tipo === 'GERAL' || (conversa.tipo === 'UNIDADE' && Number(conversa.unidade_id) === auth.unidadeId) || (conversa.tipo === 'DIRETA' && diretasDoUsuario.has(Number(conversa.id))))
+    const participantesPorConversa = new Map<number, Array<Record<string, unknown>>>()
+    for (const item of participantes ?? []) {
+      const id = Number(item.conversa_id)
+      participantesPorConversa.set(id, [...(participantesPorConversa.get(id) ?? []), item as unknown as Record<string, unknown>])
+    }
+    const diretasDoUsuario = new Set([...participantesPorConversa.entries()].filter(([_, lista]) => {
+      const participa = lista.some((item) => Number(item.admin_usuario_id) === auth.usuarioId)
+      const mesmaOrganizacao = auth.acessoPlataforma || lista.every((item) => {
+        const usuario = relacao(item.admin_usuarios)
+        return Number(usuario?.organizacao_id) === auth.organizacaoId
+      })
+      return participa && mesmaOrganizacao
+    }).map(([conversaId]) => conversaId))
+    const permitidas = (conversas ?? []).filter((conversa) => (conversa.tipo === 'GERAL' && auth.acessoPlataforma) || (conversa.tipo === 'UNIDADE' && Number(conversa.unidade_id) === auth.unidadeId) || (conversa.tipo === 'DIRETA' && diretasDoUsuario.has(Number(conversa.id))))
     const conversaIds = permitidas.map((item) => Number(item.id))
     const leituraPorConversa = new Map((leituras ?? []).map((item) => [Number(item.conversa_id), item]))
     const arquivamentoDisponivel = await tabelaExiste(supabase, 'chat_arquivamentos')
@@ -36,11 +48,6 @@ export async function GET(request: NextRequest) {
       : { data: [] }
     const arquivadas = new Set((arquivamentos ?? []).map((item) => Number(item.conversa_id)))
 
-    const participantesPorConversa = new Map<number, Array<Record<string, unknown>>>()
-    for (const item of participantes ?? []) {
-      const id = Number(item.conversa_id)
-      participantesPorConversa.set(id, [...(participantesPorConversa.get(id) ?? []), item as unknown as Record<string, unknown>])
-    }
     const unidadesIds = [...new Set(permitidas.map((item) => Number(item.unidade_id)).filter(Boolean))]
     const { data: unidades } = unidadesIds.length ? await supabase.from('unidades').select('id, nome_fantasia, tipo').in('id', unidadesIds) : { data: [] }
     const unidadePorId = new Map((unidades ?? []).map((item) => [Number(item.id), item]))
@@ -91,8 +98,10 @@ export async function GET(request: NextRequest) {
       temMais = (data?.length ?? 0) > 30
       mensagensSelecionadas = ocultarOrdensDeOutrasUnidades((data ?? []).slice(0, 30) as unknown as Array<Record<string, unknown>>, auth.unidadesPermitidas).reverse()
     }
+    let usuariosQuery = supabase.from('admin_usuarios').select('id, nome, email, ativo, permissoes').eq('ativo', true)
+    if (!auth.acessoPlataforma && auth.organizacaoId) usuariosQuery = usuariosQuery.eq('organizacao_id', auth.organizacaoId)
     const [{ data: usuarios }, { data: ordens }] = await Promise.all([
-      supabase.from('admin_usuarios').select('id, nome, email, ativo, permissoes').eq('ativo', true).order('nome'),
+      usuariosQuery.order('nome'),
       supabase.from('ordens_servico')
         .select('id, numero_os, clientes:cliente_id(nome)')
         .eq('unidade_id', auth.unidadeId)
@@ -129,8 +138,9 @@ export async function POST(request: NextRequest) {
     if (acao === 'CRIAR_DIRETA') {
       const destinatarioId = Number(body?.destinatarioId)
       if (!destinatarioId || destinatarioId === auth.usuarioId) return NextResponse.json({ error: 'Selecione outro usuario.' }, { status: 400 })
-      const { data: destinatario, error } = await supabase.from('admin_usuarios').select('id, ativo, permissoes').eq('id', destinatarioId).maybeSingle()
+      const { data: destinatario, error } = await supabase.from('admin_usuarios').select('id, ativo, permissoes, organizacao_id').eq('id', destinatarioId).maybeSingle()
       if (error || !destinatario || destinatario.ativo === false || !Array.isArray(destinatario.permissoes) || !destinatario.permissoes.includes('chat')) return NextResponse.json({ error: 'Usuario sem acesso ao chat.' }, { status: 400 })
+      if (!auth.acessoPlataforma && Number(destinatario.organizacao_id) !== auth.organizacaoId) return NextResponse.json({ error: 'Conversa direta disponível somente dentro da sua oficina.' }, { status: 403 })
       const ids = [auth.usuarioId, destinatarioId].sort((a, b) => a - b)
       const chave = `DIRETA:${ids[0]}:${ids[1]}`
       const { data: conversa, error: conversaError } = await supabase.from('chat_conversas').upsert({ tipo: 'DIRETA', chave_unica: chave, criado_por_id: auth.usuarioId, atualizado_em: new Date().toISOString() }, { onConflict: 'chave_unica' }).select('id').single()
@@ -141,7 +151,7 @@ export async function POST(request: NextRequest) {
     }
 
     const conversaId = Number(body?.conversaId)
-    if (!conversaId || !(await podeAcessar(supabase, conversaId, auth.usuarioId, auth.unidadeId))) return NextResponse.json({ error: 'Conversa nao autorizada.' }, { status: 403 })
+    if (!conversaId || !(await podeAcessar(supabase, conversaId, auth.usuarioId, auth.unidadeId, auth.organizacaoId, auth.acessoPlataforma))) return NextResponse.json({ error: 'Conversa nao autorizada.' }, { status: 403 })
 
     if (acao === 'ARQUIVAR' || acao === 'REABRIR') {
       if (!(await tabelaExiste(supabase, 'chat_arquivamentos'))) return NextResponse.json({ error: 'Execute o arquivo supabase-melhorar-chat-interno.sql.' }, { status: 400 })
@@ -206,22 +216,27 @@ function ocultarOrdensDeOutrasUnidades(mensagens: Array<Record<string, unknown>>
   })
 }
 
-async function garantirCanais(supabase: ReturnType<typeof db>, usuarioId: number, unidadeId: number) {
+async function garantirCanais(supabase: ReturnType<typeof db>, usuarioId: number, unidadeId: number, acessoPlataforma: boolean) {
   const agora = new Date().toISOString()
-  const { error } = await supabase.from('chat_conversas').upsert([
-    { tipo: 'GERAL', nome: 'Geral', chave_unica: 'GERAL', criado_por_id: usuarioId, atualizado_em: agora },
-    { tipo: 'UNIDADE', nome: 'Unidade', unidade_id: unidadeId, chave_unica: `UNIDADE:${unidadeId}`, criado_por_id: usuarioId, atualizado_em: agora },
-  ], { onConflict: 'chave_unica', ignoreDuplicates: true })
+  const canais = [{ tipo: 'UNIDADE', nome: 'Unidade', unidade_id: unidadeId, chave_unica: `UNIDADE:${unidadeId}`, criado_por_id: usuarioId, atualizado_em: agora }]
+  if (acessoPlataforma) canais.unshift({ tipo: 'GERAL', nome: 'Geral', chave_unica: 'GERAL', criado_por_id: usuarioId, atualizado_em: agora } as never)
+  const { error } = await supabase.from('chat_conversas').upsert(canais, { onConflict: 'chave_unica', ignoreDuplicates: true })
   if (error) throw error
 }
 
-async function podeAcessar(supabase: ReturnType<typeof db>, conversaId: number, usuarioId: number, unidadeId: number) {
+async function podeAcessar(supabase: ReturnType<typeof db>, conversaId: number, usuarioId: number, unidadeId: number, organizacaoId: number | null, acessoPlataforma: boolean) {
   const { data: conversa } = await supabase.from('chat_conversas').select('id, tipo, unidade_id').eq('id', conversaId).maybeSingle()
   if (!conversa) return false
-  if (conversa.tipo === 'GERAL') return true
+  if (conversa.tipo === 'GERAL') return acessoPlataforma
   if (conversa.tipo === 'UNIDADE') return Number(conversa.unidade_id) === unidadeId
-  const { data: participante } = await supabase.from('chat_participantes').select('conversa_id').eq('conversa_id', conversaId).eq('admin_usuario_id', usuarioId).maybeSingle()
-  return Boolean(participante)
+  const { data: participantes } = await supabase.from('chat_participantes').select('admin_usuario_id, admin_usuarios:admin_usuario_id(organizacao_id)').eq('conversa_id', conversaId)
+  const participa = (participantes ?? []).some((item) => Number(item.admin_usuario_id) === usuarioId)
+  if (!participa) return false
+  return acessoPlataforma || (participantes ?? []).every((item) => Number(relacao(item.admin_usuarios)?.organizacao_id) === organizacaoId)
+}
+
+function relacao(value: unknown) {
+  return (Array.isArray(value) ? value[0] : value) as { organizacao_id?: number | null } | null
 }
 
 function mensagemErro(error: unknown, fallback: string) {

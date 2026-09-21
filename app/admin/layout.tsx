@@ -91,6 +91,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [monitoramentoCriticos, setMonitoramentoCriticos] = useState(0)
   const [chatAlerta, setChatAlerta] = useState<ChatAlerta | null>(null)
   const [chatSomAtivo, setChatSomAtivo] = useState(true)
+  const [acessoP4, setAcessoP4] = useState(false)
   const chatNaoLidasAnterior = useRef<number | null>(null)
   const chatAlertaTimer = useRef<number | null>(null)
   const pathname = usePathname()
@@ -156,6 +157,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void Promise.resolve().then(() => setChatSomAtivo(window.localStorage.getItem('ct-chat-som') !== 'desativado'))
+  }, [])
+
+  useEffect(() => {
+    setAcessoP4(window.location.hostname.toLowerCase() === 'app.p4integra.com.br')
   }, [])
 
   useEffect(() => {
@@ -316,8 +321,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-3">
               <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-white p-2">
                 <Image
-                  src="/logo-ct.png"
-                  alt="CT Premium"
+                  src={acessoP4 ? '/p4-integra-logo.png' : '/logo-ct.png'}
+                  alt={acessoP4 ? 'P4 Integra' : 'CT Premium'}
                   width={70}
                   height={70}
                   className="object-contain"
@@ -326,9 +331,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               </div>
 
               <div>
-                <h2 className="text-2xl font-bold">CT Premium</h2>
-                <p className="text-slate-300">Assistencia Premium</p>
-                <p className="text-xs text-slate-400">www.chameotecnico.com.br</p>
+                <h2 className="text-2xl font-bold">{acessoP4 ? 'P4 Integra' : 'CT Premium'}</h2>
+                <p className="text-slate-300">{acessoP4 ? 'Gestão que conecta' : 'Assistencia Premium'}</p>
+                <p className="text-xs text-slate-400">{acessoP4 ? 'app.p4integra.com.br' : 'www.chameotecnico.com.br'}</p>
               </div>
             </div>
           </div>
@@ -397,8 +402,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <div className="border-b border-slate-200 bg-[#f8faf9]">
             <div className="flex justify-center py-2">
               <Image
-                src="/logo-chame-o-tecnico.png"
-                alt="Chame o Tecnico"
+                src={acessoP4 ? '/p4-integra-logo.png' : '/logo-chame-o-tecnico.png'}
+                alt={acessoP4 ? 'P4 Integra' : 'Chame o Tecnico'}
                 width={900}
                 height={180}
                 className="h-auto w-[180px] object-contain md:w-[320px] lg:w-[460px]"
