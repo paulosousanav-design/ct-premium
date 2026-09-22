@@ -19,6 +19,9 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdminUnidade(request, 'os')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) {
+      return NextResponse.json({ error: 'A organização deste acesso não foi localizada.' }, { status: 403 })
+    }
 
     const clienteId = Number(request.nextUrl.searchParams.get('clienteId'))
     if (!Number.isInteger(clienteId) || clienteId <= 0) {
@@ -31,6 +34,7 @@ export async function GET(request: NextRequest) {
         .from('clientes')
         .select('id, nome, cpf_cnpj, whatsapp, email, cep, logradouro, numero, bairro, cidade, estado')
         .eq('id', clienteId)
+        .eq('organizacao_id', auth.organizacaoId)
         .maybeSingle(),
       supabase
         .from('equipamentos_clientes')
@@ -86,6 +90,7 @@ export async function GET(request: NextRequest) {
           garantia_asc
         `)
         .in('equipamento_id', equipamentoIds)
+        .eq('organizacao_id', auth.organizacaoId)
         .order('created_at', { ascending: false })
 
       if (error) throw error

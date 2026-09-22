@@ -14,6 +14,9 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'clientes')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) {
+      return NextResponse.json({ error: 'A organização deste acesso não foi localizada.' }, { status: 403 })
+    }
 
     const busca = String(request.nextUrl.searchParams.get('busca') ?? '').trim()
     if (busca.length < 2) return NextResponse.json({ equipamentos: [] })
@@ -23,9 +26,9 @@ export async function GET(request: NextRequest) {
     const serieNormalizada = normalizarSerie(busca)
 
     const [clientesResultado, equipamentosResultado, ordensResultado] = await Promise.all([
-      supabase.from('clientes').select('id').or(`nome.ilike.%${termo}%,cpf_cnpj.ilike.%${termo}%,whatsapp.ilike.%${termo}%`).limit(100),
-      supabase.from('equipamentos_clientes').select('id').eq('ativo', true).or(`modelo.ilike.%${termo}%,numero_serie.ilike.%${termo}%${serieNormalizada ? `,numero_serie_normalizada.ilike.%${serieNormalizada}%` : ''}`).limit(100),
-      supabase.from('ordens_servico').select('equipamento_id').ilike('numero_os', `%${termo}%`).not('equipamento_id', 'is', null).limit(100),
+      supabase.from('clientes').select('id').eq('organizacao_id', auth.organizacaoId).or(`nome.ilike.%${termo}%,cpf_cnpj.ilike.%${termo}%,whatsapp.ilike.%${termo}%`).limit(100),
+      supabase.from('equipamentos_clientes').select('id, cliente_id, clientes!inner(organizacao_id)').eq('clientes.organizacao_id', auth.organizacaoId).eq('ativo', true).or(`modelo.ilike.%${termo}%,numero_serie.ilike.%${termo}%${serieNormalizada ? `,numero_serie_normalizada.ilike.%${serieNormalizada}%` : ''}`).limit(100),
+      supabase.from('ordens_servico').select('equipamento_id').eq('organizacao_id', auth.organizacaoId).ilike('numero_os', `%${termo}%`).not('equipamento_id', 'is', null).limit(100),
     ])
 
     for (const resultado of [clientesResultado, equipamentosResultado, ordensResultado]) {
@@ -61,7 +64,7 @@ export async function GET(request: NextRequest) {
       supabase.from('ordens_servico').select(`
         id, equipamento_id, numero_os, created_at, finalizada_em, equipamento_entregue_em,
         status, defeito, diagnostico_tecnico, servico_executado
-      `).in('equipamento_id', ids).order('created_at', { ascending: false }).limit(1000),
+      `).eq('organizacao_id', auth.organizacaoId).in('equipamento_id', ids).order('created_at', { ascending: false }).limit(1000),
     ])
     if (equipamentosError) throw equipamentosError
     if (historicoError) throw historicoError

@@ -34,8 +34,17 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdminUnidade(request, 'os')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) {
+      return NextResponse.json({ error: 'A organização deste acesso não foi localizada.' }, { status: 403 })
+    }
 
     const supabase = getSupabaseAdmin()
+    if (!await colunaExiste(supabase, 'ordens_servico', 'organizacao_id')) {
+      return NextResponse.json(
+        { error: 'Execute o arquivo supabase-isolamento-ordens-organizacao.sql antes de consultar ou cadastrar OS.' },
+        { status: 503 }
+      )
+    }
     if (request.nextUrl.searchParams.get('opcoes') === '1') {
       const [{ data: categorias, error: categoriasError }, { data: marcas, error: marcasError }] = await Promise.all([
         supabase.from('categorias').select('id, nome').order('nome', { ascending: true }),
@@ -64,6 +73,7 @@ export async function GET(request: NextRequest) {
     const { data: clientes, error } = await supabase
       .from('clientes')
       .select('id, nome, cpf_cnpj, whatsapp, email, cep, logradouro, numero, bairro, cidade, estado')
+      .eq('organizacao_id', auth.organizacaoId)
       .or(filtros.join(','))
       .order('nome', { ascending: true })
       .limit(8)
@@ -77,11 +87,9 @@ export async function GET(request: NextRequest) {
       let ordensQuery = supabase
         .from('ordens_servico')
         .select('cliente_id, numero_os, created_at')
+        .eq('organizacao_id', auth.organizacaoId)
         .in('cliente_id', ids)
         .order('created_at', { ascending: false })
-      if (await colunaExiste(supabase, 'ordens_servico', 'unidade_id')) {
-        ordensQuery = ordensQuery.eq('unidade_id', auth.unidadeId)
-      }
       const { data: ordens, error: ordensError } = await ordensQuery
 
       if (ordensError) throw ordensError
@@ -119,6 +127,9 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdminUnidade(request, 'os')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) {
+      return NextResponse.json({ error: 'A organização deste acesso não foi localizada.' }, { status: 403 })
+    }
 
     const body = await request.json().catch(() => null)
 
@@ -155,8 +166,15 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin(request, auth)
+    if (!await colunaExiste(supabase, 'ordens_servico', 'organizacao_id')) {
+      return NextResponse.json(
+        { error: 'Execute o arquivo supabase-isolamento-ordens-organizacao.sql antes de cadastrar uma OS.' },
+        { status: 503 }
+      )
+    }
     const email = String(body?.email ?? '').trim()
     const clientePayload = {
+      organizacao_id: auth.organizacaoId,
       nome: nomeCliente,
       cpf_cnpj: cpfCnpj,
       whatsapp,
@@ -176,6 +194,7 @@ export async function POST(request: NextRequest) {
         .from('clientes')
         .select('id')
         .eq('id', clienteId)
+        .eq('organizacao_id', auth.organizacaoId)
         .maybeSingle()
 
       if (clienteExistenteError) throw clienteExistenteError
@@ -189,6 +208,7 @@ export async function POST(request: NextRequest) {
         .from('clientes')
         .select('id')
         .eq('cpf_cnpj', cpfCnpj)
+        .eq('organizacao_id', auth.organizacaoId)
         .maybeSingle()
 
       if (clientePorDocumentoError) throw clientePorDocumentoError
@@ -200,6 +220,7 @@ export async function POST(request: NextRequest) {
         .from('clientes')
         .select('id')
         .eq('whatsapp', whatsapp)
+        .eq('organizacao_id', auth.organizacaoId)
         .maybeSingle()
 
       if (clientePorWhatsappError) throw clientePorWhatsappError
@@ -211,6 +232,7 @@ export async function POST(request: NextRequest) {
         .from('clientes')
         .update(clientePayload)
         .eq('id', clienteId)
+        .eq('organizacao_id', auth.organizacaoId)
 
       if (atualizarClienteError) throw atualizarClienteError
     } else {
@@ -291,6 +313,7 @@ export async function POST(request: NextRequest) {
         .from('ordens_servico')
         .select('id, equipamento_id, status')
         .eq('id', garantiaAscOrigemOsId)
+        .eq('organizacao_id', auth.organizacaoId)
         .maybeSingle()
 
       if (origemGarantiaError) throw origemGarantiaError
@@ -305,6 +328,7 @@ export async function POST(request: NextRequest) {
 
     const origemOs = garantiaAsc ? 'GARANTIA_ASC' : garantia ? 'GARANTIA_SEGURADORA' : 'ABERTURA_INTERNA'
     const osPayload: Record<string, unknown> = {
+      organizacao_id: auth.organizacaoId,
       cliente_id: Number(clienteId),
       equipamento_id: equipamentoId,
       categoria_id: categoriaId,
