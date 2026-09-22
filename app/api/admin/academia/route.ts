@@ -19,13 +19,14 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'academia')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) return NextResponse.json({ error: 'Organização do usuário não localizada.' }, { status: 403 })
     const supabase = db()
     const { error: tabelaError } = await supabase.from('academia_conteudos').select('id').limit(0)
     if (tabelaError) return NextResponse.json({ tabelaPendente: true, conteudos: [], tecnicos: [], destinatarios: [], progressos: [] })
 
     const [{ data: conteudos, error }, { data: tecnicos }, { data: destinatarios }, { data: progressos }] = await Promise.all([
-      supabase.from('academia_conteudos').select('*').order('criado_em', { ascending: false }),
-      supabase.from('parceiros').select('id, responsavel, nome_fantasia, status').order('responsavel'),
+      supabase.from('academia_conteudos').select('*').eq('organizacao_id', auth.organizacaoId).order('criado_em', { ascending: false }),
+      supabase.from('parceiros').select('id, responsavel, nome_fantasia, status').eq('organizacao_id', auth.organizacaoId).order('responsavel'),
       supabase.from('academia_conteudo_tecnicos').select('conteudo_id, parceiro_id'),
       supabase.from('academia_progresso').select('conteudo_id, parceiro_id, visualizado_em, confirmado_em'),
     ])
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'academia')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) return NextResponse.json({ error: 'Organização do usuário não localizada.' }, { status: 403 })
     const body = await request.json().catch(() => null)
     const id = Number(body?.id) || null
     const tipo = tipos.has(texto(body?.tipo)) ? texto(body?.tipo) : 'COMUNICADO'
@@ -51,6 +53,7 @@ export async function POST(request: NextRequest) {
 
     const agora = new Date().toISOString()
     const payload = {
+      organizacao_id: auth.organizacaoId,
       tipo,
       titulo,
       resumo: texto(body?.resumo) || null,
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
     const supabase = db(request, auth)
     const query = id
-      ? supabase.from('academia_conteudos').update(payload).eq('id', id)
+      ? supabase.from('academia_conteudos').update(payload).eq('id', id).eq('organizacao_id', auth.organizacaoId)
       : supabase.from('academia_conteudos').insert({ ...payload, criado_por_nome: auth.nome, criado_por_email: auth.email })
     const { data, error } = await query.select('id').single()
     if (error) throw error
@@ -86,9 +89,10 @@ export async function DELETE(request: NextRequest) {
   try {
     const auth = await requireAdminPermission(request, 'academia')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) return NextResponse.json({ error: 'Organização do usuário não localizada.' }, { status: 403 })
     const id = Number(request.nextUrl.searchParams.get('id'))
     if (!id) return NextResponse.json({ error: 'Conteúdo inválido.' }, { status: 400 })
-    const { error } = await db(request, auth).from('academia_conteudos').delete().eq('id', id)
+    const { error } = await db(request, auth).from('academia_conteudos').delete().eq('id', id).eq('organizacao_id', auth.organizacaoId)
     if (error) throw error
     return NextResponse.json({ ok: true })
   } catch (error) {
