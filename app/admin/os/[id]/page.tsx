@@ -1004,7 +1004,10 @@ export default function OrdemServicoAtendimentoPage() {
       console.error('Erro ao gerar QR Code da OS:', error)
     }
 
-    const logoUrl = `${window.location.origin}/logo-chame-o-tecnico.png`
+    const acessoP4 = window.location.hostname.toLowerCase() === 'app.p4integra.com.br'
+    const logoUrl = `${window.location.origin}${acessoP4 ? '/p4-integra-logo.png' : '/logo-chame-o-tecnico.png'}`
+    const marca = acessoP4 ? 'P4 Integra' : 'Chame o Técnico'
+    const contato = acessoP4 ? 'Sistema de gestão P4 Integra' : 'www.chameotecnico.com.br | atendimento@chameotecnico.com.br'
     const valorPecasImpressao = toNumber(os.cliente_valor_pecas ?? os.valor_pecas)
     const valorMaoObraImpressao = toNumber(os.cliente_valor_mao_obra ?? os.valor_mao_obra)
     const descontoImpressao = toNumber(os.cliente_desconto ?? os.desconto)
@@ -1059,7 +1062,7 @@ export default function OrdemServicoAtendimentoPage() {
         </head>
         <body>
           <div class="print-header">
-            <img class="logo" src="${logoUrl}" alt="Chame o Técnico" />
+            <img class="logo" src="${logoUrl}" alt="${marca}" />
             <div class="header-title">
               <p>Atendimento técnico, garantia e resumo do chamado</p>
             </div>
@@ -1209,7 +1212,7 @@ export default function OrdemServicoAtendimentoPage() {
           }
 
           <div class="print-footer">
-            <div class="contact-line">www.chameotecnico.com.br | atendimento@chameotecnico.com.br</div>
+            <div class="contact-line">${contato}</div>
             <div class="terms">
               Garantia de 90 dias sobre o serviço executado, limitada ao defeito informado e ao reparo descrito nesta OS, não cobrindo mau uso, queda, umidade, oscilação elétrica, violação por terceiros ou defeitos distintos. Declaro ter recebido o equipamento/atendimento acima descrito e estou ciente das condições de garantia, valores e peças informadas.
             </div>
@@ -1242,7 +1245,9 @@ export default function OrdemServicoAtendimentoPage() {
 
     try {
       const qrCodeUrl = await gerarQrCodeOS()
-      const logoUrl = `${window.location.origin}/logo-chame-o-tecnico.png`
+      const acessoP4 = window.location.hostname.toLowerCase() === 'app.p4integra.com.br'
+      const logoUrl = `${window.location.origin}${acessoP4 ? '/p4-integra-logo.png' : '/logo-chame-o-tecnico.png'}`
+      const marca = acessoP4 ? 'P4 Integra' : 'Chame o Técnico'
       const numeroOs = escapeHtml(os.numero_os ?? String(os.id))
       const cliente = escapeHtml(os.cliente?.nome ?? '-')
       const equipamento = escapeHtml(
@@ -1279,7 +1284,7 @@ export default function OrdemServicoAtendimentoPage() {
             <div class="label">
               <div class="content">
                 <div class="brand">
-                  <img class="logo" src="${logoUrl}" alt="Chame o Técnico" />
+                  <img class="logo" src="${logoUrl}" alt="${marca}" />
                   <div class="os">OS ${numeroOs}</div>
                 </div>
                 <div class="field"><span>Cliente</span><strong>${cliente}</strong></div>
