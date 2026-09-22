@@ -184,6 +184,9 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdminUnidade(request, 'os')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) {
+      return NextResponse.json({ error: 'A organização deste acesso não foi localizada.' }, { status: 403 })
+    }
 
     const osId = Number(request.nextUrl.searchParams.get('osId'))
 
@@ -192,6 +195,9 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin()
+    if (!await colunaExiste(supabase, 'ordens_servico', 'organizacao_id')) {
+      return NextResponse.json({ error: 'Execute o arquivo supabase-isolamento-ordens-organizacao.sql antes de atender uma OS.' }, { status: 503 })
+    }
     const temUnidade = await colunaExiste(supabase, 'ordens_servico', 'unidade_id')
     const colunasOrcamentoSeparadoExistem = await colunaExiste(supabase, 'ordens_servico', 'tecnico_total')
     const colunaReferenciaGarantidorExiste = await colunaExiste(supabase, 'ordens_servico', 'referencia_garantidor')
@@ -277,6 +283,7 @@ export async function GET(request: NextRequest) {
       .from('ordens_servico')
       .select(`${selectBase}${selectAvulso}`)
       .eq('id', osId)
+      .eq('organizacao_id', auth.organizacaoId)
       .maybeSingle()
 
     if (error && String(error.code) === '42703') {
@@ -284,6 +291,7 @@ export async function GET(request: NextRequest) {
         .from('ordens_servico')
         .select(selectBase)
         .eq('id', osId)
+        .eq('organizacao_id', auth.organizacaoId)
         .maybeSingle()
 
       data = fallback.data as unknown as typeof data
@@ -309,6 +317,7 @@ export async function GET(request: NextRequest) {
         .from('clientes')
         .select('id, nome, cpf_cnpj, whatsapp, email, cep, logradouro, numero, bairro, cidade, estado, latitude, longitude')
         .eq('id', ordem.cliente_id)
+        .eq('organizacao_id', auth.organizacaoId)
         .maybeSingle()
 
       if (clienteError) throw clienteError
@@ -422,6 +431,7 @@ export async function GET(request: NextRequest) {
     const { data: garantidores, error: garantidoresError } = await supabase
       .from('garantidores')
       .select('id, nome, ativo')
+      .eq('organizacao_id', auth.organizacaoId)
       .order('nome', { ascending: true })
 
     if (garantidoresError) throw garantidoresError
@@ -448,6 +458,7 @@ export async function GET(request: NextRequest) {
         comissao_pecas_percentual,
         comissao_mao_obra_percentual
       `)
+      .eq('organizacao_id', auth.organizacaoId)
       .order('created_at', { ascending: true })
 
     if (parceirosError) throw parceirosError
@@ -696,6 +707,9 @@ export async function PATCH(request: NextRequest) {
   try {
     const auth = await requireAdminUnidade(request, 'os')
     if (!auth.ok) return auth.response
+    if (!auth.organizacaoId) {
+      return NextResponse.json({ error: 'A organização deste acesso não foi localizada.' }, { status: 403 })
+    }
 
     const body = await request.json().catch(() => null)
     const osId = Number(body?.osId)
@@ -722,6 +736,7 @@ export async function PATCH(request: NextRequest) {
       .from('ordens_servico')
       .select(osAtualSelect)
       .eq('id', osId)
+      .eq('organizacao_id', auth.organizacaoId)
       .maybeSingle()
     const osAtual = osAtualData as unknown as { id: number; status: string | null; prioridade: string | null; bloqueada: boolean | null; valor_recebido_cliente?: number | string | null; parceiro_id?: number | null; tecnico_avulso_nome?: string | null; unidade_id?: number | null } | null
 
