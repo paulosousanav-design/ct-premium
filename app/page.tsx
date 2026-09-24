@@ -83,6 +83,18 @@ const categoriasVisuais = [
   { nome: 'Outros Servicos', imagem: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=400&q=80' },
 ]
 
+const marcasAtendidas = [
+  { nome: 'LG', destaque: 'lg' },
+  { nome: 'Samsung', destaque: 'samsung' },
+  { nome: 'Electrolux', destaque: 'electrolux' },
+  { nome: 'Brastemp', destaque: 'brastemp' },
+  { nome: 'Consul', destaque: 'consul' },
+  { nome: 'Panasonic', destaque: 'panasonic' },
+  { nome: 'Philco', destaque: 'philco' },
+  { nome: 'Midea', destaque: 'midea' },
+  { nome: 'Carrier', destaque: 'carrier' },
+]
+
 const passos = [
   { numero: '1', titulo: 'Abra o chamado', texto: 'Informe seus dados e o problema.' },
   { numero: '2', titulo: 'Envie fotos', texto: 'Fotos ajudam a equipe a entender melhor.' },
@@ -435,6 +447,24 @@ export default function Home() {
             {!aberturaChamadosAtiva ? 'Abertura em breve' : salvando ? 'Enviando...' : 'Enviar chamado'}
           </button>
         </form>
+      </section>
+
+      <section className="brand-band" aria-labelledby="marcas-atendidas">
+        <div className="home-shell brand-band-inner">
+          <div className="brand-band-copy">
+            <span>ASSISTÊNCIA MULTIMARCAS</span>
+            <h2 id="marcas-atendidas">Marcas que fazem parte do seu dia a dia</h2>
+          </div>
+          <div className="brand-marquee" aria-label="Marcas atendidas pelo Chame o Técnico">
+            <div className="brand-marquee-track">
+              {[...marcasAtendidas, ...marcasAtendidas].map((marca, index) => (
+                <div key={`${marca.nome}-${index}`} className={`brand-tile brand-tile-${marca.destaque}`}>
+                  {marca.nome}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </section>
 
       {cookiesAceitos === false && (

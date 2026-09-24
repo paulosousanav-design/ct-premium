@@ -74,7 +74,7 @@ body {
         }
 
         .home-shell {
-          width: min(1200px, calc(100% - 40px));
+          width: min(1360px, calc(100% - 40px));
           margin: 0 auto;
         }
 
@@ -83,7 +83,11 @@ body {
           align-items: center;
           justify-content: space-between;
           gap: 28px;
-          padding: 20px 0 14px;
+          margin-top: 14px;
+          padding: 14px 22px;
+          border-radius: 18px;
+          background: linear-gradient(105deg, #061a3a 0%, #073a7c 55%, #0759a5 100%);
+          box-shadow: 0 12px 28px rgba(5, 37, 84, 0.18);
         }
 
         .home-logo {
@@ -101,13 +105,13 @@ body {
 
         .home-nav a,
         .home-nav summary {
-          color: #071735;
+          color: #f8fbff;
           text-decoration: none;
           cursor: pointer;
         }
 
         .home-nav .active {
-          color: #ff6b00;
+          color: #ffffff;
           border-bottom: 2px solid #ff6b00;
           padding-bottom: 6px;
         }
@@ -135,6 +139,90 @@ body {
           border-radius: 28px;
           background: linear-gradient(115deg, #ffffff 0%, #ffffff 38%, #eaf7ff 78%, #f7fbff 100%);
           box-shadow: 0 14px 34px rgba(20, 44, 78, 0.1);
+        }
+
+        .brand-band {
+          margin-top: 22px;
+          padding: 28px 0;
+          overflow: hidden;
+          background: linear-gradient(105deg, #061a3a 0%, #073c7f 58%, #0b69bd 100%);
+          color: #ffffff;
+        }
+
+        .brand-band-inner {
+          display: grid;
+          grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr);
+          align-items: center;
+          gap: 28px;
+        }
+
+        .brand-band-copy span {
+          display: inline-flex;
+          border: 1px solid rgba(151, 216, 255, 0.46);
+          border-radius: 999px;
+          padding: 6px 10px;
+          color: #bdeeff;
+          font-size: 10px;
+          font-weight: 950;
+          letter-spacing: 0.12em;
+        }
+
+        .brand-band-copy h2 {
+          max-width: 290px;
+          margin: 10px 0 0;
+          font-size: clamp(21px, 2vw, 29px);
+          line-height: 1.05;
+          font-weight: 950;
+        }
+
+        .brand-marquee {
+          position: relative;
+          overflow: hidden;
+          mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+        }
+
+        .brand-marquee-track {
+          display: flex;
+          width: max-content;
+          align-items: center;
+          gap: 12px;
+          animation: brand-scroll 32s linear infinite;
+        }
+
+        .brand-marquee:hover .brand-marquee-track {
+          animation-play-state: paused;
+        }
+
+        .brand-tile {
+          display: inline-flex;
+          min-width: 134px;
+          height: 72px;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(255, 255, 255, 0.22);
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.97);
+          color: #082c61;
+          padding: 0 18px;
+          font-size: 21px;
+          font-weight: 950;
+          letter-spacing: -0.05em;
+          box-shadow: 0 10px 22px rgba(0, 18, 51, 0.18);
+        }
+
+        .brand-tile-lg { color: #a50034; font-size: 28px; letter-spacing: -0.1em; }
+        .brand-tile-samsung { color: #1428a0; font-size: 18px; font-style: italic; letter-spacing: -0.08em; }
+        .brand-tile-electrolux { color: #164f8b; font-size: 17px; }
+        .brand-tile-brastemp { color: #006bb6; }
+        .brand-tile-consul { color: #1c5d9e; font-style: italic; }
+        .brand-tile-panasonic { color: #14203c; font-size: 17px; letter-spacing: 0.01em; }
+        .brand-tile-philco { color: #0068b4; }
+        .brand-tile-midea { color: #1596c9; }
+        .brand-tile-carrier { color: #173f85; font-style: italic; }
+
+        @keyframes brand-scroll {
+          from { transform: translateX(0); }
+          to { transform: translateX(calc(-50% - 6px)); }
         }
 
         .hero-card::before {
@@ -784,11 +872,54 @@ body {
           .categories {
             grid-template-columns: repeat(3, 1fr);
           }
+
+          .brand-band-inner {
+            grid-template-columns: 1fr;
+            gap: 16px;
+          }
+
+          .brand-band-copy h2 {
+            max-width: none;
+          }
         }
 
         @media (max-width: 760px) {
           .home-shell {
             width: min(100% - 24px, 1200px);
+          }
+
+          .home-header {
+            margin-top: 0;
+            border-radius: 0 0 16px 16px;
+            padding: 12px;
+          }
+
+          .brand-band {
+            margin-top: 16px;
+            padding: 22px 0;
+          }
+
+          .brand-marquee {
+            overflow-x: auto;
+            mask-image: none;
+            padding-bottom: 4px;
+            scrollbar-width: thin;
+          }
+
+          .brand-marquee-track {
+            gap: 10px;
+            animation: none;
+          }
+
+          .brand-marquee-track .brand-tile:nth-child(n + 10) {
+            display: none;
+          }
+
+          .brand-tile {
+            min-width: 118px;
+            height: 62px;
+            border-radius: 14px;
+            font-size: 18px;
           }
 
           .home-header,
