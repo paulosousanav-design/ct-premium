@@ -212,25 +212,15 @@ body {
 
         .brand-tile-lg { min-width: 190px; }
         .brand-tile-samsung { min-width: 166px; }
-        .brand-lg-reference,
-        .brand-samsung-reference {
+        .brand-reference-image {
           display: block;
-          background-repeat: no-repeat;
+          width: auto;
+          max-width: 100%;
+          height: auto;
+          object-fit: contain;
         }
-        .brand-lg-reference {
-          width: 148px;
-          height: 30px;
-          background-image: url('/brand-lg-electronics-reference.png');
-          background-position: -29px -54px;
-          background-size: 206px 134px;
-        }
-        .brand-samsung-reference {
-          width: 166px;
-          height: 32px;
-          background-image: url('/brand-samsung-reference.png');
-          background-position: -48px -47px;
-          background-size: 287px 144px;
-        }
+        .brand-lg-image { width: 154px; height: 36px; }
+        .brand-samsung-image { width: 170px; height: 38px; }
         .brand-tile-electrolux { color: #164f8b; font-size: 17px; }
         .brand-tile-brastemp { color: #006bb6; }
         .brand-tile-consul { color: #1c5d9e; font-style: italic; }

@@ -461,9 +461,9 @@ export default function Home() {
               {[...marcasAtendidas, ...marcasAtendidas].map((marca, index) => (
                 <div key={`${marca.nome}-${index}`} className={`brand-tile brand-tile-${marca.destaque}`}>
                   {marca.destaque === 'lg' ? (
-                    <span className="brand-lg-reference" role="img" aria-label="LG Electronics" />
+                    <Image src="/brand-lg-electronics.png" alt="LG Electronics" width={154} height={36} className="brand-reference-image brand-lg-image" />
                   ) : marca.destaque === 'samsung' ? (
-                    <span className="brand-samsung-reference" role="img" aria-label="Samsung" />
+                    <Image src="/brand-samsung.png" alt="Samsung" width={170} height={38} className="brand-reference-image brand-samsung-image" />
                   ) : marca.destaque === 'cta' ? (
                     <span className="brand-cta-copy"><small>PRECISA DE AJUDA?</small><span>Abra seu chamado <b>→</b></span></span>
                   ) : marca.nome}
