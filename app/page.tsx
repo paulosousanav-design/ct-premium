@@ -331,9 +331,9 @@ export default function Home() {
           </div>
 
           <div className="stats-row">
-            <Stat value="Abrir chamado" label="Solicite atendimento agora" />
-            <Stat value="Seja parceiro" label="Cadastre-se como técnico" />
-            <Stat value="Assistência Premium" label="Atendimento especializado" />
+            <Stat value="Atendimento em MS" label="Cobertura em expansão" />
+            <Stat value="Acompanhe sua OS" label="Tudo online e seguro" />
+            <Stat value="Técnicos verificados" label="Parceiros qualificados" />
             <Stat value="30 anos" label="de experiência" />
           </div>
         </div>
