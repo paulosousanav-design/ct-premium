@@ -332,7 +332,7 @@ export default function Home() {
 
           <div
             className="stats-row"
-            style={{ top: 'auto', bottom: 24, width: 338, gridTemplateColumns: '1.2fr 1fr', gap: 13 }}
+            style={{ top: 'auto', bottom: 128, width: 'min(386px, calc(100% - 24px))', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}
           >
             <Stat value="Atendimento em MS" label="Cobertura em expansão" />
             <Stat value="Acompanhe sua OS" label="Tudo online e seguro" />
