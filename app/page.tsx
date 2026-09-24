@@ -462,13 +462,13 @@ export default function Home() {
                 <div key={`${marca.nome}-${index}`} className={`brand-tile brand-tile-${marca.destaque}`}>
                   {marca.destaque === 'lg' ? (
                     <span className="brand-lg-lockup" aria-label="LG">
-                      <span className="brand-lg-disc">LG</span>
-                      <span>LG</span>
+                      <span className="brand-lg-disc" aria-hidden="true">LG</span>
+                      <span className="brand-lg-word">LG</span>
                     </span>
                   ) : marca.destaque === 'samsung' ? (
                     <span className="brand-samsung-oval">SAMSUNG</span>
                   ) : marca.destaque === 'cta' ? (
-                    <span className="brand-cta-copy"><small>PRECISA DE AJUDA?</small>Abra seu chamado <b>→</b></span>
+                    <span className="brand-cta-copy"><small>PRECISA DE AJUDA?</small><span>Abra seu chamado <b>→</b></span></span>
                   ) : marca.nome}
                 </div>
               ))}

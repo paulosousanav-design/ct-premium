@@ -226,29 +226,32 @@ body {
           height: 33px;
           align-items: center;
           justify-content: center;
-          border: 3px solid #a50034;
           border-radius: 50%;
+          background: #a50034;
+          color: #ffffff;
           font-size: 11px;
           font-weight: 950;
-          letter-spacing: -0.18em;
+          letter-spacing: -0.24em;
           line-height: 1;
+        }
+        .brand-lg-word {
+          color: #6f7175;
+          letter-spacing: -0.1em;
         }
         .brand-tile-samsung { min-width: 158px; padding: 0 12px; }
         .brand-samsung-oval {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          min-width: 132px;
-          min-height: 36px;
-          border-radius: 50%;
-          background: #1428a0;
+          min-width: 138px;
+          min-height: 46px;
+          border-radius: 12px;
+          background: #1736a7;
           color: #ffffff;
           padding: 0 14px;
           font-size: 15px;
           font-weight: 950;
-          font-style: italic;
-          letter-spacing: -0.04em;
-          transform: skew(-8deg);
+          letter-spacing: 0.03em;
         }
         .brand-tile-electrolux { color: #164f8b; font-size: 17px; }
         .brand-tile-brastemp { color: #006bb6; }
@@ -257,7 +260,7 @@ body {
         .brand-tile-philco { color: #0068b4; }
         .brand-tile-midea { color: #1596c9; }
         .brand-tile-carrier { color: #173f85; font-style: italic; }
-        .brand-tile-cta {
+        .brand-tile.brand-tile-cta {
           min-width: 190px;
           background: #ff6b00;
           color: #ffffff;
@@ -278,6 +281,7 @@ body {
           font-weight: 950;
           letter-spacing: 0.1em;
         }
+        .brand-cta-copy > span { white-space: nowrap; }
         .brand-cta-copy b { font-size: 20px; line-height: 0.6; }
 
         @keyframes brand-cta-pulse {
