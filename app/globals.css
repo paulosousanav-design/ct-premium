@@ -210,8 +210,46 @@ body {
           box-shadow: 0 10px 22px rgba(0, 18, 51, 0.18);
         }
 
-        .brand-tile-lg { color: #a50034; font-size: 28px; letter-spacing: -0.1em; }
-        .brand-tile-samsung { color: #1428a0; font-size: 18px; font-style: italic; letter-spacing: -0.08em; }
+        .brand-tile-lg { min-width: 146px; padding: 0 14px; }
+        .brand-lg-lockup {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: #a50034;
+          font-size: 28px;
+          font-weight: 900;
+          letter-spacing: -0.12em;
+        }
+        .brand-lg-disc {
+          display: inline-flex;
+          width: 33px;
+          height: 33px;
+          align-items: center;
+          justify-content: center;
+          border: 3px solid #a50034;
+          border-radius: 50%;
+          font-size: 11px;
+          font-weight: 950;
+          letter-spacing: -0.18em;
+          line-height: 1;
+        }
+        .brand-tile-samsung { min-width: 158px; padding: 0 12px; }
+        .brand-samsung-oval {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 132px;
+          min-height: 36px;
+          border-radius: 50%;
+          background: #1428a0;
+          color: #ffffff;
+          padding: 0 14px;
+          font-size: 15px;
+          font-weight: 950;
+          font-style: italic;
+          letter-spacing: -0.04em;
+          transform: skew(-8deg);
+        }
         .brand-tile-electrolux { color: #164f8b; font-size: 17px; }
         .brand-tile-brastemp { color: #006bb6; }
         .brand-tile-consul { color: #1c5d9e; font-style: italic; }
@@ -219,10 +257,44 @@ body {
         .brand-tile-philco { color: #0068b4; }
         .brand-tile-midea { color: #1596c9; }
         .brand-tile-carrier { color: #173f85; font-style: italic; }
+        .brand-tile-cta {
+          min-width: 190px;
+          background: #ff6b00;
+          color: #ffffff;
+          animation: brand-cta-pulse 1.8s ease-in-out infinite;
+        }
+        .brand-cta-copy {
+          display: grid;
+          gap: 3px;
+          text-align: left;
+          font-size: 15px;
+          font-weight: 950;
+          letter-spacing: -0.03em;
+          line-height: 1.05;
+        }
+        .brand-cta-copy small {
+          color: #fff2df;
+          font-size: 8px;
+          font-weight: 950;
+          letter-spacing: 0.1em;
+        }
+        .brand-cta-copy b { font-size: 20px; line-height: 0.6; }
+
+        @keyframes brand-cta-pulse {
+          0%, 100% { box-shadow: 0 10px 22px rgba(0, 18, 51, 0.18), 0 0 0 0 rgba(255, 107, 0, 0.55); }
+          50% { box-shadow: 0 12px 26px rgba(0, 18, 51, 0.24), 0 0 0 9px rgba(255, 107, 0, 0); }
+        }
 
         @keyframes brand-scroll {
           from { transform: translateX(0); }
           to { transform: translateX(calc(-50% - 6px)); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .brand-marquee-track,
+          .brand-tile-cta {
+            animation: none;
+          }
         }
 
         .hero-card::before {

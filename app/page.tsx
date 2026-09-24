@@ -93,6 +93,7 @@ const marcasAtendidas = [
   { nome: 'Philco', destaque: 'philco' },
   { nome: 'Midea', destaque: 'midea' },
   { nome: 'Carrier', destaque: 'carrier' },
+  { nome: 'Abra seu chamado', destaque: 'cta' },
 ]
 
 const passos = [
@@ -459,7 +460,16 @@ export default function Home() {
             <div className="brand-marquee-track">
               {[...marcasAtendidas, ...marcasAtendidas].map((marca, index) => (
                 <div key={`${marca.nome}-${index}`} className={`brand-tile brand-tile-${marca.destaque}`}>
-                  {marca.nome}
+                  {marca.destaque === 'lg' ? (
+                    <span className="brand-lg-lockup" aria-label="LG">
+                      <span className="brand-lg-disc">LG</span>
+                      <span>LG</span>
+                    </span>
+                  ) : marca.destaque === 'samsung' ? (
+                    <span className="brand-samsung-oval">SAMSUNG</span>
+                  ) : marca.destaque === 'cta' ? (
+                    <span className="brand-cta-copy"><small>PRECISA DE AJUDA?</small>Abra seu chamado <b>→</b></span>
+                  ) : marca.nome}
                 </div>
               ))}
             </div>
