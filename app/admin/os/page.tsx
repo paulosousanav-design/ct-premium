@@ -771,6 +771,11 @@ export default function OrdensServicoPage() {
 
   async function transferirOS() {
     if (!osTransferencia) return
+    if (osTransferencia.status !== 'EM_TRIAGEM') {
+      setErro('Por segurança, a transferência só é permitida enquanto a OS estiver em triagem.')
+      setOsTransferencia(null)
+      return
+    }
     setTransferindoId(osTransferencia.id)
     setErro('')
     try {
@@ -1796,9 +1801,11 @@ function KanbanOSBoard({
                 </button>
               )}
             </div>
-            <button type="button" onClick={() => onTransferir(os)} className="mt-1.5 w-full rounded-md border border-orange-300 bg-orange-50 px-2 py-1.5 text-[11px] font-bold text-orange-800 hover:bg-orange-100">
-              Transferir OS
-            </button>
+            {os.status === 'EM_TRIAGEM' && (
+              <button type="button" onClick={() => onTransferir(os)} className="mt-1.5 w-full rounded-md border border-orange-300 bg-orange-50 px-2 py-1.5 text-[11px] font-bold text-orange-800 hover:bg-orange-100">
+                Transferir OS
+              </button>
+            )}
           </article>
           )
         })}

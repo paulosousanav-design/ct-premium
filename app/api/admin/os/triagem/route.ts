@@ -276,8 +276,11 @@ export async function PATCH(request: NextRequest) {
       if (osOrigemError) throw osOrigemError
       if (unidadeDestinoError) throw unidadeDestinoError
       if (!osOrigem) return NextResponse.json({ error: 'OS não encontrada na empresa atual.' }, { status: 404 })
-      if (osOrigem.status === 'FINALIZADA' || osOrigem.status === 'ENCERRADA_SEM_REPARO') {
-        return NextResponse.json({ error: 'OS encerrada não pode ser transferida.' }, { status: 400 })
+      if (osOrigem.status !== 'EM_TRIAGEM') {
+        return NextResponse.json(
+          { error: 'Por segurança, a transferência só é permitida enquanto a OS estiver em triagem.' },
+          { status: 409 }
+        )
       }
       if (!unidadeDestino?.ativa || Number(unidadeDestino.organizacao_id) !== Number(auth.organizacaoId) || !auth.unidadesPermitidas.includes(unidadeDestinoId)) {
         return NextResponse.json({ error: 'Empresa destino inválida ou sem permissão.' }, { status: 403 })
@@ -286,13 +289,21 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: 'Selecione uma empresa diferente da atual.' }, { status: 400 })
       }
 
-      const { error: transferenciaError } = await supabase
+      const { data: osTransferida, error: transferenciaError } = await supabase
         .from('ordens_servico')
         .update({ unidade_id: unidadeDestinoId, status: 'EM_TRIAGEM', parceiro_id: null, tecnico_avulso_nome: null })
         .eq('id', osId)
         .eq('unidade_id', auth.unidadeId)
+        .eq('status', 'EM_TRIAGEM')
+        .select('id')
 
       if (transferenciaError) throw transferenciaError
+      if (!osTransferida?.length) {
+        return NextResponse.json(
+          { error: 'A OS saiu da triagem antes da transferência. Atualize a tela e tente novamente, se aplicável.' },
+          { status: 409 }
+        )
+      }
 
       const { error: historicoTransferenciaError } = await supabase.from('os_historico').insert({
         os_id: osId,
