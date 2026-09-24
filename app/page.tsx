@@ -330,7 +330,10 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="stats-row">
+          <div
+            className="stats-row"
+            style={{ top: 'auto', bottom: 24, width: 338, gridTemplateColumns: '1.2fr 1fr', gap: 13 }}
+          >
             <Stat value="Atendimento em MS" label="Cobertura em expansão" />
             <Stat value="Acompanhe sua OS" label="Tudo online e seguro" />
             <Stat value="Técnicos verificados" label="Parceiros qualificados" />
