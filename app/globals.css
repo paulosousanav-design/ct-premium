@@ -210,44 +210,26 @@ body {
           box-shadow: 0 10px 22px rgba(0, 18, 51, 0.18);
         }
 
-        .brand-tile-lg { min-width: 190px; padding: 0 18px; }
-        .brand-lg-lockup {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          color: #a50034;
-          font-size: 19px;
-          font-weight: 700;
-          letter-spacing: -0.04em;
+        .brand-tile-lg { min-width: 190px; }
+        .brand-tile-samsung { min-width: 166px; }
+        .brand-lg-reference,
+        .brand-samsung-reference {
+          display: block;
+          background-repeat: no-repeat;
         }
-        .brand-lg-disc {
-          display: inline-flex;
-          width: 28px;
-          height: 28px;
-          align-items: center;
-          justify-content: center;
-          border-radius: 50%;
-          background: #a50034;
-          color: #ffffff;
-          font-size: 9px;
-          font-weight: 950;
-          letter-spacing: -0.24em;
-          line-height: 1;
+        .brand-lg-reference {
+          width: 148px;
+          height: 30px;
+          background-image: url('/brand-lg-electronics-reference.png');
+          background-position: -29px -54px;
+          background-size: 206px 134px;
         }
-        .brand-lg-word {
-          color: #6f7175;
-          letter-spacing: -0.04em;
-        }
-        .brand-tile-samsung { min-width: 166px; padding: 0 14px; }
-        .brand-samsung-oval {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          color: #152b9c;
-          font-family: Arial, Helvetica, sans-serif;
-          font-size: 20px;
-          font-weight: 800;
-          letter-spacing: 0.02em;
+        .brand-samsung-reference {
+          width: 166px;
+          height: 32px;
+          background-image: url('/brand-samsung-reference.png');
+          background-position: -48px -47px;
+          background-size: 287px 144px;
         }
         .brand-tile-electrolux { color: #164f8b; font-size: 17px; }
         .brand-tile-brastemp { color: #006bb6; }
