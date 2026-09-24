@@ -84,7 +84,7 @@ const categoriasVisuais = [
 ]
 
 const marcasAtendidas = [
-  { nome: 'LG', destaque: 'lg' },
+  { nome: 'LG Electronics', destaque: 'lg' },
   { nome: 'Samsung', destaque: 'samsung' },
   { nome: 'Electrolux', destaque: 'electrolux' },
   { nome: 'Brastemp', destaque: 'brastemp' },
@@ -463,7 +463,7 @@ export default function Home() {
                   {marca.destaque === 'lg' ? (
                     <span className="brand-lg-lockup" aria-label="LG">
                       <span className="brand-lg-disc" aria-hidden="true">LG</span>
-                      <span className="brand-lg-word">LG</span>
+                      <span className="brand-lg-word">LG Electronics</span>
                     </span>
                   ) : marca.destaque === 'samsung' ? (
                     <span className="brand-samsung-oval">SAMSUNG</span>
