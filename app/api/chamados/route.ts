@@ -32,6 +32,21 @@ async function colunaExiste(
   return !error
 }
 
+async function obterOrganizacaoPortal(supabase: ReturnType<typeof getSupabaseAdmin>) {
+  const { data, error } = await supabase
+    .from('saas_organizacoes')
+    .select('id')
+    .eq('slug', 'grupo-interno')
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data?.id) {
+    throw new Error('A organização principal do CT não foi localizada para receber o chamado.')
+  }
+
+  return Number(data.id)
+}
+
 export async function GET() {
   try {
     const supabase = getSupabaseAdmin()
@@ -107,7 +122,9 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin()
+    const organizacaoId = await obterOrganizacaoPortal(supabase)
     const clientePayload = {
+      organizacao_id: organizacaoId,
       nome: nomeCliente,
       cpf_cnpj: cpfCnpj,
       whatsapp,
@@ -120,17 +137,52 @@ export async function POST(request: NextRequest) {
       estado: estado || null,
     }
 
-    const { data: novoCliente, error: clienteError } = await supabase
+    let clienteId: number | null = null
+    const { data: clientePorDocumento, error: clienteDocumentoError } = await supabase
       .from('clientes')
-      .insert(clientePayload)
       .select('id')
-      .single()
+      .eq('organizacao_id', organizacaoId)
+      .eq('cpf_cnpj', cpfCnpj)
+      .maybeSingle()
 
-    if (clienteError) throw clienteError
+    if (clienteDocumentoError) throw clienteDocumentoError
+    clienteId = clientePorDocumento?.id ?? null
+
+    if (!clienteId) {
+      const { data: clientePorWhatsapp, error: clienteWhatsappError } = await supabase
+        .from('clientes')
+        .select('id')
+        .eq('organizacao_id', organizacaoId)
+        .eq('whatsapp', whatsapp)
+        .maybeSingle()
+
+      if (clienteWhatsappError) throw clienteWhatsappError
+      clienteId = clientePorWhatsapp?.id ?? null
+    }
+
+    if (clienteId) {
+      const { error: atualizarClienteError } = await supabase
+        .from('clientes')
+        .update(clientePayload)
+        .eq('id', clienteId)
+        .eq('organizacao_id', organizacaoId)
+
+      if (atualizarClienteError) throw atualizarClienteError
+    } else {
+      const { data: novoCliente, error: clienteError } = await supabase
+        .from('clientes')
+        .insert(clientePayload)
+        .select('id')
+        .single()
+
+      if (clienteError) throw clienteError
+      clienteId = Number(novoCliente.id)
+    }
 
     const origemOs = garantia ? 'GARANTIA_SEGURADORA' : 'PORTAL_CLIENTE'
     const osPayload: Record<string, unknown> = {
-      cliente_id: novoCliente.id,
+      organizacao_id: organizacaoId,
+      cliente_id: clienteId,
       categoria_id: categoriaId,
       marca_id: marcaId,
       modelo,
