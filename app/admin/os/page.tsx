@@ -64,6 +64,8 @@ type TecnicoSugerido = {
   criterio: string
 }
 
+type EmpresaDestino = { id: number; nome_fantasia: string | null }
+
 type ClienteSugestao = {
   id: number
   nome: string | null
@@ -258,6 +260,11 @@ export default function OrdensServicoPage() {
   const [origemFiltro, setOrigemFiltro] = useState('TODAS')
   const [cidadeFiltro, setCidadeFiltro] = useState('TODAS')
   const [notificacoesAberta, setNotificacoesAberta] = useState(false)
+  const [empresasDestino, setEmpresasDestino] = useState<EmpresaDestino[]>([])
+  const [osTransferencia, setOsTransferencia] = useState<OrdemServico | null>(null)
+  const [unidadeDestinoId, setUnidadeDestinoId] = useState('')
+  const [motivoTransferencia, setMotivoTransferencia] = useState('')
+  const [transferindoId, setTransferindoId] = useState<number | null>(null)
 
   useEffect(() => {
     void carregarDados()
@@ -447,6 +454,8 @@ export default function OrdensServicoPage() {
     const data = await response.json().catch(() => null)
 
     if (!response.ok) throw new Error(data?.error ?? 'Erro ao carregar as OS.')
+
+    setEmpresasDestino((data?.empresasDestino ?? []) as EmpresaDestino[])
 
     setOrdens(
       (data?.data ?? []).map((item: OrdemServicoTriagemApi) => ({
@@ -757,6 +766,35 @@ export default function OrdensServicoPage() {
       setErro(formatarErro(err, 'Erro ao atualizar status.'))
     } finally {
       setAtualizandoStatusId(null)
+    }
+  }
+
+  async function transferirOS() {
+    if (!osTransferencia) return
+    setTransferindoId(osTransferencia.id)
+    setErro('')
+    try {
+      const response = await adminFetch('/api/admin/os/triagem', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          osId: osTransferencia.id,
+          unidadeDestinoId: Number(unidadeDestinoId),
+          motivoTransferencia,
+        }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error ?? 'Erro ao transferir OS.')
+
+      setMensagem(`OS ${osTransferencia.numero_os ?? ''} transferida para triagem da empresa destino.`)
+      setOsTransferencia(null)
+      setUnidadeDestinoId('')
+      setMotivoTransferencia('')
+      await carregarDados()
+    } catch (err) {
+      setErro(formatarErro(err, 'Erro ao transferir OS.'))
+    } finally {
+      setTransferindoId(null)
     }
   }
 
@@ -1362,8 +1400,36 @@ export default function OrdensServicoPage() {
             atualizandoStatusId={atualizandoStatusId}
             onAtribuirTecnico={atribuirTecnico}
             onAtualizarStatus={atualizarStatusOS}
+            onTransferir={(os) => {
+              setOsTransferencia(os)
+              setUnidadeDestinoId('')
+              setMotivoTransferencia('')
+            }}
             onAbrirDetalhes={(osId) => router.push(`/admin/os/${osId}`)}
           />
+
+          {osTransferencia && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+              <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+                <p className="text-xs font-black uppercase tracking-wide text-orange-600">Transferência controlada</p>
+                <h2 className="mt-1 text-xl font-black text-slate-950">Transferir {osTransferencia.numero_os ?? 'OS'}</h2>
+                <p className="mt-2 text-sm text-slate-600">A OS vai para a triagem da empresa destino e ficará sem técnico atribuído.</p>
+                <label className="mt-4 block text-sm font-bold text-slate-700">Empresa destino
+                  <select value={unidadeDestinoId} onChange={(event) => setUnidadeDestinoId(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5">
+                    <option value="">Selecione</option>
+                    {empresasDestino.map((empresa) => <option key={empresa.id} value={empresa.id}>{empresa.nome_fantasia ?? `Empresa #${empresa.id}`}</option>)}
+                  </select>
+                </label>
+                <label className="mt-4 block text-sm font-bold text-slate-700">Motivo da transferência
+                  <textarea value={motivoTransferencia} onChange={(event) => setMotivoTransferencia(event.target.value)} className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Ex.: atendimento será realizado pela Eletrônica Paulista." />
+                </label>
+                <div className="mt-5 flex justify-end gap-3">
+                  <button type="button" onClick={() => setOsTransferencia(null)} disabled={transferindoId === osTransferencia.id} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold">Cancelar</button>
+                  <button type="button" onClick={() => void transferirOS()} disabled={!unidadeDestinoId || !motivoTransferencia.trim() || transferindoId === osTransferencia.id} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{transferindoId === osTransferencia.id ? 'Transferindo...' : 'Confirmar transferência'}</button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="hidden overflow-x-auto rounded-xl border border-slate-200">
             <table className="min-w-[1600px] w-full text-left text-sm">
@@ -1560,6 +1626,7 @@ function KanbanOSBoard({
   atualizandoStatusId,
   onAtribuirTecnico,
   onAtualizarStatus,
+  onTransferir,
   onAbrirDetalhes,
 }: {
   colunas: Array<(typeof STATUS_BOARD)[number] & { ordens: OrdemServico[] }>
@@ -1567,6 +1634,7 @@ function KanbanOSBoard({
   atualizandoStatusId: number | null
   onAtribuirTecnico: (osId: number, parceiroId: number) => void
   onAtualizarStatus: (osId: number, status: string) => void
+  onTransferir: (os: OrdemServico) => void
   onAbrirDetalhes: (osId: number) => void
 }) {
   const [tecnicoAbertoId, setTecnicoAbertoId] = useState<number | null>(null)
@@ -1728,6 +1796,9 @@ function KanbanOSBoard({
                 </button>
               )}
             </div>
+            <button type="button" onClick={() => onTransferir(os)} className="mt-1.5 w-full rounded-md border border-orange-300 bg-orange-50 px-2 py-1.5 text-[11px] font-bold text-orange-800 hover:bg-orange-100">
+              Transferir OS
+            </button>
           </article>
           )
         })}

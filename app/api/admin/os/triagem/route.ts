@@ -57,6 +57,7 @@ type OrdemServico = {
   defeito: string | null
   cliente_id: number | null
   parceiro_id: number | null
+  unidade_id?: number | null
   clientes?: Cliente | null
   parceiros?: Parceiro | null
   garantidores?: { nome: string | null } | null
@@ -218,7 +219,17 @@ export async function GET(request: NextRequest) {
       }))
     )
 
-    return NextResponse.json({ data: ordens })
+    const { data: empresas, error: empresasError } = await supabase
+      .from('unidades')
+      .select('id, nome_fantasia, organizacao_id')
+      .in('id', auth.unidadesPermitidas)
+      .eq('organizacao_id', auth.organizacaoId)
+      .eq('ativa', true)
+      .order('nome_fantasia')
+
+    if (empresasError) throw empresasError
+
+    return NextResponse.json({ data: ordens, empresasDestino: empresas ?? [] })
   } catch (error) {
     console.error('Erro ao listar OS para triagem:', error)
     return NextResponse.json(
@@ -237,8 +248,10 @@ export async function PATCH(request: NextRequest) {
     const osId = Number(body?.osId)
     const parceiroId = body?.parceiroId ? Number(body.parceiroId) : null
     const statusSolicitado = body?.status ? String(body.status).trim().toUpperCase() : null
+    const unidadeDestinoId = Number(body?.unidadeDestinoId)
+    const motivoTransferencia = String(body?.motivoTransferencia ?? '').trim()
 
-    if (!osId || (!parceiroId && !statusSolicitado)) {
+    if (!osId || (!parceiroId && !statusSolicitado && !unidadeDestinoId)) {
       return NextResponse.json(
         { error: 'Informe a OS e a acao desejada.' },
         { status: 400 }
@@ -246,6 +259,55 @@ export async function PATCH(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin(request, auth)
+
+    if (unidadeDestinoId) {
+      if (!motivoTransferencia) {
+        return NextResponse.json({ error: 'Informe o motivo da transferência.' }, { status: 400 })
+      }
+      if (!await colunaExiste(supabase, 'ordens_servico', 'unidade_id')) {
+        return NextResponse.json({ error: 'A estrutura de empresas ainda não está disponível para transferência.' }, { status: 503 })
+      }
+
+      const [{ data: osOrigem, error: osOrigemError }, { data: unidadeDestino, error: unidadeDestinoError }] = await Promise.all([
+        supabase.from('ordens_servico').select('id, numero_os, status, prioridade, unidade_id').eq('id', osId).eq('unidade_id', auth.unidadeId).maybeSingle(),
+        supabase.from('unidades').select('id, nome_fantasia, organizacao_id, ativa').eq('id', unidadeDestinoId).maybeSingle(),
+      ])
+
+      if (osOrigemError) throw osOrigemError
+      if (unidadeDestinoError) throw unidadeDestinoError
+      if (!osOrigem) return NextResponse.json({ error: 'OS não encontrada na empresa atual.' }, { status: 404 })
+      if (osOrigem.status === 'FINALIZADA' || osOrigem.status === 'ENCERRADA_SEM_REPARO') {
+        return NextResponse.json({ error: 'OS encerrada não pode ser transferida.' }, { status: 400 })
+      }
+      if (!unidadeDestino?.ativa || Number(unidadeDestino.organizacao_id) !== Number(auth.organizacaoId) || !auth.unidadesPermitidas.includes(unidadeDestinoId)) {
+        return NextResponse.json({ error: 'Empresa destino inválida ou sem permissão.' }, { status: 403 })
+      }
+      if (Number(osOrigem.unidade_id) === unidadeDestinoId) {
+        return NextResponse.json({ error: 'Selecione uma empresa diferente da atual.' }, { status: 400 })
+      }
+
+      const { error: transferenciaError } = await supabase
+        .from('ordens_servico')
+        .update({ unidade_id: unidadeDestinoId, status: 'EM_TRIAGEM', parceiro_id: null, tecnico_avulso_nome: null })
+        .eq('id', osId)
+        .eq('unidade_id', auth.unidadeId)
+
+      if (transferenciaError) throw transferenciaError
+
+      const { error: historicoTransferenciaError } = await supabase.from('os_historico').insert({
+        os_id: osId,
+        acao: 'TRANSFERENCIA_EMPRESA',
+        status_anterior: osOrigem.status,
+        status_novo: 'EM_TRIAGEM',
+        prioridade_anterior: osOrigem.prioridade,
+        prioridade_nova: osOrigem.prioridade,
+        descricao: `OS transferida para ${unidadeDestino.nome_fantasia}. Motivo: ${motivoTransferencia}`,
+        responsavel: `${auth.nome} (${auth.email})`,
+      })
+      if (historicoTransferenciaError) throw historicoTransferenciaError
+
+      return NextResponse.json({ ok: true })
+    }
 
     let osAtualQuery = supabase
       .from('ordens_servico')
