@@ -1117,7 +1117,6 @@ export default function OrdemServicoAtendimentoPage() {
               <div><div class="label">Garantia</div><div class="value">${os.garantia ? 'SIM' : 'NÃO'}</div></div>
               <div><div class="label">Diagnóstico técnico</div><div class="value value-tall">${os.diagnostico_tecnico ?? '-'}</div></div>
               <div><div class="label">Serviço executado</div><div class="value value-tall">${os.servico_executado ?? '-'}</div></div>
-              <div class="wide"><div class="label">Observação técnica</div><div class="value value-tall muted">${os.observacao_tecnica ?? '-'}</div></div>
             </div>
           </div>
 
@@ -1847,7 +1846,7 @@ export default function OrdemServicoAtendimentoPage() {
 
               <div className="mt-3 grid gap-3">
                 <Field
-                  label="Observação técnica"
+                  label="Observação técnica — uso interno"
                   name="observacaoTecnica"
                   value={form.observacaoTecnica}
                   onChange={handleChange}
