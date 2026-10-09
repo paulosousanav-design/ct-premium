@@ -1,9 +1,8 @@
 'use client'
 
-import Image from 'next/image'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { type ChangeEvent, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { HomeHeader } from '@/components/home-header'
 import { prepararCategoriasPublicas, prepararMarcasPublicas } from '@/lib/public-equipment'
 
 type Categoria = { id: number; nome: string; key?: string }
@@ -247,48 +246,44 @@ export default function AbrirChamadoPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#c7d3cf] px-3 py-3 sm:px-4 sm:py-5">
-      <div className="mx-auto max-w-6xl space-y-3 sm:space-y-4">
-        <header className="rounded-xl bg-white p-4 shadow-sm sm:p-5">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <Image src="/logo-ct.png" alt="Chame o Tecnico" width={150} height={65} className="h-auto w-[96px] sm:w-[120px]" />
-              <div>
-                <p className="text-xs font-bold uppercase text-orange-600">Portal do cliente</p>
-                <h1 className="text-xl font-black text-slate-950 sm:text-2xl">Abertura de chamado</h1>
-                <p className="text-xs text-slate-600 sm:text-sm">Preencha os dados para nossa equipe iniciar a triagem.</p>
-              </div>
-            </div>
-            <Link href="/consulta" className="rounded-lg border border-slate-300 px-4 py-2 text-center text-sm font-bold text-slate-700">
-              Consultar OS
-            </Link>
-          </div>
+    <main className="home-page">
+      <HomeHeader ativo="chamado" />
+
+      <div className="home-shell chamado-wrap">
+        <header className="chamado-intro">
+          <p className="hero-kicker"><i />Chamado online</p>
+          <h1>Abra seu chamado</h1>
+          <p>Depois do envio, a equipe faz a triagem, direciona o técnico e acompanha tudo na sua OS.</p>
         </header>
 
+        <ol className="chamado-flow">
+          <li><span>01</span><b>Triagem</b><small>A equipe confirma o atendimento na sua região.</small></li>
+          <li><span>02</span><b>Técnico</b><small>O parceiro recebe o chamado e vai até você.</small></li>
+          <li><span>03</span><b>OS</b><small>Andamento, orçamento e conclusão ficam na sua ordem.</small></li>
+        </ol>
+
         {erro && (
-          <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+          <div className="chamado-alert chamado-alert-erro">
             <p>{erro}</p>
             {whatsRegiaoUrl && (
-              <a href={whatsRegiaoUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex rounded-lg bg-green-600 px-4 py-2 text-white transition hover:bg-green-700">
-                Falar no WhatsApp
-              </a>
+              <a href={whatsRegiaoUrl} target="_blank" rel="noreferrer">Falar no WhatsApp</a>
             )}
           </div>
         )}
         {!aberturaChamadosAtiva && (
-          <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-800">
+          <div className="chamado-alert chamado-alert-aviso">
             A abertura de chamados pelo cliente sera liberada em breve. Enquanto isso, estamos cadastrando tecnicos parceiros para ampliar a rede de atendimento.
           </div>
         )}
         {sucesso && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            <p className="font-black">Chamado aberto com sucesso: {sucesso.numeroOS}</p>
-            <p className="mt-1">Nossa equipe recebeu sua solicitação. Guarde este número para consulta.</p>
+          <div className="chamado-alert chamado-alert-ok">
+            <p>Chamado aberto com sucesso: {sucesso.numeroOS}</p>
+            <small>Nossa equipe recebeu sua solicitação. Guarde este número para consulta.</small>
           </div>
         )}
-        <div data-public-form-status className="hidden rounded-xl px-4 py-3 text-sm font-bold" />
+        <div data-public-form-status className="hidden" />
 
-        <form onSubmit={enviar} action="/api/chamados" method="post" encType="multipart/form-data" data-public-os-form className="grid gap-3 sm:gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+        <form onSubmit={enviar} action="/api/chamados" method="post" encType="multipart/form-data" data-public-os-form className="chamado-form grid gap-3 sm:gap-4 lg:grid-cols-[1.2fr_0.8fr]">
           <section className="space-y-3 rounded-xl bg-white p-4 shadow-sm sm:space-y-4 sm:p-5">
             <AvisoExpansao />
 
