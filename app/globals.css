@@ -206,16 +206,151 @@ body {
 
         .brand-list li {
           display: inline-flex;
-          height: 44px;
+          height: 58px;
           align-items: center;
+          justify-content: center;
           border: 1px solid rgba(255, 255, 255, 0.22);
           border-radius: 12px;
-          background: rgba(255, 255, 255, 0.97);
-          padding: 0 14px;
-          color: #082c61;
-          font-size: 14px;
+          background: #ffffff;
+          padding: 0 12px;
+        }
+
+        .brand-list img {
+          display: block;
+          height: 30px;
+          width: auto;
+          max-width: 170px;
+          object-fit: contain;
+          object-position: center;
+        }
+
+        .brand-list li.logo-maior img {
+          height: 48px;
+          max-width: 136px;
+        }
+
+        .parcerias {
+          margin-top: 22px;
+        }
+
+        .parcerias-head span {
+          color: #ff6b00;
+          font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+        }
+
+        .parcerias-head h2 {
+          margin: 6px 0 0;
+          color: #061632;
+          font-size: 30px;
+          line-height: 1.02;
+          font-weight: 950;
+        }
+
+        .parcerias-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+          margin-top: 14px;
+        }
+
+        .parceria-card {
+          border: 1px solid rgba(11, 103, 194, 0.14);
+          border-radius: 18px;
+          background: linear-gradient(180deg, #ffffff 0%, #f4f9fd 100%);
+          padding: 18px 16px 16px;
+          box-shadow: 0 10px 26px rgba(7, 28, 66, 0.06);
+        }
+
+        .parceria-card span {
+          color: #0b67c2;
+          font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+        }
+
+        .parceria-titulo {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-top: 8px;
+        }
+
+        .parceria-card h3 {
+          margin: 0;
+          min-width: 0;
+          color: #061632;
+          font-size: 18px;
+          line-height: 1.15;
+          font-weight: 950;
+        }
+
+        .parceria-desde {
+          display: inline-flex;
+          align-items: baseline;
+          flex-shrink: 0;
+          gap: 6px;
+          margin: 0;
+          padding: 5px 10px 6px;
+          border: 1px solid rgba(255, 107, 0, 0.32);
+          border-radius: 999px;
+          background: rgba(255, 107, 0, 0.1);
+          white-space: nowrap;
+        }
+
+        .parceria-desde span {
+          color: #c2410c;
+          font-size: 10px;
+          letter-spacing: 0.14em;
+        }
+
+        .parceria-desde strong {
+          color: #ff6b00;
+          font-size: 16px;
+          font-weight: 950;
+          letter-spacing: 0.02em;
+          line-height: 1;
+        }
+
+        .parceria-logos {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 16px 22px;
+          min-height: 42px;
+          margin-top: 16px;
+        }
+
+        .parceria-kicker {
+          display: block;
+          margin-top: 16px;
+        }
+
+        .parceria-kicker + .parceria-logos {
+          margin-top: 8px;
+        }
+
+        .parceria-logos img {
+          display: block;
+          height: 34px;
+          width: auto;
+          max-width: 150px;
+          object-fit: contain;
+          object-position: left center;
+        }
+
+        .parceria-logos b {
+          color: #061632;
+          font-size: 16px;
           font-weight: 800;
           letter-spacing: 0.01em;
+          line-height: 1;
         }
 
         .brand-marquee {
@@ -1504,7 +1639,8 @@ body {
           .steps,
           .categories,
           .solutions-grid,
-          .chamado-flow {
+          .chamado-flow,
+          .parcerias-grid {
             grid-template-columns: 1fr;
           }
 

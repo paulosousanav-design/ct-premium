@@ -23,7 +23,41 @@ const solucoes = [
   { numero: '06', titulo: 'Acompanhamento da OS', texto: 'Andamento, orçamento e conclusão ficam na sua ordem.' },
 ]
 
-const marcasAtendidas = ['LG', 'Samsung', 'Electrolux', 'Brastemp', 'Consul', 'Panasonic', 'Philco', 'Midea', 'Carrier']
+const marcasAtendidas = [
+  { nome: 'LG', src: '/brand-lg-flat.svg' },
+  { nome: 'Samsung', src: '/brand-samsung.svg' },
+  { nome: 'Electrolux', src: '/brand-electrolux.svg' },
+  { nome: 'Brastemp', src: '/brand-brastemp.svg', maior: true },
+  { nome: 'Consul', src: '/brand-consul.svg' },
+  { nome: 'Panasonic', src: '/brand-panasonic.svg' },
+  { nome: 'Philco', src: '/brand-philco.png' },
+  { nome: 'Midea', src: '/brand-midea.png', maior: true },
+  { nome: 'Carrier', src: '/brand-carrier.svg', maior: true },
+  { nome: 'AOC', src: '/brand-aoc.svg' },
+  { nome: 'JVC', src: '/brand-jvc.svg' },
+  { nome: 'Philips', src: '/brand-philips.svg' },
+]
+
+const parcerias = [
+  {
+    empresa: 'Eletrônica Paulista',
+    desde: '1997',
+    logos: [{ src: '/brand-lg-flat.svg', alt: 'LG' }],
+    seguradoras: [
+      { src: '/brand-gazin-seguros.png', alt: 'Gazin Seguros' },
+      { src: '/brand-zurich.svg', alt: 'Zurich' },
+    ],
+  },
+  {
+    empresa: 'Smart Electro',
+    desde: '2019',
+    logos: [
+      { src: '/brand-tcl.svg', alt: 'TCL' },
+      { src: '/brand-intelbras.svg', alt: 'Intelbras' },
+      { src: '/brand-sms.png', alt: 'SMS Legrand' },
+    ],
+  },
+]
 
 const passos = [
   { numero: '1', titulo: 'Descreva o problema', texto: 'Conte o que aconteceu com o equipamento.' },
@@ -90,10 +124,50 @@ export default function Home() {
             <h2 id="marcas-atendidas">Marcas que fazem parte do seu dia a dia</h2>
           </div>
           <ul className="brand-list" aria-label="Marcas atendidas pelo Chame o Técnico">
-            {marcasAtendidas.map((nome) => (
-              <li key={nome}>{nome}</li>
+            {marcasAtendidas.map((marca) => (
+              <li key={marca.nome} className={'maior' in marca && marca.maior ? 'logo-maior' : undefined}>
+                <img src={marca.src} alt={marca.nome} />
+              </li>
             ))}
           </ul>
+        </div>
+      </section>
+
+      <section className="home-shell parcerias" aria-labelledby="parcerias-autorizadas">
+        <div className="parcerias-head">
+          <span>Rede de atendimento</span>
+          <h2 id="parcerias-autorizadas">Parcerias autorizadas</h2>
+        </div>
+        <div className="parcerias-grid">
+          {parcerias.map((item) => (
+            <article key={item.empresa} className="parceria-card">
+              <span>Autorizada</span>
+              <div className="parceria-titulo">
+                <h3>{item.empresa}</h3>
+                <p className="parceria-desde">
+                  <span>Desde</span>
+                  <strong>{item.desde}</strong>
+                </p>
+              </div>
+              <div className="parceria-logos">
+                {item.logos.map((logo) => (
+                  <img key={logo.alt} src={logo.src} alt={logo.alt} />
+                ))}
+              </div>
+              {('seguradoras' in item) && item.seguradoras && (
+                <>
+                  <span className="parceria-kicker">Seguradoras</span>
+                  <div className="parceria-logos">
+                    {item.seguradoras.map((marca) => (
+                      'src' in marca
+                        ? <img key={marca.alt} src={marca.src} alt={marca.alt} />
+                        : <b key={marca.nome}>{marca.nome}</b>
+                    ))}
+                  </div>
+                </>
+              )}
+            </article>
+          ))}
         </div>
       </section>
 
