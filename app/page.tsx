@@ -159,9 +159,7 @@ export default function Home() {
                   <span className="parceria-kicker">Seguradoras</span>
                   <div className="parceria-logos">
                     {item.seguradoras.map((marca) => (
-                      'src' in marca
-                        ? <img key={marca.alt} src={marca.src} alt={marca.alt} />
-                        : <b key={marca.nome}>{marca.nome}</b>
+                      <img key={marca.alt} src={marca.src} alt={marca.alt} />
                     ))}
                   </div>
                 </>
