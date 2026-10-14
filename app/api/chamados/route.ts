@@ -47,6 +47,31 @@ async function obterOrganizacaoPortal(supabase: ReturnType<typeof getSupabaseAdm
   return Number(data.id)
 }
 
+async function garantirMarcaOutra(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  categoriaId: number
+) {
+  const { data: existente, error: buscaError } = await supabase
+    .from('marcas')
+    .select('id, nome')
+    .eq('categoria_id', categoriaId)
+    .ilike('nome', 'outra')
+    .limit(1)
+    .maybeSingle()
+
+  if (buscaError) throw buscaError
+  if (existente?.id) return Number(existente.id)
+
+  const { data: criada, error: criarError } = await supabase
+    .from('marcas')
+    .insert({ nome: 'Outra', categoria_id: categoriaId })
+    .select('id')
+    .single()
+
+  if (criarError) throw criarError
+  return Number(criada.id)
+}
+
 export async function GET() {
   try {
     const supabase = getSupabaseAdmin()
@@ -89,16 +114,24 @@ export async function POST(request: NextRequest) {
     const cpfCnpj = getCampo(dados, 'cpfCnpj')
     const whatsapp = getCampo(dados, 'whatsapp')
     const categoriaId = Number(getCampo(dados, 'categoriaId'))
-    const marcaId = Number(getCampo(dados, 'marcaId'))
+    const marcaCampo = getCampo(dados, 'marcaId')
+    const marcaInformada = getCampo(dados, 'marcaInformada').slice(0, 60)
     const modelo = getCampo(dados, 'modelo')
     const defeito = getCampo(dados, 'defeito')
     const garantia = getCampo(dados, 'garantia') === 'SIM'
     const cidade = getCampo(dados, 'cidade')
     const estado = getCampo(dados, 'estado').toUpperCase()
 
-    if (!nomeCliente || !cpfCnpj || !whatsapp || !categoriaId || !marcaId || !modelo || !defeito) {
+    if (!nomeCliente || !cpfCnpj || !whatsapp || !categoriaId || !marcaCampo || !modelo || !defeito) {
       return NextResponse.json(
         { error: 'Preencha nome, CPF/CNPJ, WhatsApp, equipamento, marca, modelo e defeito.' },
+        { status: 400 }
+      )
+    }
+
+    if (marcaCampo === 'outra' && !marcaInformada) {
+      return NextResponse.json(
+        { error: 'Informe a marca do equipamento.' },
         { status: 400 }
       )
     }
@@ -180,6 +213,19 @@ export async function POST(request: NextRequest) {
     }
 
     const origemOs = garantia ? 'GARANTIA_SEGURADORA' : 'PORTAL_CLIENTE'
+    const marcaId = marcaCampo === 'outra'
+      ? await garantirMarcaOutra(supabase, categoriaId)
+      : Number(marcaCampo)
+    if (!marcaId) {
+      return NextResponse.json(
+        { error: 'Selecione a marca do equipamento.' },
+        { status: 400 }
+      )
+    }
+    const observacaoCliente = getCampo(dados, 'observacao')
+    const observacao = marcaCampo === 'outra'
+      ? [`Marca informada: ${marcaInformada}.`, observacaoCliente].filter(Boolean).join(' ')
+      : observacaoCliente
     const osPayload: Record<string, unknown> = {
       organizacao_id: organizacaoId,
       cliente_id: clienteId,
@@ -196,7 +242,7 @@ export async function POST(request: NextRequest) {
       prioridade: 'NORMAL',
       parceiro_id: null,
       sla_status: 'NORMAL',
-      observacao_tecnica: getCampo(dados, 'observacao') || null,
+      observacao_tecnica: observacao || null,
     }
 
     if (await colunaExiste(supabase, 'ordens_servico', 'origem_os')) {

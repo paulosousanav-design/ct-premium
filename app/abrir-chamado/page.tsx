@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { type ChangeEvent, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { HomeHeader } from '@/components/home-header'
-import { prepararCategoriasPublicas, prepararMarcasPublicas } from '@/lib/public-equipment'
+import { listarMarcasDoFormulario, prepararCategoriasPublicas, prepararMarcasPublicas } from '@/lib/public-equipment'
 
 type Categoria = { id: number; nome: string; key?: string }
 type Marca = { id: number; nome: string; categoria_id: number | null }
@@ -21,6 +21,7 @@ type FormState = {
   estado: string
   categoriaId: string
   marcaId: string
+  marcaInformada: string
   modelo: string
   numeroSerie: string
   garantia: 'SIM' | 'NAO'
@@ -48,6 +49,7 @@ const formInicial: FormState = {
   estado: '',
   categoriaId: '',
   marcaId: '',
+  marcaInformada: '',
   modelo: '',
   numeroSerie: '',
   garantia: 'NAO',
@@ -146,10 +148,10 @@ export default function AbrirChamadoPage() {
     return () => clearTimeout(timer)
   }, [buscarCep, form.cep])
 
-  const marcasFiltradas = useMemo(() => {
-    if (!form.categoriaId) return []
-    return marcas.filter((marca) => String(marca.categoria_id) === form.categoriaId)
-  }, [form.categoriaId, marcas])
+  const marcasVisiveis = useMemo(
+    () => listarMarcasDoFormulario(marcas, form.categoriaId),
+    [form.categoriaId, marcas],
+  )
 
   function handleChange(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     const { name, value } = event.target
@@ -170,7 +172,16 @@ export default function AbrirChamadoPage() {
     }
 
     if (name === 'categoriaId') {
-      setForm((prev) => ({ ...prev, categoriaId: value, marcaId: '' }))
+      setForm((prev) => ({ ...prev, categoriaId: value, marcaId: '', marcaInformada: '' }))
+      return
+    }
+
+    if (name === 'marcaId') {
+      setForm((prev) => ({
+        ...prev,
+        marcaId: value,
+        marcaInformada: value === 'outra' ? prev.marcaInformada : '',
+      }))
       return
     }
 
@@ -317,12 +328,23 @@ export default function AbrirChamadoPage() {
               </Select>
               <Select label="Marca" name="marcaId" value={form.marcaId} onChange={handleChange} required>
                 <option value="">Selecione</option>
-                {(form.categoriaId ? marcasFiltradas : marcas).map((marca) => (
+                {marcasVisiveis.map((marca) => (
                   <option key={marca.id} value={marca.id} data-categoria-id={marca.categoria_id ?? ''}>
                     {marca.nome}
                   </option>
                 ))}
+                <option value="outra">Outra</option>
               </Select>
+              {form.marcaId === 'outra' && (
+                <Field
+                  label="Qual a marca?"
+                  name="marcaInformada"
+                  value={form.marcaInformada}
+                  onChange={handleChange}
+                  required
+                  maxLength={60}
+                />
+              )}
               <Field label="Modelo" name="modelo" value={form.modelo} onChange={handleChange} required />
               <Field label="Numero de serie" name="numeroSerie" value={form.numeroSerie} onChange={handleChange} />
             </Bloco>

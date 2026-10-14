@@ -53,6 +53,50 @@ export function prepararMarcasPublicas(marcas: Marca[], categorias: Categoria[])
   }))
 }
 
+const nomesCanonicos: Record<string, string> = {
+  eletrolux: 'Electrolux',
+}
+
+function chaveMarca(nome: string) {
+  const base = normalizar(nome)
+  const canonico = nomesCanonicos[base]
+  return canonico ? normalizar(canonico) : base
+}
+
+function rotuloMarca(nome: string) {
+  return nomesCanonicos[normalizar(nome)] ?? nome
+}
+
+function prefereRotulo(atual: string, candidato: string) {
+  if (nomesCanonicos[normalizar(candidato)]) return false
+  if (nomesCanonicos[normalizar(atual)]) return true
+  const caixa = (nome: string) => {
+    const letras = nome.replace(/[^A-Za-zÀ-ÿ]/g, '')
+    if (letras.length < 2) return 1
+    const maiusculas = letras.replace(/[^A-ZÁÉÍÓÚÂÊÔÃÕÇ]/g, '').length
+    return maiusculas === letras.length ? 0 : 1
+  }
+  return caixa(candidato) > caixa(atual)
+}
+
+export function listarMarcasDoFormulario(marcas: Marca[], categoriaId?: string | number | null) {
+  const categoria = categoriaId ? String(categoriaId) : ''
+  const escolhidas = new Map<string, Marca>()
+
+  for (const marca of marcas) {
+    if (categoria && String(marca.categoria_id ?? '') !== categoria) continue
+    const chave = chaveMarca(marca.nome)
+    if (!chave || chave === 'outra') continue
+
+    const atual = escolhidas.get(chave)
+    if (!atual || prefereRotulo(atual.nome, marca.nome)) {
+      escolhidas.set(chave, { ...marca, nome: rotuloMarca(marca.nome) })
+    }
+  }
+
+  return [...escolhidas.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+}
+
 const categoriasFallback: Categoria[] = [
   { id: 19, nome: 'Ar Condicionado' },
   { id: 16, nome: 'Eletronicos em Geral' },
