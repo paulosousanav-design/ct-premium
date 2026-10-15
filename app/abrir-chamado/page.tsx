@@ -62,6 +62,7 @@ const formInicial: FormState = {
 
 const categoriasPadrao: Categoria[] = [
   { id: 19, nome: 'Ar Condicionado' },
+  { id: 23, nome: 'Monitor' },
   { id: 16, nome: 'Eletronicos em Geral' },
   { id: 22, nome: 'Inversores Solares' },
   { id: 17, nome: 'Lavadoras' },
@@ -102,7 +103,7 @@ export default function AbrirChamadoPage() {
     try {
       const response = await fetch('/api/chamados')
       const data = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(data?.error ?? 'Nao foi possivel carregar os dados.')
+      if (!response.ok) throw new Error(data?.error ?? 'Não foi possível carregar os dados.')
 
       const categoriasApi = ((data?.categorias?.length ? data.categorias : categoriasPadrao) ?? categoriasPadrao) as Categoria[]
       const marcasApi = ((data?.marcas?.length ? data.marcas : marcasPadrao) ?? marcasPadrao) as Marca[]
@@ -149,7 +150,7 @@ export default function AbrirChamadoPage() {
   }, [buscarCep, form.cep])
 
   const marcasVisiveis = useMemo(
-    () => listarMarcasDoFormulario(marcas, form.categoriaId),
+    () => (form.categoriaId ? listarMarcasDoFormulario(marcas, form.categoriaId) : []),
     [form.categoriaId, marcas],
   )
 
@@ -211,7 +212,7 @@ export default function AbrirChamadoPage() {
     setSucesso(null)
 
     if (!aberturaChamadosAtiva) {
-      setErro('A abertura online de chamados estara disponivel em breve. No momento, estamos credenciando tecnicos parceiros.')
+      setErro('A abertura online de chamados estará disponível em breve. No momento, estamos credenciando técnicos parceiros.')
       return
     }
 
@@ -242,7 +243,7 @@ export default function AbrirChamadoPage() {
       const data = await response.json().catch(() => null)
       if (!response.ok) {
         if (data?.whatsappUrl) setWhatsRegiaoUrl(String(data.whatsappUrl))
-        throw new Error(data?.error ?? 'Nao foi possivel abrir o chamado.')
+        throw new Error(data?.error ?? 'Não foi possível abrir o chamado.')
       }
 
       setSucesso({ id: Number(data.id), numeroOS: String(data.numeroOS) })
@@ -283,7 +284,7 @@ export default function AbrirChamadoPage() {
         )}
         {!aberturaChamadosAtiva && (
           <div className="chamado-alert chamado-alert-aviso">
-            A abertura de chamados pelo cliente sera liberada em breve. Enquanto isso, estamos cadastrando tecnicos parceiros para ampliar a rede de atendimento.
+            A abertura de chamados pelo cliente será liberada em breve. Enquanto isso, estamos cadastrando técnicos parceiros para ampliar a rede de atendimento.
           </div>
         )}
         {sucesso && (
@@ -295,7 +296,7 @@ export default function AbrirChamadoPage() {
         <div data-public-form-status className="hidden" />
 
         <form onSubmit={enviar} action="/api/chamados" method="post" encType="multipart/form-data" data-public-os-form className="chamado-form grid gap-3 sm:gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <section className="space-y-3 rounded-xl bg-white p-4 shadow-sm sm:space-y-4 sm:p-5">
+          <section className="chamado-card space-y-3 rounded-xl p-4 sm:space-y-4 sm:p-5">
             <AvisoExpansao />
 
             <Bloco titulo="Dados do cliente">
@@ -305,15 +306,15 @@ export default function AbrirChamadoPage() {
               <Field label="E-mail" name="email" value={form.email} onChange={handleChange} type="email" />
             </Bloco>
 
-            <Bloco titulo="Endereco do atendimento">
+            <Bloco titulo="Endereço do atendimento">
               <div>
                 <Field label="CEP" name="cep" value={form.cep} onChange={handleChange} inputMode="numeric" maxLength={9} />
                 <p className="mt-1 text-xs font-semibold text-slate-500">
-                  {buscandoCep ? 'Buscando endereco...' : 'Digite o CEP para preencher rua, bairro, cidade e UF.'}
+                  {buscandoCep ? 'Buscando endereço...' : 'Digite o CEP para preencher rua, bairro, cidade e UF.'}
                 </p>
               </div>
               <Field label="Rua" name="rua" value={form.rua} onChange={handleChange} />
-              <Field label="Numero" name="numero" value={form.numero} onChange={handleChange} />
+              <Field label="Número" name="numero" value={form.numero} onChange={handleChange} />
               <Field label="Bairro" name="bairro" value={form.bairro} onChange={handleChange} />
               <Field label="Cidade" name="cidade" value={form.cidade} onChange={handleChange} />
               <Field label="UF" name="estado" value={form.estado} onChange={handleChange} maxLength={2} required />
@@ -326,14 +327,21 @@ export default function AbrirChamadoPage() {
                   <option key={categoria.key ?? categoria.id} value={categoria.id}>{categoria.nome}</option>
                 ))}
               </Select>
-              <Select label="Marca" name="marcaId" value={form.marcaId} onChange={handleChange} required>
-                <option value="">Selecione</option>
+              <Select
+                label="Marca"
+                name="marcaId"
+                value={form.marcaId}
+                onChange={handleChange}
+                required
+                disabled={!form.categoriaId}
+              >
+                <option value="">{form.categoriaId ? 'Selecione' : 'Escolha o tipo primeiro'}</option>
                 {marcasVisiveis.map((marca) => (
                   <option key={marca.id} value={marca.id} data-categoria-id={marca.categoria_id ?? ''}>
                     {marca.nome}
                   </option>
                 ))}
-                <option value="outra">Outra</option>
+                {form.categoriaId ? <option value="outra">Outra</option> : null}
               </Select>
               {form.marcaId === 'outra' && (
                 <Field
@@ -346,7 +354,7 @@ export default function AbrirChamadoPage() {
                 />
               )}
               <Field label="Modelo" name="modelo" value={form.modelo} onChange={handleChange} required />
-              <Field label="Numero de serie" name="numeroSerie" value={form.numeroSerie} onChange={handleChange} />
+              <Field label="Número de série" name="numeroSerie" value={form.numeroSerie} onChange={handleChange} />
             </Bloco>
 
             <div>
@@ -364,7 +372,7 @@ export default function AbrirChamadoPage() {
           </section>
 
           <aside className="space-y-3 sm:space-y-4">
-            <section className="rounded-xl bg-white p-4 shadow-sm sm:p-5">
+            <section className="chamado-card rounded-xl p-4 sm:p-5">
               <h2 className="text-base font-black text-slate-950 sm:text-lg">Garantia/Seguradora</h2>
               <div className="garantia-toggle mt-3 grid grid-cols-2 gap-2">
                 {(['NAO', 'SIM'] as const).map((valor) => (
@@ -388,7 +396,7 @@ export default function AbrirChamadoPage() {
                     }}
                       className="h-4 w-4 accent-orange-500"
                     />
-                    <span>{valor === 'SIM' ? 'Sim' : 'Nao'}</span>
+                    <span>{valor === 'SIM' ? 'Sim' : 'Não'}</span>
                   </label>
                 ))}
               </div>
@@ -396,14 +404,14 @@ export default function AbrirChamadoPage() {
               <div className="garantia-campos is-hidden mt-4 space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-3" data-garantia-campos>
                   <p className="text-xs font-black uppercase tracking-wide text-blue-800">Dados da compra</p>
                   <Field label="Data da compra" name="dataCompra" value={form.dataCompra} onChange={handleChange} type="date" />
-                  <Field label="Numero da NF" name="numeroNf" value={form.numeroNf} onChange={handleChange} />
+                  <Field label="Número da NF" name="numeroNf" value={form.numeroNf} onChange={handleChange} />
                   <Field label="Revenda/Loja de origem" name="localCompra" value={form.localCompra} onChange={handleChange} />
               </div>
             </section>
 
-            <section className="rounded-xl bg-white p-4 shadow-sm sm:p-5">
+            <section className="chamado-card rounded-xl p-4 sm:p-5">
               <h2 className="text-base font-black text-slate-950 sm:text-lg">Anexos</h2>
-              <p className="mt-1 text-xs text-slate-500">Envie fotos do produto, defeito ou nota fiscal. Maximo 6 arquivos.</p>
+              <p className="mt-1 text-xs text-slate-500">Envie fotos do produto, defeito ou nota fiscal. Máximo 6 arquivos.</p>
               <input
                 name="anexos"
                 type="file"
@@ -423,15 +431,15 @@ export default function AbrirChamadoPage() {
               )}
             </section>
 
-            <section className="rounded-xl bg-white p-4 shadow-sm sm:p-5">
-              <label className="mb-1 block text-sm font-bold text-slate-700">Observacao adicional</label>
+            <section className="chamado-card rounded-xl p-4 sm:p-5">
+              <label className="mb-1 block text-sm font-bold text-slate-700">Observação adicional</label>
               <textarea
                 name="observacao"
                 value={form.observacao}
                 onChange={handleChange}
                 rows={3}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[13px] outline-none focus:border-orange-500 sm:text-sm"
-                placeholder="Ex.: melhor horario, ponto de referencia..."
+                placeholder="Ex.: melhor horário, ponto de referência..."
               />
 
               <label className="mt-3 flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold leading-snug text-slate-600 sm:mt-4">
@@ -457,16 +465,7 @@ export default function AbrirChamadoPage() {
 function AvisoExpansao() {
   return (
     <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2.5 text-xs leading-relaxed text-orange-900 sm:px-4 sm:py-3 sm:text-sm">
-      <p className="font-black">Atendimento em expansao</p>
-      <p className="mt-1 font-semibold">
-        O Chame o Tecnico esta ampliando gradativamente sua rede de atendimento em Mato Grosso do Sul.
-      </p>
-      <p className="mt-1 text-orange-800">
-        Apos o envio, nossa equipe fara uma triagem para verificar a disponibilidade na sua regiao e direcionar o servico ao tecnico parceiro mais qualificado.
-      </p>
-      <a href={criarWhatsAppRegiaoUrl('', '')} target="_blank" rel="noreferrer" className="mt-2 inline-flex font-black text-orange-800 underline decoration-orange-400 underline-offset-4">
-        Falar no WhatsApp
-      </a>
+      <p className="font-semibold">Atendimento em Mato Grosso do Sul, com a rede em expansão.</p>
     </div>
   )
 }
@@ -598,7 +597,7 @@ function validarAreaAtendimento(cidade: string, estado: string) {
   if (!uf) {
     return {
       ok: false,
-      mensagem: 'Informe a UF do atendimento. No momento a abertura online esta liberada somente para Mato Grosso do Sul (MS).',
+      mensagem: 'Informe a UF do atendimento. No momento a abertura online está liberada somente para Mato Grosso do Sul (MS).',
       whatsappUrl,
     }
   }
@@ -606,7 +605,7 @@ function validarAreaAtendimento(cidade: string, estado: string) {
   if (uf !== estadoAtendido) {
     return {
       ok: false,
-      mensagem: 'No momento a abertura online esta liberada somente para Mato Grosso do Sul (MS). Para outras regioes, fale conosco pelo WhatsApp.',
+      mensagem: 'No momento a abertura online está liberada somente para Mato Grosso do Sul (MS). Para outras regiões, fale conosco pelo WhatsApp.',
       whatsappUrl,
     }
   }
@@ -617,7 +616,7 @@ function validarAreaAtendimento(cidade: string, estado: string) {
 function criarWhatsAppRegiaoUrl(cidade: string, estado: string) {
   const uf = estado.trim().toUpperCase()
   const local = [cidade.trim(), uf].filter(Boolean).join('/')
-  const texto = `Ola! Estou em ${local || 'minha regiao'} e gostaria de saber quando o atendimento da Chame o Tecnico estara disponivel na minha regiao.`
+  const texto = `Olá! Estou em ${local || 'minha região'} e gostaria de saber quando o atendimento da Chame o Técnico estará disponível na minha região.`
   return `https://wa.me/${whatsappAtendimento}?text=${encodeURIComponent(texto)}`
 }
 

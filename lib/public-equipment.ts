@@ -1,14 +1,14 @@
 type Categoria = { id: number; nome: string }
 type Marca = { id: number; nome: string; categoria_id: number | null }
 
-const categoriasPublicas = [
+const categoriasPublicas: Array<{ nome: string; termos: string[]; excluir?: string[] }> = [
   { nome: 'Smart TV', termos: ['televis'] },
   { nome: 'Ar Condicionado', termos: ['ar condicionado'] },
   { nome: 'Refrigerador', termos: ['refriger'] },
-  { nome: 'Lavadora', termos: ['lavadora', 'maquina de lavar', 'maquinas de lavar'] },
-  { nome: 'Informatica', termos: ['informatica', 'eletronicos em geral'] },
+  { nome: 'Lavadora', termos: ['lavadoras', 'maquina de lavar', 'maquinas de lavar'], excluir: ['alta pressao'] },
+  { nome: 'Informática', termos: ['informatica', 'monitor'] },
   { nome: 'Inversor Solar', termos: ['inversor'] },
-  { nome: 'Outros Servicos', termos: ['outros', 'eletronicos em geral'] },
+  { nome: 'Outros serviços', termos: ['eletronicos em geral'] },
 ]
 
 function normalizar(texto: string) {
@@ -18,9 +18,11 @@ function normalizar(texto: string) {
     .toLowerCase()
 }
 
-function encontrarCategoria(categorias: Categoria[], termos: string[]) {
+function encontrarCategoria(categorias: Categoria[], termos: string[], excluir: string[] = []) {
+  const bloqueios = excluir.map((termo) => normalizar(termo))
   return categorias.find((categoria) => {
     const nome = normalizar(categoria.nome)
+    if (bloqueios.some((termo) => nome.includes(termo))) return false
     return termos.some((termo) => nome.includes(normalizar(termo)))
   })
 }
@@ -30,7 +32,7 @@ export function prepararCategoriasPublicas(categorias: Categoria[]) {
 
   return categoriasPublicas
     .map((item, index) => {
-      const categoria = encontrarCategoria(origem, item.termos)
+      const categoria = encontrarCategoria(origem, item.termos, item.excluir)
       if (!categoria) return null
       return {
         id: categoria.id,
@@ -42,7 +44,7 @@ export function prepararCategoriasPublicas(categorias: Categoria[]) {
 }
 
 export function prepararMarcasPublicas(marcas: Marca[], categorias: Categoria[]) {
-  const lavadora = encontrarCategoria(categorias, ['lavadora'])
+  const lavadora = encontrarCategoria(categorias, ['lavadoras'], ['alta pressao'])
   const maquinaLavar = encontrarCategoria(categorias, ['maquina de lavar', 'maquinas de lavar'])
 
   if (!lavadora || !maquinaLavar || lavadora.id === maquinaLavar.id) return marcas
@@ -99,6 +101,7 @@ export function listarMarcasDoFormulario(marcas: Marca[], categoriaId?: string |
 
 const categoriasFallback: Categoria[] = [
   { id: 19, nome: 'Ar Condicionado' },
+  { id: 23, nome: 'Monitor' },
   { id: 16, nome: 'Eletronicos em Geral' },
   { id: 22, nome: 'Inversores Solares' },
   { id: 17, nome: 'Lavadoras' },

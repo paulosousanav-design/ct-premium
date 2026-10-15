@@ -106,13 +106,6 @@ export default function Home() {
               <Link href="/abrir-chamado" className="primary-action">Abrir chamado agora</Link>
               <Link href="/consulta" className="secondary-action">Acompanhar OS</Link>
             </div>
-
-            <div className="stats-row">
-              <Stat value="Atendimento em MS" label="Cobertura em expansão" />
-              <Stat value="Acompanhe sua OS" label="Tudo online e seguro" />
-              <Stat value="Técnicos verificados" label="Parceiros qualificados" />
-              <Stat value="30 anos" label="de experiência" />
-            </div>
           </div>
         </div>
       </section>
@@ -270,13 +263,3 @@ function Check({ text }: { text: string }) {
   )
 }
 
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="stat-card">
-      <div>
-        <div className="stat-number">{value}</div>
-        <div className="stat-label">{label}</div>
-      </div>
-    </div>
-  )
-}

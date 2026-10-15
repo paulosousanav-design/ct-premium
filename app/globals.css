@@ -217,16 +217,16 @@ body {
 
         .brand-list img {
           display: block;
-          height: 30px;
+          height: 26px;
           width: auto;
-          max-width: 170px;
+          max-width: 150px;
           object-fit: contain;
           object-position: center;
         }
 
         .brand-list li.logo-maior img {
-          height: 48px;
-          max-width: 136px;
+          height: 34px;
+          max-width: 120px;
         }
 
         .parcerias {
@@ -1299,11 +1299,11 @@ body {
         .chamado-flow li {
           display: grid;
           gap: 4px;
-          border: 1px solid rgba(11, 103, 194, 0.14);
+          border: 1px solid rgba(11, 103, 194, 0.22);
           border-radius: 18px;
-          background: linear-gradient(180deg, #ffffff 0%, #f4f9fd 100%);
+          background: #ffffff;
           padding: 16px;
-          box-shadow: 0 10px 26px rgba(7, 28, 66, 0.06);
+          box-shadow: 0 14px 32px rgba(7, 28, 66, 0.1);
         }
 
         .chamado-flow span {
@@ -1327,11 +1327,17 @@ body {
         }
 
         .chamado-form {
-          border: 1px solid rgba(11, 103, 194, 0.14);
+          border: 1px solid rgba(11, 103, 194, 0.16);
           border-radius: 24px;
-          background: rgba(255, 255, 255, 0.72);
+          background: rgba(255, 255, 255, 0.55);
           padding: 14px;
-          box-shadow: 0 14px 34px rgba(7, 28, 66, 0.08);
+          box-shadow: 0 16px 36px rgba(7, 28, 66, 0.08);
+        }
+
+        .chamado-card {
+          border: 1px solid rgba(11, 103, 194, 0.22);
+          background: #ffffff;
+          box-shadow: 0 14px 30px rgba(7, 28, 66, 0.11);
         }
 
         .chamado-alert {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { listarMarcasDoFormulario } from '../lib/public-equipment.ts'
+import { listarMarcasDoFormulario, prepararCategoriasPublicas } from '../lib/public-equipment.ts'
 
 const marcas = [
   { id: 68, nome: 'AOC', categoria_id: 21 },
@@ -20,6 +20,26 @@ test('lista cada marca uma vez e deixa Outra para o formulario', () => {
 test('filtra a marca pelo tipo e remove a repeticao da mesma categoria', () => {
   const nomes = listarMarcasDoFormulario(marcas, 17).map((marca) => marca.nome)
   assert.deepEqual(nomes, ['Brastemp'])
+})
+
+test('separa informatica, outros servicos e lavadora', () => {
+  const publicas = prepararCategoriasPublicas([
+    { id: 24, nome: 'Lavadora de alta pressão' },
+    { id: 17, nome: 'Lavadoras' },
+    { id: 20, nome: 'Máquinas de Lavar' },
+    { id: 16, nome: 'Eletrônicos em Geral' },
+    { id: 23, nome: 'Monitor' },
+    { id: 21, nome: 'Televisores' },
+    { id: 19, nome: 'Ar Condicionado' },
+    { id: 18, nome: 'Refrigeradores' },
+    { id: 22, nome: 'Inversores Solares' },
+  ])
+  const id = (nome: string) => publicas.find((categoria) => categoria.nome === nome)?.id
+
+  assert.equal(id('Lavadora'), 17)
+  assert.equal(id('Informática'), 23)
+  assert.equal(id('Outros serviços'), 16)
+  assert.notEqual(id('Informática'), id('Outros serviços'))
 })
 
 test('une grafia parecida e prefere o nome com caixa mista', () => {
