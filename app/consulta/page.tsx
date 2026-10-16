@@ -264,53 +264,33 @@ export default function ConsultaPage() {
           )}
         </section>
 
-        {!resultado && !loading && (
-          <section className="rounded-2xl bg-white p-10 text-center shadow-sm">
-            <h2 className="text-xl font-semibold text-slate-900">Aguardando consulta</h2>
-            <p className="mt-2 text-slate-500">
-              Digite o número da OS e o WhatsApp para acompanhar o andamento do chamado.
-            </p>
-          </section>
-        )}
-
         {resultado && (
           <div className="space-y-6">
-            <section className="grid gap-4 md:grid-cols-2">
-              <InfoCard label="OS" value={resultado.os.numero_os ?? '-'} />
-              <InfoCard label="Status atual" value={formatarStatusOs(resultado.os.status)} />
+            <section className="rounded-2xl bg-slate-950 p-6 text-white shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-wide text-orange-400">
+                {resultado.os.numero_os ?? 'OS'}
+              </p>
+              <h2 className="mt-2 text-2xl font-black">
+                {podeResponderOrcamento ? 'Aguardando a sua aprovação' : formatarStatusOs(resultado.os.status)}
+              </h2>
+              <p className="mt-2 text-sm text-slate-300">
+                {textoDoAndamento(resultado.os.status, podeResponderOrcamento)}
+              </p>
             </section>
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-xl font-semibold text-slate-900">Dados do cliente</h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <InfoBlock label="Cliente" value={resultado.os.cliente.nome ?? '-'} />
-                <InfoBlock label="CPF/CNPJ" value={resultado.os.cliente.cpf_cnpj ?? '-'} />
-                <InfoBlock label="WhatsApp" value={resultado.os.cliente.whatsapp ?? '-'} />
-                <InfoBlock label="E-mail" value={resultado.os.cliente.email ?? '-'} />
-                <InfoBlock label="CEP" value={resultado.os.cliente.cep ?? '-'} />
-                <InfoBlock
-                  label="Endereço"
-                  value={[
-                    resultado.os.cliente.logradouro,
-                    resultado.os.cliente.numero,
-                    resultado.os.cliente.bairro,
-                    resultado.os.cliente.cidade,
-                    resultado.os.cliente.estado,
-                  ].filter(Boolean).join(', ') || '-'}
-                  wide
-                />
-              </div>
-            </section>
-
-            <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-xl font-semibold text-slate-900">Dados do equipamento</h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <InfoBlock label="Categoria" value={resultado.os.categoria?.nome ?? '-'} />
-                <InfoBlock label="Marca" value={resultado.os.marca?.nome ?? '-'} />
-                <InfoBlock label="Modelo" value={resultado.os.modelo ?? '-'} />
-                <InfoBlock label="Número de série" value={resultado.os.numero_serie ?? '-'} />
-                <InfoBlock label="Defeito informado" value={resultado.os.defeito ?? '-'} wide />
-              </div>
+              <h2 className="text-xl font-semibold text-slate-900">Equipamento</h2>
+              <p className="mt-3 text-lg font-black text-slate-950">
+                {[resultado.os.categoria?.nome, resultado.os.marca?.nome, resultado.os.modelo]
+                  .filter(Boolean)
+                  .join(' · ') || 'Equipamento não informado'}
+              </p>
+              {resultado.os.numero_serie && (
+                <p className="mt-1 text-sm text-slate-500">Número de série: {resultado.os.numero_serie}</p>
+              )}
+              <p className="mt-4 text-sm font-medium leading-relaxed text-slate-700">
+                {resultado.os.defeito || 'Nenhum defeito informado.'}
+              </p>
             </section>
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -318,7 +298,7 @@ export default function ConsultaPage() {
                 <div>
                   <h2 className="text-xl font-semibold text-slate-900">Orçamento</h2>
                   <p className="text-sm text-slate-500">
-                    Situação: {resultado.os.orcamento_status ?? 'PENDENTE'}
+                    {formatarStatusOrcamento(resultado.os.orcamento_status)}
                   </p>
                 </div>
                 <span className="rounded-full bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-700">
@@ -402,26 +382,15 @@ function Input({
   )
 }
 
-function InfoCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm">
-      <p className="text-xs uppercase text-slate-500">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-slate-900">{value}</p>
-    </div>
-  )
-}
-
 function InfoBlock({
   label,
   value,
-  wide = false,
 }: {
   label: string
   value: string
-  wide?: boolean
 }) {
   return (
-    <div className={`rounded-xl border border-slate-200 p-4 ${wide ? 'md:col-span-2 xl:col-span-3' : ''}`}>
+    <div className="rounded-xl border border-slate-200 p-4">
       <p className="text-xs uppercase text-slate-500">{label}</p>
       <p className="mt-1 text-sm font-medium text-slate-900 whitespace-pre-wrap">{value}</p>
     </div>
@@ -454,15 +423,43 @@ function formatarStatusOs(status?: string | null) {
     NOVA: 'Recebido',
     EM_TRIAGEM: 'Em triagem',
     EM_ATENDIMENTO: 'Em atendimento',
-    AGUARDANDO_APROVACAO: 'Aguardando aprovacao',
-    AGUARDANDO_PECA: 'Aguardando peca',
-    PRONTO_AGUARDANDO_ENTREGA: 'Pronto aguardando entrega',
-    CRITICA: 'Critica',
+    AGUARDANDO_APROVACAO: 'Aguardando aprovação',
+    AGUARDANDO_PECA: 'Aguardando peça',
+    PRONTO_AGUARDANDO_ENTREGA: 'Pronto, aguardando entrega',
+    CRITICA: 'Crítica',
     FINALIZADA: 'Finalizada',
     ENCERRADA_SEM_REPARO: 'Encerrada sem reparo',
   }
 
   return labels[String(status ?? '')] ?? String(status ?? '-')
+}
+
+function textoDoAndamento(status: string | null, aguardandoDecisao: boolean) {
+  if (aguardandoDecisao) return 'Confira o valor e autorize o reparo.'
+
+  const textos: Record<string, string> = {
+    NOVA: 'A equipe vai confirmar o atendimento.',
+    EM_TRIAGEM: 'A equipe está verificando o chamado.',
+    EM_ATENDIMENTO: 'O técnico está com o serviço.',
+    AGUARDANDO_APROVACAO: 'O orçamento está pronto para a sua decisão.',
+    AGUARDANDO_PECA: 'O reparo segue quando a peça chegar.',
+    PRONTO_AGUARDANDO_ENTREGA: 'O serviço foi concluído e aguarda a entrega.',
+    CRITICA: 'A equipe está tratando uma pendência deste chamado.',
+    FINALIZADA: 'Este atendimento foi concluído.',
+    ENCERRADA_SEM_REPARO: 'O chamado foi encerrado sem o reparo.',
+  }
+
+  return textos[String(status ?? '')] ?? 'Acompanhe o andamento por aqui.'
+}
+
+function formatarStatusOrcamento(status?: string | null) {
+  const labels: Record<string, string> = {
+    PENDENTE: 'Pendente',
+    APROVADO: 'Aprovado',
+    REPROVADO: 'Reprovado',
+  }
+
+  return labels[String(status ?? 'PENDENTE')] ?? String(status ?? 'Pendente')
 }
 
 function toNumber(value: number | string | null | undefined) {
