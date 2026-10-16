@@ -881,7 +881,7 @@ export default function OrdensServicoPage() {
                           type="button"
                           onClick={() => {
                             setStatusFiltro(item.filtro)
-                            setFilaFiltro('fila' in item ? item.fila : '')
+                            setFilaFiltro(item.fila ?? '')
                             setNotificacoesAberta(false)
                           }}
                           className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-left hover:border-orange-300 hover:bg-orange-50"
