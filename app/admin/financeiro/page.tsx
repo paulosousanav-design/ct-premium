@@ -172,7 +172,12 @@ const classificacoesDre = [
 ]
 
 export default function FinanceiroPage() {
-  const [aba, setAba] = useState<AbaFinanceiro>('tecnicos')
+  const [aba, setAba] = useState<AbaFinanceiro>(() => {
+    if (typeof window === 'undefined') return 'tecnicos'
+    const valor = new URLSearchParams(window.location.search).get('aba')
+    if (valor === 'receber' || valor === 'tecnicos' || valor === 'contas') return valor
+    return 'tecnicos'
+  })
   const [ordens, setOrdens] = useState<OrdemFinanceira[]>([])
   const [documentos, setDocumentos] = useState<DocumentoTecnico[]>([])
   const [contasPagar, setContasPagar] = useState<ContaPagar[]>([])

@@ -24,6 +24,12 @@ type MenuItem = {
   contador?: 'chat' | 'monitoramento'
 }
 
+type MenuGrupo = {
+  titulo: string
+  discreto?: boolean
+  itens: MenuItem[]
+}
+
 type UnidadeAcesso = {
   id: number
   codigo: string
@@ -48,36 +54,69 @@ type ChatConversaResumo = {
 
 type ChatAlerta = { conversaId: number; titulo: string; autor: string; conteudo: string }
 
-const menu: MenuItem[] = [
-  { label: 'Dashboard', href: '/admin/dashboard', permissao: 'dashboard', icone: '▦' },
-  { label: 'Ordens de Servico', href: '/admin/os', permissao: 'os', icone: '▤' },
-  { label: 'Finalizadas', href: '/admin/finalizadas', permissao: 'finalizadas', icone: '✓' },
-  { label: 'Retirada de Equipamentos', href: '/admin/retiradas', permissao: 'os', icone: '↗' },
-  { label: 'Tecnicos', href: '/admin/parceiros', permissao: 'tecnicos', icone: '♙' },
-  { label: 'Garantidores', href: '/admin/garantidores', permissao: 'garantidores', icone: '◆' },
-  { label: 'Aprovacao', href: '/admin/aprovacao', permissao: 'aprovacao', icone: '✓' },
-  { label: 'Financeiro', href: '/admin/financeiro', permissao: 'financeiro', icone: '$' },
-  { label: 'Fechamento de Caixa', href: '/admin/financeiro/caixa', permissao: 'financeiro', icone: '▣' },
-  { label: 'DRE Gerencial', href: '/admin/financeiro/dre', permissao: 'dre', icone: '▥' },
-  { label: 'Gestao de Rotas', href: '/admin/rotas', permissao: 'rotas', icone: '⌖' },
-  { label: 'Vendas', href: '/admin/vendas', permissao: 'vendas', icone: '▣' },
-  { label: 'Pecas', href: '/admin/pecas', permissao: 'pecas', icone: '⚙' },
-  { label: 'Documentos recebidos', href: '/admin/documentos-fiscais', permissao: 'documentos_fiscais', icone: '⌑' },
-  { label: 'Clientes', href: '/admin/clientes', permissao: 'clientes', icone: '◉' },
-  { label: 'Minha oficina', href: '/admin/minha-oficina', permissao: 'minha_oficina', icone: '⌂' },
-  { label: 'Empresas do grupo', href: '/admin/unidades', permissao: 'unidades', icone: '⌂' },
-  { label: 'Usuarios', href: '/admin/usuarios', permissao: 'usuarios', icone: '◌' },
-  { label: 'Auditoria', href: '/admin/auditoria', permissao: 'usuarios', icone: '◈' },
-  { label: 'Monitoramento', href: '/admin/monitoramento', permissao: 'usuarios', icone: '!', contador: 'monitoramento' },
-  { label: 'Central de Backups', href: '/admin/backups', permissao: 'usuarios', icone: '⇧' },
-  { label: 'Relatorios', href: '/admin/relatorios', permissao: 'relatorios', icone: '▧' },
-  { label: 'Academia Tecnica', href: '/admin/academia', permissao: 'academia', icone: '✦' },
-  { label: 'Documentos Tecnicos', href: '/admin/documentos', permissao: 'documentos', icone: '▤' },
-  { label: 'Chat interno', href: '/admin/chat', permissao: 'chat', icone: '◍', contador: 'chat' },
-  { label: 'Configuracoes', href: '/admin/configuracoes', permissao: 'configuracoes', icone: '⚙' },
-  { label: 'Assinaturas CT Premium', href: '/admin/assinaturas', permissao: 'configuracoes', icone: '$' },
-  { label: 'Oficinas clientes', href: '/admin/clientes-saas', permissao: 'configuracoes', icone: '◉' },
+const menuGrupos: MenuGrupo[] = [
+  {
+    titulo: 'Operação',
+    itens: [
+      { label: 'Dashboard', href: '/admin/dashboard', permissao: 'dashboard', icone: '▦' },
+      { label: 'Ordens de Serviço', href: '/admin/os', permissao: 'os', icone: '▤' },
+      { label: 'Finalizadas', href: '/admin/finalizadas', permissao: 'finalizadas', icone: '✓' },
+      { label: 'Retirada de equipamentos', href: '/admin/retiradas', permissao: 'os', icone: '↗' },
+      { label: 'Aprovação', href: '/admin/aprovacao', permissao: 'aprovacao', icone: '✓' },
+      { label: 'Rotas', href: '/admin/rotas', permissao: 'rotas', icone: '⌖' },
+      { label: 'Técnicos', href: '/admin/parceiros', permissao: 'tecnicos', icone: '♙' },
+      { label: 'Garantidores', href: '/admin/garantidores', permissao: 'garantidores', icone: '◆' },
+      { label: 'Chat interno', href: '/admin/chat', permissao: 'chat', icone: '◍', contador: 'chat' },
+      { label: 'Academia técnica', href: '/admin/academia', permissao: 'academia', icone: '✦' },
+      { label: 'Documentos técnicos', href: '/admin/documentos', permissao: 'documentos', icone: '▤' },
+      { label: 'Monitoramento', href: '/admin/monitoramento', permissao: 'usuarios', icone: '!', contador: 'monitoramento' },
+    ],
+  },
+  {
+    titulo: 'Dinheiro',
+    itens: [
+      { label: 'Financeiro', href: '/admin/financeiro', permissao: 'financeiro', icone: '$' },
+      { label: 'Fechamento de caixa', href: '/admin/financeiro/caixa', permissao: 'financeiro', icone: '▣' },
+      { label: 'DRE gerencial', href: '/admin/financeiro/dre', permissao: 'dre', icone: '▥' },
+      { label: 'Vendas', href: '/admin/vendas', permissao: 'vendas', icone: '▣' },
+      { label: 'Relatórios', href: '/admin/relatorios', permissao: 'relatorios', icone: '▧' },
+    ],
+  },
+  {
+    titulo: 'Cadastro',
+    itens: [
+      { label: 'Clientes', href: '/admin/clientes', permissao: 'clientes', icone: '◉' },
+      { label: 'Peças', href: '/admin/pecas', permissao: 'pecas', icone: '⚙' },
+      { label: 'Documentos recebidos', href: '/admin/documentos-fiscais', permissao: 'documentos_fiscais', icone: '⌑' },
+      { label: 'Minha oficina', href: '/admin/minha-oficina', permissao: 'minha_oficina', icone: '⌂' },
+      { label: 'Empresas do grupo', href: '/admin/unidades', permissao: 'unidades', icone: '⌂' },
+      { label: 'Usuários', href: '/admin/usuarios', permissao: 'usuarios', icone: '◌' },
+      { label: 'Configurações', href: '/admin/configuracoes', permissao: 'configuracoes', icone: '⚙' },
+    ],
+  },
+  {
+    titulo: 'Sistema',
+    discreto: true,
+    itens: [
+      { label: 'Auditoria', href: '/admin/auditoria', permissao: 'usuarios', icone: '◈' },
+      { label: 'Backups', href: '/admin/backups', permissao: 'usuarios', icone: '⇧' },
+      { label: 'Assinaturas', href: '/admin/assinaturas', permissao: 'configuracoes', icone: '$' },
+      { label: 'Oficinas clientes', href: '/admin/clientes-saas', permissao: 'configuracoes', icone: '◉' },
+    ],
+  },
 ]
+
+function itemMenuAtivo(pathname: string, href: string) {
+  if (pathname === href) return true
+  if (!pathname.startsWith(`${href}/`)) return false
+
+  const itens = menuGrupos.flatMap((grupo) => grupo.itens)
+  return !itens.some((item) =>
+    item.href !== href
+    && item.href.startsWith(`${href}/`)
+    && (pathname === item.href || pathname.startsWith(`${item.href}/`))
+  )
+}
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const [buscaGlobal, setBuscaGlobal] = useState('')
@@ -234,9 +273,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }, [isLoginPage, permissoes])
 
   const menuVisivel = useMemo(() => {
-    if (permissoes === null) return []
-    if (usuarioInativo) return []
-    return menu.filter((item) => permissoes.includes(item.permissao))
+    if (permissoes === null || usuarioInativo) return []
+    return menuGrupos
+      .map((grupo) => ({
+        ...grupo,
+        itens: grupo.itens.filter((item) => permissoes.includes(item.permissao)),
+      }))
+      .filter((grupo) => grupo.itens.length > 0)
   }, [permissoes, usuarioInativo])
 
   async function sair() {
@@ -333,59 +376,66 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
               <div>
                 <h2 className="text-2xl font-bold">{acessoP4 ? 'P4 Integra' : 'CT Premium'}</h2>
-                <p className="text-slate-300">{acessoP4 ? 'Gestão que conecta' : 'Assistencia Premium'}</p>
+                <p className="text-slate-300">{acessoP4 ? 'Gestão que conecta' : 'Assistência Premium'}</p>
                 <p className="text-xs text-slate-400">{acessoP4 ? 'app.p4integra.com.br' : 'www.chameotecnico.com.br'}</p>
               </div>
             </div>
           </div>
 
-          <nav className="flex-1 overflow-y-auto p-4">
-            <ul className="space-y-2">
-              {menuVisivel.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
-                const contador = item.contador === 'chat'
-                  ? chatNaoLidas
-                  : item.contador === 'monitoramento'
-                    ? monitoramentoAbertos
-                    : 0
+          <nav className="flex-1 space-y-5 overflow-y-auto p-4">
+            {menuVisivel.map((grupo) => (
+              <section key={grupo.titulo}>
+                <p className={`mb-2 px-2 text-[10px] font-black uppercase tracking-[0.16em] ${grupo.discreto ? 'text-slate-500' : 'text-slate-400'}`}>
+                  {grupo.titulo}
+                </p>
+                <ul className="space-y-1.5">
+                  {grupo.itens.map((item) => {
+                    const active = itemMenuAtivo(pathname, item.href)
+                    const contador = item.contador === 'chat'
+                      ? chatNaoLidas
+                      : item.contador === 'monitoramento'
+                        ? monitoramentoAbertos
+                        : 0
 
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      className={`group relative flex items-center justify-between gap-3 overflow-hidden rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
-                        active ? 'border-orange-400/40 bg-slate-800 text-white shadow-lg shadow-black/20' : 'border-transparent text-slate-300 hover:border-slate-700 hover:bg-slate-900 hover:text-white'
-                      }`}
-                    >
-                      {active && <span className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-orange-500" aria-hidden="true" />}
-                      <span className="flex min-w-0 items-center gap-3">
-                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base font-black transition-transform duration-200 group-hover:scale-110 ${active ? 'bg-orange-500 text-white shadow-md shadow-orange-900/40' : 'bg-slate-800 text-slate-300 group-hover:bg-slate-700 group-hover:text-white'}`} aria-hidden="true">
-                          {item.icone}
-                        </span>
-                        <span className="truncate tracking-[0.01em]">{item.label}</span>
-                      </span>
-                      <span className="flex shrink-0 items-center gap-2">
-                        {contador > 0 && (
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] font-black text-white ${
-                              item.contador === 'monitoramento' && monitoramentoCriticos > 0
-                                ? 'animate-pulse bg-red-600'
-                                : 'bg-orange-600'
-                            }`}
-                            title={item.contador === 'monitoramento' && monitoramentoCriticos > 0
-                              ? `${monitoramentoCriticos} alerta(s) critico(s)`
-                              : undefined}
-                          >
-                            {contador > 99 ? '99+' : contador}
+                    return (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          className={`group relative flex items-center justify-between gap-3 overflow-hidden rounded-xl border px-3 py-2 text-sm font-semibold transition-all duration-200 ${
+                            active ? 'border-orange-400/40 bg-slate-800 text-white shadow-lg shadow-black/20' : 'border-transparent text-slate-300 hover:border-slate-700 hover:bg-slate-900 hover:text-white'
+                          }`}
+                        >
+                          {active && <span className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-orange-500" aria-hidden="true" />}
+                          <span className="flex min-w-0 items-center gap-3">
+                            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base font-black transition-transform duration-200 group-hover:scale-110 ${active ? 'bg-orange-500 text-white shadow-md shadow-orange-900/40' : 'bg-slate-800 text-slate-300 group-hover:bg-slate-700 group-hover:text-white'}`} aria-hidden="true">
+                              {item.icone}
+                            </span>
+                            <span className="truncate tracking-[0.01em]">{item.label}</span>
                           </span>
-                        )}
-                        <span className={`text-sm transition-transform duration-200 ${active ? 'text-orange-400' : 'text-slate-600 group-hover:translate-x-0.5 group-hover:text-slate-300'}`} aria-hidden="true">›</span>
-                      </span>
-                    </Link>
-                  </li>
-                )
-              })}
-            </ul>
+                          <span className="flex shrink-0 items-center gap-2">
+                            {contador > 0 && (
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[11px] font-black text-white ${
+                                  item.contador === 'monitoramento' && monitoramentoCriticos > 0
+                                    ? 'animate-pulse bg-red-600'
+                                    : 'bg-orange-600'
+                                }`}
+                                title={item.contador === 'monitoramento' && monitoramentoCriticos > 0
+                                  ? `${monitoramentoCriticos} alerta(s) crítico(s)`
+                                  : undefined}
+                              >
+                                {contador > 99 ? '99+' : contador}
+                              </span>
+                            )}
+                            <span className={`text-sm transition-transform duration-200 ${active ? 'text-orange-400' : 'text-slate-600 group-hover:translate-x-0.5 group-hover:text-slate-300'}`} aria-hidden="true">›</span>
+                          </span>
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </section>
+            ))}
           </nav>
 
           <div className="border-t border-slate-800 p-4">

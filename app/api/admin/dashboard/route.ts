@@ -9,6 +9,26 @@ const STATUS_EXIGEM_TECNICO = new Set([
   'AGUARDANDO_PECA', 'PRONTO_AGUARDANDO_ENTREGA', 'FINALIZADA',
 ])
 
+function resumirOsRecente(item: {
+  id: number
+  numero_os: string | null
+  status: string | null
+  prioridade: string | null
+  created_at: string
+  clientes?: { nome?: string | null; cidade?: string | null } | { nome?: string | null; cidade?: string | null }[] | null
+}) {
+  const cliente = Array.isArray(item.clientes) ? item.clientes[0] : item.clientes
+  return {
+    id: item.id,
+    numero_os: item.numero_os,
+    status: item.status,
+    prioridade: item.prioridade,
+    created_at: item.created_at,
+    cliente_nome: cliente?.nome?.trim() || null,
+    cliente_cidade: cliente?.cidade?.trim() || null,
+  }
+}
+
 function db() {
   if (!supabaseUrl || !serviceRoleKey) throw new Error('Configuracao do Supabase ausente no servidor.')
   return createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
@@ -51,11 +71,12 @@ export async function GET(request: NextRequest) {
     let criticasQuery = supabase.from('ordens_servico').select('*', { count: 'exact', head: true }).eq('status', 'CRITICA')
     criticasQuery = filtros(criticasQuery, origem, garantidorId)
     criticasQuery = escopo(criticasQuery, auth.unidadeId, auth.unidadesPermitidas)
-    let criticasRecentesQuery = supabase.from('ordens_servico').select('id, numero_os, status, prioridade, created_at')
+    const camposOsRecente = 'id, numero_os, status, prioridade, created_at, clientes:cliente_id(nome, cidade)'
+    let criticasRecentesQuery = supabase.from('ordens_servico').select(camposOsRecente)
       .eq('status', 'CRITICA').order('created_at', { ascending: false }).limit(8)
     criticasRecentesQuery = filtros(criticasRecentesQuery, origem, garantidorId)
     criticasRecentesQuery = escopo(criticasRecentesQuery, auth.unidadeId, auth.unidadesPermitidas)
-    let ultimasQuery = supabase.from('ordens_servico').select('id, numero_os, status, prioridade, created_at')
+    let ultimasQuery = supabase.from('ordens_servico').select(camposOsRecente)
       .order('created_at', { ascending: false }).limit(8)
     ultimasQuery = filtros(ultimasQuery, origem, garantidorId)
     ultimasQuery = escopo(ultimasQuery, auth.unidadeId, auth.unidadesPermitidas)
@@ -83,6 +104,7 @@ export async function GET(request: NextRequest) {
     const osDestacadas = [...(criticasRecentes.data ?? []), ...(ultimas.data ?? [])]
       .filter((item, index, itens) => itens.findIndex((candidato) => candidato.id === item.id) === index)
       .slice(0, 8)
+      .map(resumirOsRecente)
     return NextResponse.json({
       resumoEscopo: {
         clientes: new Set((resumo.data ?? []).map((item) => Number(item.cliente_id)).filter(Boolean)).size,

@@ -233,6 +233,17 @@ const ORIGEM_FILTROS = [
   { value: 'AVULSO_ADMIN', label: 'Avulso/Admin' },
 ] as const
 
+function lerFiltroInicialDaOs() {
+  if (typeof window === 'undefined') return { status: 'TODAS', fila: '' }
+  const params = new URLSearchParams(window.location.search)
+  const status = params.get('status') ?? ''
+  const statusValido = STATUS_FILTROS.some((item) => item.value === status)
+  return {
+    status: statusValido ? status : 'TODAS',
+    fila: params.get('fila') === 'sem-tecnico' ? 'sem-tecnico' : '',
+  }
+}
+
 export default function OrdensServicoPage() {
   const router = useRouter()
 
@@ -256,7 +267,8 @@ export default function OrdensServicoPage() {
   const [buscandoEquipamentos, setBuscandoEquipamentos] = useState(false)
   const [erroEquipamentos, setErroEquipamentos] = useState('')
   const [busca, setBusca] = useState('')
-  const [statusFiltro, setStatusFiltro] = useState('TODAS')
+  const [statusFiltro, setStatusFiltro] = useState(() => lerFiltroInicialDaOs().status)
+  const [filaFiltro, setFilaFiltro] = useState(() => lerFiltroInicialDaOs().fila)
   const [origemFiltro, setOrigemFiltro] = useState('TODAS')
   const [cidadeFiltro, setCidadeFiltro] = useState('TODAS')
   const [notificacoesAberta, setNotificacoesAberta] = useState(false)
@@ -371,12 +383,13 @@ export default function OrdensServicoPage() {
 
       const bateBusca = texto.includes(busca.toLowerCase().trim())
       const bateStatus = statusFiltro === 'TODAS' || os.status === statusFiltro
+      const bateFila = filaFiltro !== 'sem-tecnico' || getDiasSemTecnico(os) >= 3
       const bateOrigem = origemFiltro === 'TODAS' || getOrigemOsVisual(os) === origemFiltro
       const bateCidade = cidadeFiltro === 'TODAS' || os.cliente_cidade === cidadeFiltro
 
-      return bateBusca && bateStatus && bateOrigem && bateCidade
+      return bateBusca && bateStatus && bateFila && bateOrigem && bateCidade
     })
-  }, [ordens, busca, statusFiltro, origemFiltro, cidadeFiltro])
+  }, [ordens, busca, statusFiltro, filaFiltro, origemFiltro, cidadeFiltro])
 
   const cidadesDisponiveis = useMemo(() => {
     return Array.from(
@@ -417,7 +430,7 @@ export default function OrdensServicoPage() {
 
     return [
       { label: 'OS novas para triagem', total: novas, tone: 'bg-emerald-100 text-emerald-700', filtro: 'NOVA' },
-      { label: 'OS ha 3+ dias sem tecnico', total: semTecnicoTresDias, tone: 'bg-red-100 text-red-700', filtro: 'TODAS' },
+      { label: 'OS há 3 dias ou mais sem técnico', total: semTecnicoTresDias, tone: 'bg-red-100 text-red-700', filtro: 'TODAS', fila: 'sem-tecnico' },
       { label: 'Aguardando revisao admin', total: revisaoAdmin, tone: 'bg-indigo-100 text-indigo-700', filtro: 'AGUARDANDO_REVISAO' },
       { label: 'Aguardando aprovacao', total: aguardandoAprovacao, tone: 'bg-cyan-100 text-cyan-700', filtro: 'AGUARDANDO_APROVACAO' },
       { label: 'Prontas aguardando entrega', total: prontoEntrega, tone: 'bg-emerald-100 text-emerald-700', filtro: 'PRONTO_AGUARDANDO_ENTREGA' },
@@ -868,6 +881,7 @@ export default function OrdensServicoPage() {
                           type="button"
                           onClick={() => {
                             setStatusFiltro(item.filtro)
+                            setFilaFiltro('fila' in item ? item.fila : '')
                             setNotificacoesAberta(false)
                           }}
                           className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-left hover:border-orange-300 hover:bg-orange-50"
@@ -1344,6 +1358,15 @@ export default function OrdensServicoPage() {
               <p className="text-sm text-slate-500">
                 OS novas e abertas para análise, priorização e atribuição de técnico externo
               </p>
+              {filaFiltro === 'sem-tecnico' && (
+                <button
+                  type="button"
+                  onClick={() => setFilaFiltro('')}
+                  className="mt-2 rounded-lg bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700"
+                >
+                  Mostrando OS sem técnico há 3 dias ou mais. Ver todas
+                </button>
+              )}
             </div>
 
             <div className="flex flex-col gap-3 md:flex-row">
@@ -1357,18 +1380,23 @@ export default function OrdensServicoPage() {
 
               <select
                 value={statusFiltro}
-                onChange={(e) => setStatusFiltro(e.target.value)}
+                onChange={(e) => {
+                  setStatusFiltro(e.target.value)
+                  setFilaFiltro('')
+                }}
                 className="rounded-lg border border-slate-300 px-4 py-2 outline-none focus:border-orange-500"
               >
                 <option value="TODAS">Todas</option>
                 <option value="NOVA">Nova</option>
                 <option value="EM_TRIAGEM">Em Triagem</option>
-              <option value="EM_ATENDIMENTO">Em Atendimento</option>
+                <option value="EM_ATENDIMENTO">Em Atendimento</option>
                 <option value="PRONTO_AGUARDANDO_ENTREGA">Pronto aguardando entrega</option>
+                <option value="AGUARDANDO_REVISAO">Revisão da equipe</option>
                 <option value="AGUARDANDO_APROVACAO">Aguardando Aprovação</option>
                 <option value="AGUARDANDO_PECA">Aguardando Peça</option>
                 <option value="CRITICA">Crítica</option>
                 <option value="FINALIZADA">Finalizada</option>
+                <option value="ENCERRADA_SEM_REPARO">Encerrada sem reparo</option>
               </select>
 
               <select

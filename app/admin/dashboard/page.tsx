@@ -10,6 +10,7 @@ type DashboardStats = {
   emAtendimento: number
   aguardandoRevisao: number
   aguardandoPeca: number
+  prontoEntrega: number
   criticas: number
   parceirosAtivos: number
   parceirosPendentes: number
@@ -40,6 +41,8 @@ type OrdemResumo = {
   status: string | null
   prioridade: string | null
   created_at: string
+  cliente_nome?: string | null
+  cliente_cidade?: string | null
 }
 
 type HistoricoResumo = {
@@ -71,6 +74,8 @@ type GarantidorFiltro = {
 
 type FiltroOrigemDashboard = 'TODOS' | 'CLIENTE' | 'GARANTIDOR'
 type PeriodoKpi = 'MES_ATUAL' | '30_DIAS' | '90_DIAS'
+type TomAndamento = 'blue' | 'amber' | 'emerald' | 'violet' | 'orange' | 'teal' | 'green' | 'rose'
+type AndamentoItem = { label: string; value: number; href: string; tone: TomAndamento }
 
 type KpiResumo = {
   slaPercentual: number
@@ -139,6 +144,7 @@ export default function DashboardPage() {
     emAtendimento: 0,
     aguardandoRevisao: 0,
     aguardandoPeca: 0,
+    prontoEntrega: 0,
     criticas: 0,
     parceirosAtivos: 0,
     parceirosPendentes: 0,
@@ -257,6 +263,7 @@ export default function DashboardPage() {
         emAtendimento: relatoriosResumo.emAtendimento,
         aguardandoRevisao: relatoriosResumo.aguardandoRevisao,
         aguardandoPeca: relatoriosResumo.aguardandoPeca,
+        prontoEntrega: relatoriosResumo.prontoEntrega,
         criticas: criticasAtivas,
         parceirosAtivos: resumoEscopo.tecnicos,
         parceirosPendentes: parceirosResumo.pendentes,
@@ -365,14 +372,32 @@ export default function DashboardPage() {
   }
 
   const volumeMax = useMemo(() => Math.max(...volume.map((v) => v.valor), 1), [volume])
+  const andamentoOrdens = useMemo(() => {
+    const itens: AndamentoItem[] = [
+      { label: 'Novas', value: stats.osNovas, href: '/admin/os?status=NOVA', tone: 'blue' },
+      { label: 'Triagem', value: stats.emTriagem, href: '/admin/os?status=EM_TRIAGEM', tone: 'amber' },
+      { label: 'Atendimento', value: stats.emAtendimento, href: '/admin/os?status=EM_ATENDIMENTO', tone: 'emerald' },
+      { label: 'Peça', value: stats.aguardandoPeca, href: '/admin/os?status=AGUARDANDO_PECA', tone: 'violet' },
+      { label: 'Revisão', value: stats.aguardandoRevisao, href: '/admin/os?status=AGUARDANDO_REVISAO', tone: 'orange' },
+      { label: 'Pronto', value: stats.prontoEntrega, href: '/admin/os?status=PRONTO_AGUARDANDO_ENTREGA', tone: 'teal' },
+      { label: 'Finalizadas', value: stats.finalizadas, href: '/admin/finalizadas', tone: 'green' },
+      { label: 'Sem reparo', value: stats.encerradasSemReparo, href: '/admin/os?status=ENCERRADA_SEM_REPARO', tone: 'rose' },
+    ]
+    const total = itens.reduce((soma, item) => soma + item.value, 0)
+    return { itens, total }
+  }, [stats])
 
   return (
     <main className="min-h-screen w-full bg-slate-100 px-4 py-4 md:px-6">
       <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Dashboard Admin</h1>
-            <p className="text-slate-500">Bem-vindo ao CT Premium</p>
+            <h1 className="text-3xl font-bold text-slate-900">Painel</h1>
+            <p className="text-slate-500">
+              {loading
+                ? 'Carregando o panorama...'
+                : `${formatNumber(stats.ordensTotal)} OS no período · ${formatNumber(stats.clientes)} clientes · ${formatNumber(stats.parceirosAtivos)} técnicos`}
+            </p>
           </div>
 
           <div className="flex flex-col gap-3 md:items-end">
@@ -442,384 +467,310 @@ export default function DashboardPage() {
           </div>
         )}
 
+        <section>
+          <h2 className="text-lg font-black text-slate-950">O que precisa de você hoje</h2>
+          <p className="mt-1 text-sm text-slate-500">Cada cartão abre a lista já filtrada.</p>
+        </section>
+
         <section className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
           <AlertCard
             title="Triagem agora"
             value={loading ? '...' : String(stats.osNovas)}
             detail="OS novas aguardando tratamento"
-            onClick={() => router.push('/admin/os')}
+            onClick={() => router.push('/admin/os?status=NOVA')}
             tone={stats.osNovas > 0 ? 'green' : 'slate'}
           />
           <AlertCard
-            title="Sem tecnico +3 dias"
+            title="Sem técnico há 3 dias"
             value={loading ? '...' : String(stats.osSemTecnico3Dias)}
-            detail="Chamados abertos sem atribuicao"
-            onClick={() => router.push('/admin/os')}
+            detail="Chamados abertos sem atribuição"
+            onClick={() => router.push('/admin/os?fila=sem-tecnico')}
             tone={stats.osSemTecnico3Dias > 0 ? 'red' : 'slate'}
           />
           <AlertCard
-            title="Aprovacao pendente"
+            title="Aprovação pendente"
             value={loading ? '...' : String(stats.orcamentosPendentes)}
-            detail="Orcamentos aguardando decisao"
+            detail="Orçamentos aguardando decisão"
             onClick={() => router.push('/admin/aprovacao')}
             tone={stats.orcamentosPendentes > 0 ? 'amber' : 'slate'}
           />
           <AlertCard
-            title="Tecnicos pendentes"
+            title="Técnicos pendentes"
             value={loading ? '...' : String(stats.parceirosPendentes)}
-            detail="Cadastros aguardando aprovacao"
+            detail="Cadastros aguardando aprovação"
             onClick={() => router.push('/admin/parceiros?status=PENDENTES')}
             tone={stats.parceirosPendentes > 0 ? 'amber' : 'slate'}
           />
           <AlertCard
             title="Estoque baixo"
             value={loading ? '...' : String(stats.estoqueBaixo)}
-            detail="Itens abaixo do minimo"
+            detail="Itens abaixo do mínimo"
             onClick={() => router.push('/admin/pecas')}
             tone={stats.estoqueBaixo > 0 ? 'red' : 'slate'}
           />
         </section>
 
         <section className="grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
-          <FinanceMiniCard
-            title="SLA particular"
-            value={loading ? '...' : `${stats.slaParticularPercentual}% dentro`}
-            tone={stats.slaParticularForaPrazo > 0 ? 'amber' : 'green'}
+          <AlertCard
+            title="OS críticas"
+            value={loading ? '...' : String(stats.criticas)}
+            detail="Chamados marcados como críticos"
+            onClick={() => router.push('/admin/os?status=CRITICA')}
+            tone={stats.criticas > 0 ? 'red' : 'slate'}
           />
-          <FinanceMiniCard
-            title="Particular fora SLA"
-            value={loading ? '...' : String(stats.slaParticularForaPrazo)}
-            tone={stats.slaParticularForaPrazo > 0 ? 'amber' : 'green'}
+          <AlertCard
+            title="Revisão da equipe"
+            value={loading ? '...' : String(stats.aguardandoRevisao)}
+            detail="OS aguardando análise interna"
+            onClick={() => router.push('/admin/os?status=AGUARDANDO_REVISAO')}
+            tone={stats.aguardandoRevisao > 0 ? 'amber' : 'slate'}
           />
-          <FinanceMiniCard
-            title="SLA garantia/seguradora"
-            value={loading ? '...' : `${stats.slaGarantiaPercentual}% dentro`}
-            tone={stats.slaGarantiaForaPrazo > 0 ? 'amber' : 'green'}
+          <AlertCard
+            title="A receber do cliente"
+            value={loading ? '...' : formatCurrency(stats.aReceberCliente)}
+            detail="Valores ainda não recebidos"
+            onClick={() => router.push('/admin/financeiro?aba=receber')}
+            tone={stats.aReceberCliente > 0 ? 'amber' : 'slate'}
           />
-          <FinanceMiniCard
-            title="Garantia fora SLA"
-            value={loading ? '...' : String(stats.slaGarantiaForaPrazo)}
-            tone={stats.slaGarantiaForaPrazo > 0 ? 'amber' : 'green'}
+          <AlertCard
+            title="A pagar ao técnico"
+            value={loading ? '...' : formatCurrency(stats.aPagarTecnico)}
+            detail="Serviços executados sem pagamento"
+            onClick={() => router.push('/admin/financeiro?aba=tecnicos')}
+            tone={stats.aPagarTecnico > 0 ? 'amber' : 'slate'}
           />
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-orange-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-orange-700">KPI</span>
-                <h2 className="text-lg font-black text-slate-900">Desempenho operacional</h2>
-              </div>
-              <p className="mt-1 text-sm text-slate-500">Indicadores calculados pelas OS do período e do escopo selecionado.</p>
+              <h2 className="text-lg font-black text-slate-950">Andamento das ordens</h2>
+              <p className="text-sm text-slate-500">Onde cada chamado está agora. O número abre a lista filtrada.</p>
             </div>
+            <p className="text-sm font-bold text-slate-700">
+              {loading ? '...' : `${formatNumber(stats.finalizadas)} finalizadas no período`}
+            </p>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+            {andamentoOrdens.itens.map((item) => (
+              <AndamentoCard
+                key={item.label}
+                label={item.label}
+                value={item.value}
+                tone={item.tone}
+                share={andamentoOrdens.total > 0 ? (item.value / andamentoOrdens.total) * 100 : 0}
+                loading={loading}
+                onClick={() => router.push(item.href)}
+              />
+            ))}
+          </div>
+        </section>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={periodoKpi}
-                onChange={(event) => setPeriodoKpi(event.target.value as PeriodoKpi)}
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none focus:border-orange-500"
-              >
-                <option value="MES_ATUAL">Este mês</option>
-                <option value="30_DIAS">Últimos 30 dias</option>
-                <option value="90_DIAS">Últimos 90 dias</option>
-              </select>
+        <section className="grid gap-3 xl:grid-cols-5">
+          <article className="flex h-80 flex-col rounded-2xl bg-white p-3 shadow-sm xl:col-span-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="text-sm font-black text-slate-950">Entradas da semana</h2>
+              <p className="text-[11px] font-semibold text-slate-500">7 dias</p>
+            </div>
+            <div className="mt-2 flex min-h-0 flex-1 items-end gap-1.5">
+              {volume.map((item, index) => (
+                <div key={`${item.dia}-${index}`} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1">
+                  <span className="text-[10px] font-black text-slate-700">{item.valor}</span>
+                  <div className="relative w-full flex-1">
+                    <div
+                      className="absolute inset-x-0 bottom-0 rounded-t-md bg-orange-500"
+                      style={{ height: `${Math.max((item.valor / volumeMax) * 100, item.valor > 0 ? 8 : 2)}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-500">{item.dia}</span>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="flex h-80 flex-col rounded-2xl bg-white p-3 shadow-sm xl:col-span-3">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-black text-slate-950">Últimas ordens</h2>
               <button
                 type="button"
-                onClick={() => {
-                  setMetasEdicao(metasKpi)
-                  setEditandoMetas((atual) => !atual)
-                }}
-                className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-black text-slate-700 transition hover:border-orange-400 hover:text-orange-600"
+                onClick={() => router.push('/admin/os')}
+                className="rounded-lg px-2 py-1 text-[11px] font-black text-orange-600 hover:bg-orange-50"
               >
-                {editandoMetas ? 'Fechar metas' : 'Editar metas'}
+                Ver todas
+              </button>
+            </div>
+            <div className="mt-2 min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto pr-1">
+              {ultimasOs.length === 0 ? (
+                <p className="py-3 text-xs text-slate-500">{loading ? 'Carregando...' : 'Nenhuma ordem neste filtro.'}</p>
+              ) : (
+                ultimasOs.map((os) => {
+                  const clienteLinha = [os.cliente_nome, os.cliente_cidade].filter(Boolean).join(' · ')
+                  return (
+                  <button
+                    key={os.id}
+                    type="button"
+                    onClick={() => router.push(`/admin/os/${os.id}`)}
+                    className="flex w-full items-center justify-between gap-3 py-1.5 text-left hover:bg-slate-50"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="flex min-w-0 items-baseline gap-2">
+                        <span className="shrink-0 text-sm font-black text-slate-950">{os.numero_os ?? `OS #${os.id}`}</span>
+                        {clienteLinha && (
+                          <span className="truncate text-sm font-semibold text-slate-600">{clienteLinha}</span>
+                        )}
+                      </p>
+                      <p className="text-[11px] text-slate-500">{formatarQuando(os.created_at)}</p>
+                    </div>
+                    <span
+                      className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black text-white"
+                      style={{ backgroundColor: getEventColor(null, os.status) }}
+                    >
+                      {formatarStatusDashboard(os.status)}
+                    </span>
+                  </button>
+                  )
+                })
+              )}
+            </div>
+          </article>
+        </section>
+
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-lg font-black text-slate-950">Dinheiro do período</h2>
+              <p className="text-sm text-slate-500">Recebido, em aberto e o que ainda vai para o técnico.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push('/admin/financeiro')}
+              className="rounded-lg px-3 py-2 text-xs font-black text-orange-600 hover:bg-orange-50"
+            >
+              Abrir financeiro
+            </button>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
+            <FinanceMiniCard title="Recebido" value={loading ? '...' : formatCurrency(stats.recebidoTotal)} tone="green" destaque />
+            <FinanceMiniCard title="Recebido do cliente" value={loading ? '...' : formatCurrency(stats.recebidoCliente)} tone="slate" />
+            <FinanceMiniCard title="A receber do cliente" value={loading ? '...' : formatCurrency(stats.aReceberCliente)} tone="amber" />
+            <FinanceMiniCard title="Recebido do garantidor" value={loading ? '...' : formatCurrency(stats.recebidoGarantidor)} tone="blue" />
+            <FinanceMiniCard title="A receber do garantidor" value={loading ? '...' : formatCurrency(stats.aReceberGarantidor)} tone="orange" />
+            <FinanceMiniCard title="A pagar ao técnico" value={loading ? '...' : formatCurrency(stats.aPagarTecnico)} tone="amber" />
+            <FinanceMiniCard title="Ticket médio" value={loading ? '...' : formatCurrency(stats.ticketMedioMargem)} tone="slate" />
+            <FinanceMiniCard title="Estoque baixo" value={loading ? '...' : formatNumber(stats.estoqueBaixo)} tone={stats.estoqueBaixo > 0 ? 'orange' : 'slate'} />
+          </div>
+        </section>
+
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h2 className="text-lg font-black text-slate-950">Desempenho</h2>
+              <p className="text-sm text-slate-500">
+                SLA particular {loading ? '...' : `${formatNumber(stats.slaParticularPercentual)}%`}
+                {stats.slaParticularForaPrazo > 0 ? ` · ${formatNumber(stats.slaParticularForaPrazo)} fora` : ''}
+                {' · '}
+                SLA garantia {loading ? '...' : `${formatNumber(stats.slaGarantiaPercentual)}%`}
+                {stats.slaGarantiaForaPrazo > 0 ? ` · ${formatNumber(stats.slaGarantiaForaPrazo)} fora` : ''}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                {[
+                  { value: 'MES_ATUAL', label: 'Este mês' },
+                  { value: '30_DIAS', label: '30 dias' },
+                  { value: '90_DIAS', label: '90 dias' },
+                ].map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    onClick={() => setPeriodoKpi(item.value as PeriodoKpi)}
+                    className={`rounded-lg px-3 py-2 text-xs font-black ${
+                      periodoKpi === item.value ? 'bg-slate-950 text-white' : 'text-slate-600 hover:text-slate-950'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push('/admin/relatorios')}
+                className="rounded-lg px-3 py-2 text-xs font-black text-orange-600 hover:bg-orange-50"
+              >
+                Ver relatórios
               </button>
             </div>
           </div>
-
-          {editandoMetas && (
-            <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50/60 p-4">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <MetaInput label="SLA mínimo (%)" value={metasEdicao.metaSlaPercentual} onChange={(value) => setMetasEdicao((atual) => ({ ...atual, metaSlaPercentual: value }))} />
-                <MetaInput label="Conclusão máxima (dias)" value={metasEdicao.metaConclusaoDias} onChange={(value) => setMetasEdicao((atual) => ({ ...atual, metaConclusaoDias: value }))} />
-                <MetaInput label="Aprovação mínima (%)" value={metasEdicao.metaAprovacaoPercentual} onChange={(value) => setMetasEdicao((atual) => ({ ...atual, metaAprovacaoPercentual: value }))} />
-                <MetaInput label="OS por técnico" value={metasEdicao.metaProdutividade} onChange={(value) => setMetasEdicao((atual) => ({ ...atual, metaProdutividade: value }))} />
-                <MetaInput label="Ticket mínimo (R$)" value={metasEdicao.metaTicket} onChange={(value) => setMetasEdicao((atual) => ({ ...atual, metaTicket: value }))} />
-              </div>
-              <div className="mt-3 flex justify-end">
-                <button
-                  type="button"
-                  disabled={salvandoMetas}
-                  onClick={() => void salvarMetasKpi()}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:opacity-60"
-                >
-                  {salvandoMetas ? 'Salvando...' : 'Salvar metas'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
             <KpiCard
-              title="SLA cumprido"
+              title="SLA no prazo"
               value={`${formatNumber(kpis.slaPercentual)}%`}
-              meta={`Meta ≥ ${formatNumber(metasKpi.metaSlaPercentual)}%`}
-              detail={`${kpis.slaAmostras} OS analisadas`}
-              atingiu={kpis.slaAmostras > 0 && kpis.slaPercentual >= metasKpi.metaSlaPercentual}
+              meta={`Meta ${formatNumber(metasKpi.metaSlaPercentual)}%`}
+              detail={kpis.slaAmostras > 0 ? `${formatNumber(kpis.slaAmostras)} OS avaliadas` : 'Sem amostra no período'}
+              atingiu={kpis.slaPercentual >= metasKpi.metaSlaPercentual}
               semAmostra={kpis.slaAmostras === 0}
               progresso={percentualProgresso(kpis.slaPercentual, metasKpi.metaSlaPercentual)}
             />
             <KpiCard
-              title="Tempo de conclusão"
+              title="Tempo médio"
               value={`${formatNumber(kpis.tempoMedioConclusaoDias)} dias`}
-              meta={`Meta ≤ ${formatNumber(metasKpi.metaConclusaoDias)} dias`}
-              detail={`${kpis.conclusoesAmostras} conclusões`}
-              atingiu={kpis.conclusoesAmostras > 0 && kpis.tempoMedioConclusaoDias <= metasKpi.metaConclusaoDias}
+              meta={`Meta até ${formatNumber(metasKpi.metaConclusaoDias)} dias`}
+              detail={kpis.conclusoesAmostras > 0 ? `${formatNumber(kpis.conclusoesAmostras)} conclusões` : 'Sem amostra no período'}
+              atingiu={kpis.tempoMedioConclusaoDias > 0 && kpis.tempoMedioConclusaoDias <= metasKpi.metaConclusaoDias}
               semAmostra={kpis.conclusoesAmostras === 0}
               progresso={percentualProgressoInverso(kpis.tempoMedioConclusaoDias, metasKpi.metaConclusaoDias)}
             />
             <KpiCard
               title="Aprovação de orçamento"
               value={`${formatNumber(kpis.aprovacaoPercentual)}%`}
-              meta={`Meta ≥ ${formatNumber(metasKpi.metaAprovacaoPercentual)}%`}
-              detail={`${kpis.aprovacoes} de ${kpis.decisoesOrcamento} decisões`}
-              atingiu={kpis.decisoesOrcamento > 0 && kpis.aprovacaoPercentual >= metasKpi.metaAprovacaoPercentual}
+              meta={`Meta ${formatNumber(metasKpi.metaAprovacaoPercentual)}%`}
+              detail={kpis.decisoesOrcamento > 0 ? `${formatNumber(kpis.aprovacoes)} de ${formatNumber(kpis.decisoesOrcamento)} decisões` : 'Sem amostra no período'}
+              atingiu={kpis.aprovacaoPercentual >= metasKpi.metaAprovacaoPercentual}
               semAmostra={kpis.decisoesOrcamento === 0}
               progresso={percentualProgresso(kpis.aprovacaoPercentual, metasKpi.metaAprovacaoPercentual)}
             />
             <KpiCard
-              title="Produtividade técnica"
-              value={`${formatNumber(kpis.produtividadeMedia)} OS`}
-              meta={`Meta ≥ ${formatNumber(metasKpi.metaProdutividade)} por técnico`}
-              detail={kpis.tecnicoDestaque ? `Destaque: ${kpis.tecnicoDestaque.nome} (${kpis.tecnicoDestaque.total})` : 'Sem técnico concluinte'}
-              atingiu={kpis.tecnicosAtivos > 0 && kpis.produtividadeMedia >= metasKpi.metaProdutividade}
+              title="Produtividade"
+              value={formatNumber(kpis.produtividadeMedia)}
+              meta={`Meta ${formatNumber(metasKpi.metaProdutividade)} OS por técnico`}
+              detail={kpis.tecnicoDestaque ? `${kpis.tecnicoDestaque.nome} · ${formatNumber(kpis.tecnicoDestaque.total)} OS` : `${formatNumber(kpis.tecnicosAtivos)} técnicos ativos`}
+              atingiu={kpis.produtividadeMedia >= metasKpi.metaProdutividade}
               semAmostra={kpis.tecnicosAtivos === 0}
               progresso={percentualProgresso(kpis.produtividadeMedia, metasKpi.metaProdutividade)}
             />
-            <KpiCard
-              title="Ticket médio"
-              value={formatCurrency(kpis.ticketMedio)}
-              meta={`Meta ≥ ${formatCurrency(metasKpi.metaTicket)}`}
-              detail={`${kpis.ticketAmostras} OS com valor`}
-              atingiu={kpis.ticketAmostras > 0 && kpis.ticketMedio >= metasKpi.metaTicket}
-              semAmostra={kpis.ticketAmostras === 0}
-              progresso={percentualProgresso(kpis.ticketMedio, metasKpi.metaTicket)}
-            />
           </div>
         </section>
 
-        <section className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
-          <FinanceMiniCard title="Total recebido" value={formatCurrency(stats.recebidoTotal)} tone="slate" destaque />
-          <FinanceMiniCard title="Recebido cliente" value={formatCurrency(stats.recebidoCliente)} tone="green" />
-          <FinanceMiniCard title="A receber cliente" value={formatCurrency(stats.aReceberCliente)} tone="orange" />
-          <FinanceMiniCard title="A receber garantidor" value={formatCurrency(stats.aReceberGarantidor)} tone="amber" />
-          <FinanceMiniCard title="Recebido garantidor" value={formatCurrency(stats.recebidoGarantidor)} tone="green" />
-          <FinanceMiniCard title="A pagar tecnico" value={formatCurrency(stats.aPagarTecnico)} tone="blue" />
-          <FinanceMiniCard title="Ticket medio margem" value={formatCurrency(stats.ticketMedioMargem)} tone="green" />
-          <div className="grid grid-cols-2 gap-2 rounded-xl bg-white p-2 shadow-sm sm:p-3">
-            <QuickButton label="Nova OS" onClick={() => router.push('/admin/os')} />
-            <QuickButton label="Triagem" onClick={() => router.push('/admin/os')} />
-            <QuickButton label="Aprovacao" onClick={() => router.push('/admin/aprovacao')} />
-            <QuickButton label="Financeiro" onClick={() => router.push('/admin/financeiro')} />
-          </div>
-        </section>
-
-        <section className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
-          <MetricCard title="OS Novas" value={loading ? '...' : String(stats.osNovas)} icon={<FileTextIcon />} iconTone="blue" />
-          <MetricCard title="Em Triagem" value={loading ? '...' : String(stats.emTriagem)} icon={<ListIcon />} iconTone="amber" />
-          <MetricCard title="Em Atendimento" value={loading ? '...' : String(stats.emAtendimento)} icon={<WrenchIcon />} iconTone="green" />
-          <MetricCard title="Revisao Admin" value={loading ? '...' : String(stats.aguardandoRevisao)} icon={<BadgeCheckIcon />} iconTone="blue" />
-          <MetricCard title="Aguardando Peça" value={loading ? '...' : String(stats.aguardandoPeca)} icon={<SettingsIcon />} iconTone="violet" />
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            title="OS Críticas"
-            value={loading ? '...' : String(stats.criticas)}
-            tone="critical"
-            icon={<AlertIcon />}
-            iconTone="red"
-          />
-          <MetricCard
-            title="Tecnicos na unidade"
-            value={loading ? '...' : String(stats.parceirosAtivos)}
-            icon={<UsersIcon />}
-            iconTone="blue"
-          />
-          <MetricCard
-            title="Clientes atendidos"
-            value={loading ? '...' : String(stats.clientes)}
-            icon={<UsersIcon />}
-            iconTone="green"
-          />
-          <MetricCard
-            title="Total de OS"
-            value={loading ? '...' : String(stats.ordensTotal)}
-            icon={<BadgeCheckIcon />}
-            iconTone="slate"
-          />
-        </section>
-
-        <section className="grid gap-6 xl:grid-cols-[2fr_1fr_1.2fr]">
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-slate-900">Volume de OS</h2>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
-                Últimos 7 dias
-              </span>
-            </div>
-
-            <div className="grid grid-cols-7 gap-3">
-              {volume.map((item) => (
-                <div key={item.dia} className="space-y-2">
-                  <div className="text-xs text-slate-500">{item.dia}</div>
-                  <div className="flex h-40 items-end rounded-xl bg-slate-50 p-2">
-                    <div
-                      className="w-full rounded-lg bg-orange-500"
-                      style={{ height: `${Math.max((item.valor / volumeMax) * 100, 15)}%` }}
-                    />
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-black text-slate-950">Movimento recente</h2>
+          <p className="text-sm text-slate-500">As últimas mudanças nas ordens deste filtro.</p>
+          <div className="mt-4 space-y-2">
+            {historico.length === 0 ? (
+              <p className="py-4 text-sm text-slate-500">{loading ? 'Carregando...' : 'Nenhuma mudança recente.'}</p>
+            ) : (
+              historico.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => item.os_id && router.push(`/admin/os/${item.os_id}`)}
+                  className="flex w-full items-start gap-3 rounded-xl bg-slate-50 px-4 py-3 text-left hover:bg-orange-50"
+                >
+                  <span
+                    className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: getEventColor(item.acao, item.status_novo) }}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-950">
+                      {item.os_id ? osMap.get(item.os_id) ?? `OS #${item.os_id}` : 'OS'}
+                      <span className="font-semibold text-slate-500"> · {textoHistorico(item)}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {[item.responsavel, formatarQuando(item.criado_em)].filter(Boolean).join(' · ')}
+                    </p>
                   </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-4 grid gap-3 text-sm text-slate-600 md:grid-cols-3">
-              <InfoItem
-                label="OS Abertas"
-                value={String(Math.max(stats.ordensTotal - stats.finalizadas - stats.encerradasSemReparo, 0))}
-              />
-              <InfoItem label="OS Finalizadas" value={String(stats.finalizadas)} />
-              <InfoItem label="OS Críticas" value={String(stats.criticas)} tone="critical" />
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-lg font-semibold text-slate-900">Resumo rápido</h2>
-            <div className="space-y-3">
-              <LineItem label="Novas" value={stats.osNovas} />
-              <LineItem label="Triagem" value={stats.emTriagem} />
-              <LineItem label="Atendimento" value={stats.emAtendimento} />
-              <LineItem label="Revisao admin" value={stats.aguardandoRevisao} />
-              <LineItem label="Aguardando peça" value={stats.aguardandoPeca} />
-              <LineItem label="Críticas" value={stats.criticas} tone="critical" />
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-lg font-semibold text-slate-900">Linha do tempo recente</h2>
-
-            <div className="max-h-[560px] space-y-4 overflow-y-auto pr-2">
-              {historico.map((item) => {
-                const numeroOS = item.os_id ? osMap.get(item.os_id) ?? `OS #${item.os_id}` : 'OS'
-                const color = getEventColor(item.acao, item.status_novo)
-
-                return (
-                  <div key={item.id} className="relative rounded-xl border border-slate-200 p-4 pl-5">
-                    <span
-                      className="absolute left-2 top-6 h-3 w-3 rounded-full"
-                      style={{ backgroundColor: color }}
-                    />
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">{numeroOS}</p>
-                        <p className="text-xs text-slate-500">
-                          {item.criado_em ? new Date(item.criado_em).toLocaleString('pt-BR') : ''}
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
-                        {item.acao ?? 'Evento'}
-                      </span>
-                    </div>
-
-                    {item.descricao && (
-                      <p className="mt-3 text-sm text-slate-600">{item.descricao}</p>
-                    )}
-
-                    <div className="mt-3 grid gap-2 text-xs text-slate-500">
-                      <span>Status: {item.status_anterior ?? '-'} → {item.status_novo ?? '-'}</span>
-                      <span>
-                        Prioridade: {item.prioridade_anterior ?? '-'} → {item.prioridade_nova ?? '-'}
-                      </span>
-                    </div>
-                  </div>
-                )
-              })}
-
-              {!historico.length && (
-                <p className="text-sm text-slate-500">Nenhum histórico registrado ainda.</p>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-2xl bg-white p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">Últimas Ordens de Serviço</h2>
-            <button
-              onClick={() => router.push('/admin/os')}
-              className="text-sm font-medium text-orange-500"
-            >
-              Ver todas
-            </button>
-          </div>
-
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="min-w-[1200px] w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-500">
-                <tr>
-                  <th className="px-4 py-3">OS</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Prioridade</th>
-                  <th className="px-4 py-3">Data</th>
-                  <th className="px-4 py-3">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ultimasOs.map((os) => (
-                  <tr key={os.id} className="border-t">
-                    <td className="whitespace-nowrap px-4 py-3 font-medium">{os.numero_os ?? '-'}</td>
-                    <td className="whitespace-nowrap px-4 py-3">{os.status ?? '-'}</td>
-                    <td className="whitespace-nowrap px-4 py-3">{os.prioridade ?? '-'}</td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      {new Date(os.created_at).toLocaleString('pt-BR')}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
-                        <button
-                          onClick={() => router.push(`/admin/os/${os.id}`)}
-                          className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white"
-                        >
-                          <ArrowRightLeftIcon className="h-3.5 w-3.5" />
-                          Abrir
-                        </button>
-
-                        {STATUS_RAPIDOS.map((status) => {
-                          const Icon = status.icon
-                          return (
-                            <button
-                              key={status.value}
-                              onClick={() => atualizarStatusRapido(os.id, status.value)}
-                              disabled={salvandoStatusId === os.id}
-                              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${status.className}`}
-                            >
-                              <Icon className="h-3.5 w-3.5" />
-                              {salvandoStatusId === os.id ? '...' : status.label}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-
-                {!ultimasOs.length && (
-                  <tr>
-                    <td className="px-4 py-6 text-center text-slate-500" colSpan={5}>
-                      Nenhuma OS encontrada.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </button>
+              ))
+            )}
           </div>
         </section>
       </div>
@@ -874,6 +825,58 @@ function MetricCard({
         </div>
       </div>
     </div>
+  )
+}
+
+function AndamentoCard({
+  label,
+  value,
+  tone,
+  share,
+  loading,
+  onClick,
+}: {
+  label: string
+  value: number
+  tone: TomAndamento
+  share: number
+  loading: boolean
+  onClick: () => void
+}) {
+  const paleta: Record<TomAndamento, { borda: string; fundo: string; texto: string; barra: string; trilho: string }> = {
+    blue: { borda: 'border-blue-300', fundo: 'bg-blue-50', texto: 'text-blue-700', barra: 'bg-blue-500', trilho: 'bg-blue-100' },
+    amber: { borda: 'border-amber-300', fundo: 'bg-amber-50', texto: 'text-amber-700', barra: 'bg-amber-500', trilho: 'bg-amber-100' },
+    emerald: { borda: 'border-emerald-300', fundo: 'bg-emerald-50', texto: 'text-emerald-700', barra: 'bg-emerald-500', trilho: 'bg-emerald-100' },
+    violet: { borda: 'border-violet-300', fundo: 'bg-violet-50', texto: 'text-violet-700', barra: 'bg-violet-500', trilho: 'bg-violet-100' },
+    orange: { borda: 'border-orange-300', fundo: 'bg-orange-50', texto: 'text-orange-700', barra: 'bg-orange-500', trilho: 'bg-orange-100' },
+    teal: { borda: 'border-teal-300', fundo: 'bg-teal-50', texto: 'text-teal-700', barra: 'bg-teal-500', trilho: 'bg-teal-100' },
+    green: { borda: 'border-green-300', fundo: 'bg-green-50', texto: 'text-green-700', barra: 'bg-green-600', trilho: 'bg-green-100' },
+    rose: { borda: 'border-rose-300', fundo: 'bg-rose-50', texto: 'text-rose-700', barra: 'bg-rose-500', trilho: 'bg-rose-100' },
+  }
+  const cor = paleta[tone]
+  const ativo = value > 0
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group relative overflow-hidden rounded-2xl border px-3 py-3 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${cor.borda} ${ativo ? cor.fundo : 'bg-white'}`}
+    >
+      <span className={`absolute inset-x-0 top-0 h-1.5 ${cor.barra}`} />
+      <div className="flex items-center justify-between gap-2">
+        <p className={`text-[11px] font-black uppercase tracking-wide ${cor.texto}`}>{label}</p>
+        {ativo && <span className={`h-2 w-2 shrink-0 rounded-full ${cor.barra} animate-pulse`} />}
+      </div>
+      <p className={`mt-2 text-3xl font-black leading-none ${ativo ? cor.texto : 'text-slate-900'}`}>
+        {loading ? '...' : formatNumber(value)}
+      </p>
+      <div className={`mt-3 h-1.5 overflow-hidden rounded-full ${cor.trilho}`}>
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${cor.barra}`}
+          style={{ width: `${loading ? 0 : Math.min(Math.max(share, ativo ? 18 : 0), 100)}%` }}
+        />
+      </div>
+    </button>
   )
 }
 
@@ -1098,6 +1101,7 @@ async function carregarResumoRelatorios(
       emAtendimento: 0,
       aguardandoRevisao: 0,
       aguardandoPeca: 0,
+      prontoEntrega: 0,
       criticas: 0,
       ordensTotal: 0,
       finalizadas: 0,
@@ -1180,6 +1184,42 @@ function LineItem({
       </span>
     </div>
   )
+}
+
+function formatarStatusDashboard(status: string | null) {
+  const nomes: Record<string, string> = {
+    NOVA: 'Nova',
+    EM_TRIAGEM: 'Triagem',
+    EM_ATENDIMENTO: 'Em atendimento',
+    AGUARDANDO_PECA: 'Aguardando peça',
+    AGUARDANDO_REVISAO: 'Revisão',
+    AGUARDANDO_APROVACAO: 'Aguardando aprovação',
+    CRITICA: 'Crítica',
+    PRONTO_AGUARDANDO_ENTREGA: 'Pronto',
+    FINALIZADA: 'Finalizada',
+    ENCERRADA_SEM_REPARO: 'Sem reparo',
+  }
+
+  if (!status) return 'Sem status'
+  return nomes[status] ?? status
+}
+
+function formatarQuando(value: string | null) {
+  if (!value) return ''
+  const data = new Date(value)
+  if (Number.isNaN(data.getTime())) return ''
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(data)
+}
+
+function textoHistorico(item: HistoricoResumo) {
+  if (item.descricao?.trim()) return item.descricao.trim()
+  if (item.status_novo) return formatarStatusDashboard(item.status_novo)
+  return item.acao ?? 'Atualização da OS'
 }
 
 function getEventColor(acao: string | null, statusNovo: string | null) {
