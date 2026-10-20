@@ -200,8 +200,9 @@ export default function ConsultaPage() {
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
+  const atendimentoEncerrado = atendimentoJaEncerrado(resultado?.os.status)
   const podeResponderOrcamento =
-    resultado?.os.orcamento_status === 'PENDENTE' && totalGeral > 0
+    resultado?.os.orcamento_status === 'PENDENTE' && totalGeral > 0 && !atendimentoEncerrado
 
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-6 md:px-6">
@@ -298,7 +299,9 @@ export default function ConsultaPage() {
                 <div>
                   <h2 className="text-xl font-semibold text-slate-900">Orçamento</h2>
                   <p className="text-sm text-slate-500">
-                    {formatarStatusOrcamento(resultado.os.orcamento_status)}
+                    {atendimentoEncerrado && resultado.os.orcamento_status === 'PENDENTE'
+                      ? 'Valores registrados neste atendimento.'
+                      : formatarStatusOrcamento(resultado.os.orcamento_status)}
                   </p>
                 </div>
                 <span className="rounded-full bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-700">
@@ -416,6 +419,10 @@ function getConsultaInicial(): { form: ConsultaForm; acao: 'APROVAR' | 'REPROVAR
     },
     acao,
   }
+}
+
+function atendimentoJaEncerrado(status?: string | null) {
+  return ['PRONTO_AGUARDANDO_ENTREGA', 'FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(status ?? ''))
 }
 
 function formatarStatusOs(status?: string | null) {

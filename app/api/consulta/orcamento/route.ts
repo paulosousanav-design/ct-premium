@@ -65,6 +65,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (['PRONTO_AGUARDANDO_ENTREGA', 'FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(os.status ?? '')) {
+      return NextResponse.json(
+        { error: 'Este atendimento já foi concluído.' },
+        { status: 409 }
+      )
+    }
+
     if (os.orcamento_status && os.orcamento_status !== 'PENDENTE') {
       return NextResponse.json(
         { error: 'Este orçamento já foi respondido.' },
