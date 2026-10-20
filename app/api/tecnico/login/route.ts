@@ -3,11 +3,13 @@ import {
   hashTecnicoPin,
   lerSessaoTecnico,
   normalizarTelefone,
+  telefonesCorrespondem,
   tecnicoSessionCookie,
 } from '@/lib/tecnico-auth'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { limitarRotaPublica } from '@/lib/rate-limit'
+import { codigoTecnicoValido } from '@/lib/tecnico-otp'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -32,10 +34,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => null)
     const whatsapp = normalizarTelefone(body?.whatsapp)
     const pin = String(body?.pin ?? '').replace(/\D/g, '')
+    const codigo = String(body?.codigo ?? '').replace(/\D/g, '')
+    const modoCodigo = body?.modo === 'CODIGO'
 
-    if (!whatsapp || pin.length < 4) {
+    if (whatsapp.length < 10 || (modoCodigo ? codigo.length !== 6 : pin.length < 4)) {
       return NextResponse.json(
-        { error: 'Informe o WhatsApp e o PIN de acesso.' },
+        { error: modoCodigo ? 'Informe o WhatsApp e o código de seis dígitos.' : 'Informe o WhatsApp e o PIN de acesso.' },
         { status: 400 }
       )
     }
@@ -48,16 +52,74 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error
 
-    const tecnico = (data ?? []).find((item) => normalizarTelefone(item.whatsapp).endsWith(whatsapp))
-    if (!tecnico?.id || !tecnico.portal_pin_hash) {
+    const tecnico = (data ?? []).find((item) => telefonesCorrespondem(item.whatsapp, whatsapp))
+    if (!tecnico?.id) {
       return NextResponse.json(
-        { error: 'Tecnico nao encontrado ou PIN ainda nao configurado.' },
+        { error: modoCodigo ? 'WhatsApp ou código inválido.' : 'Técnico não encontrado ou PIN ainda não configurado.' },
         { status: 401 }
       )
     }
 
-    if (tecnico.portal_pin_hash !== hashTecnicoPin(pin)) {
-      return NextResponse.json({ error: 'WhatsApp ou PIN invalido.' }, { status: 401 })
+    if (modoCodigo) {
+      const { data: acesso, error: erroAcesso } = await supabase
+        .from('tecnico_login_codigos')
+        .select('id, codigo_hash, tentativas, expira_em')
+        .eq('parceiro_id', tecnico.id)
+        .is('usado_em', null)
+        .gt('expira_em', new Date().toISOString())
+        .order('criado_em', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (erroAcesso) {
+        if (/tecnico_login_codigos|PGRST205/i.test(formatarErro(erroAcesso, ''))) {
+          return NextResponse.json(
+            { error: 'Execute o arquivo supabase-add-login-whatsapp-tecnico.sql antes de testar o código.' },
+            { status: 503 }
+          )
+        }
+        throw erroAcesso
+      }
+
+      if (!acesso?.id || Number(acesso.tentativas) >= 5) {
+        return NextResponse.json({ error: 'Código inválido ou expirado. Solicite um novo.' }, { status: 401 })
+      }
+
+      const valido = codigoTecnicoValido(codigo, Number(tecnico.id), String(acesso.codigo_hash))
+      if (!valido) {
+        const tentativas = Number(acesso.tentativas) + 1
+        await supabase
+          .from('tecnico_login_codigos')
+          .update({
+            tentativas,
+            ...(tentativas >= 5 ? { usado_em: new Date().toISOString() } : {}),
+          })
+          .eq('id', acesso.id)
+        return NextResponse.json({ error: 'Código inválido ou expirado. Confira e tente novamente.' }, { status: 401 })
+      }
+
+      const { data: consumido, error: erroUso } = await supabase
+        .from('tecnico_login_codigos')
+        .update({ usado_em: new Date().toISOString() })
+        .eq('id', acesso.id)
+        .is('usado_em', null)
+        .select('id')
+        .maybeSingle()
+
+      if (erroUso) throw erroUso
+      if (!consumido?.id) {
+        return NextResponse.json({ error: 'Este código já foi utilizado. Solicite um novo.' }, { status: 401 })
+      }
+    } else {
+      if (!tecnico.portal_pin_hash) {
+        return NextResponse.json(
+          { error: 'Técnico não encontrado ou PIN ainda não configurado.' },
+          { status: 401 }
+        )
+      }
+      if (tecnico.portal_pin_hash !== hashTecnicoPin(pin)) {
+        return NextResponse.json({ error: 'WhatsApp ou PIN inválido.' }, { status: 401 })
+      }
     }
 
     const response = NextResponse.json({
@@ -80,7 +142,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Erro no login do tecnico:', error)
     return NextResponse.json(
-      { error: formatarErro(error, 'Erro ao entrar no portal do tecnico.') },
+      { error: formatarErro(error, 'Erro ao entrar no portal do técnico.') },
       { status: 500 }
     )
   }
@@ -91,7 +153,7 @@ export async function GET(request: NextRequest) {
     const tecnicoId = lerSessaoTecnico(request.cookies.get(tecnicoSessionCookie)?.value)
 
     if (!tecnicoId) {
-      return NextResponse.json({ error: 'Tecnico nao autenticado.' }, { status: 401 })
+      return NextResponse.json({ error: 'Técnico não autenticado.' }, { status: 401 })
     }
 
     const supabase = getSupabaseAdmin()
@@ -104,7 +166,7 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error
     if (!tecnico) {
-      return NextResponse.json({ error: 'Tecnico nao localizado ou inativo.' }, { status: 401 })
+      return NextResponse.json({ error: 'Técnico não localizado ou inativo.' }, { status: 401 })
     }
 
     return NextResponse.json({
@@ -118,7 +180,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Erro ao consultar sessao do tecnico:', error)
     return NextResponse.json(
-      { error: formatarErro(error, 'Erro ao consultar sessao do tecnico.') },
+      { error: formatarErro(error, 'Erro ao consultar a sessão do técnico.') },
       { status: 500 }
     )
   }

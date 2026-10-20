@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
+import { linkMapa, linkWhatsApp } from '@/lib/tecnico-contato'
 
 type Chamado = {
   id: number
@@ -120,7 +121,7 @@ export default function ChamadoTecnicoPage() {
             <div className="flex items-center gap-4">
               <Image src="/logo-ct.png" alt="Chame o Tecnico" width={150} height={65} className="h-auto w-[130px]" />
               <div>
-                <h1 className="text-2xl font-bold text-slate-950">Chamado tecnico</h1>
+                <h1 className="text-2xl font-bold text-slate-950">Chamado técnico</h1>
                 <p className="text-sm text-slate-600">Analise a OS e informe se consegue atender.</p>
               </div>
             </div>
@@ -148,7 +149,7 @@ export default function ChamadoTecnicoPage() {
                 <div>
                   <p className="text-sm font-semibold text-orange-600">{chamado.numero_os ?? `OS #${chamado.id}`}</p>
                   <h2 className="text-xl font-bold text-slate-950">{chamado.clientes?.nome ?? 'Cliente'}</h2>
-                  <p className="text-sm text-slate-500">Tecnico: {tecnicoNome}</p>
+                  <p className="text-sm text-slate-500">Técnico: {tecnicoNome}</p>
                 </div>
                 <span
                   className="shrink-0 rounded-md bg-slate-100 text-xs font-semibold text-slate-700"
@@ -160,8 +161,8 @@ export default function ChamadoTecnicoPage() {
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <InfoItem label="Equipamento" value={equipamento || '-'} />
-                <InfoItem label="WhatsApp cliente" value={chamado.clientes?.whatsapp} />
-                <InfoItem label="Endereco" value={formatarEndereco(chamado)} wide />
+                <InfoItem label="WhatsApp cliente" value={chamado.clientes?.whatsapp} href={linkWhatsApp(chamado.clientes?.whatsapp)} />
+                <InfoItem label="Endereço" value={formatarEndereco(chamado)} wide href={linkMapa(formatarEndereco(chamado))} />
                 <InfoItem label="Defeito informado" value={chamado.defeito} wide />
               </div>
             </section>
@@ -169,7 +170,7 @@ export default function ChamadoTecnicoPage() {
             <section className="rounded-xl bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-950">Resposta do atendimento</h2>
               <p className="mt-1 text-sm text-slate-600">
-                Ao aceitar, a OS entra em atendimento. Ao recusar, ela volta para triagem para outro tecnico.
+                Ao aceitar, a OS entra em atendimento. Ao recusar, ela volta para triagem para outro técnico.
               </p>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -202,15 +203,22 @@ function InfoItem({
   label,
   value,
   wide = false,
+  href = '',
 }: {
   label: string
   value?: string | null
   wide?: boolean
+  href?: string
 }) {
+  const classe = `mt-1 whitespace-pre-wrap text-sm font-semibold text-slate-900 ${href ? 'text-blue-800 underline decoration-blue-200 underline-offset-2' : ''}`
   return (
     <div className={`rounded-lg bg-slate-50 px-4 py-3 ${wide ? 'sm:col-span-2' : ''}`}>
       <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
-      <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-slate-900">{value || '-'}</p>
+      {href ? (
+        <a href={href} target="_blank" rel="noreferrer" className={classe}>{value || '-'}</a>
+      ) : (
+        <p className={classe}>{value || '-'}</p>
+      )}
     </div>
   )
 }

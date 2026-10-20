@@ -13,6 +13,13 @@ export function normalizarTelefone(valor?: string | null) {
   return String(valor ?? '').replace(/\D/g, '')
 }
 
+export function telefonesCorrespondem(primeiro?: string | null, segundo?: string | null) {
+  const a = normalizarTelefone(primeiro)
+  const b = normalizarTelefone(segundo)
+  if (a.length < 10 || b.length < 10) return false
+  return a === b || a.endsWith(b) || b.endsWith(a)
+}
+
 export function criarSessaoTecnico(tecnicoId: number) {
   const payload = Buffer.from(
     JSON.stringify({

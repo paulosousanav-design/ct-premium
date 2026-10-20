@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
+import { linkMapa, linkWhatsApp } from '@/lib/tecnico-contato'
 import { type ChangeEvent, useCallback, useEffect, useState } from 'react'
 
 type OSDetalhe = {
@@ -52,7 +53,7 @@ type FormState = {
 const statusOptions = [
   { value: 'EM_ATENDIMENTO', label: 'Em atendimento' },
   { value: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto aguardando entrega' },
-  { value: 'AGUARDANDO_REVISAO', label: 'Aguardando revisao admin' },
+  { value: 'AGUARDANDO_REVISAO', label: 'Aguardando revisão do admin' },
   { value: 'AGUARDANDO_PECA', label: 'Aguardando peça' },
   { value: 'CRITICA', label: 'Crítica' },
 ]
@@ -93,7 +94,7 @@ export default function AtendimentoTecnicoPage() {
         return
       }
 
-      if (!response.ok) throw new Error(data?.error ?? 'Nao foi possivel carregar a OS.')
+      if (!response.ok) throw new Error(data?.error ?? 'Não foi possível carregar a OS.')
 
       const item = data?.data as OSDetalhe
       setOs(item)
@@ -152,7 +153,7 @@ export default function AtendimentoTecnicoPage() {
     })
     const data = await response.json().catch(() => null)
 
-    if (!response.ok) throw new Error(data?.error ?? 'Nao foi possivel enviar as fotos.')
+    if (!response.ok) throw new Error(data?.error ?? 'Não foi possível enviar as fotos.')
     setNovasFotos([])
     return (data?.fotos ?? []) as OSFoto[]
   }
@@ -167,7 +168,7 @@ export default function AtendimentoTecnicoPage() {
       const totalFotosAposSelecao = fotos.length + novasFotos.length
 
       if (statusFinal === 'AGUARDANDO_REVISAO' && totalFotosAposSelecao < 4) {
-        throw new Error('Para enviar o orcamento ao admin, anexe no minimo 4 fotos da OS.')
+        throw new Error('Para enviar o orçamento ao admin, anexe no mínimo 4 fotos da OS.')
       }
 
       const fotosEnviadas = await uploadFotos()
@@ -183,12 +184,12 @@ export default function AtendimentoTecnicoPage() {
       })
       const data = await response.json().catch(() => null)
 
-      if (!response.ok) throw new Error(data?.error ?? 'Nao foi possivel salvar o atendimento.')
+      if (!response.ok) throw new Error(data?.error ?? 'Não foi possível salvar o atendimento.')
       if (fotosEnviadas.length > 0) setFotos((prev) => [...fotosEnviadas, ...prev])
       setMensagem(
         statusFinal === 'AGUARDANDO_REVISAO'
-          ? 'Orcamento enviado para revisao do administrativo.'
-          : 'Atendimento salvo e historico atualizado.'
+          ? 'Orçamento enviado para revisão do administrativo.'
+          : 'Atendimento salvo e histórico atualizado.'
       )
       await carregarOS()
     } catch (error) {
@@ -208,7 +209,7 @@ export default function AtendimentoTecnicoPage() {
         <header className="rounded-xl bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
-              <Image src="/logo-ct.png" alt="Chame o Tecnico" width={150} height={65} className="h-auto w-[130px]" />
+              <Image src="/logo-ct.png" alt="Chame o Técnico" width={150} height={65} className="h-auto w-[130px]" />
               <div>
                 <h1 className="text-2xl font-bold text-slate-950">Atendimento da OS</h1>
                 <p className="text-sm text-slate-600">{os?.numero_os ?? 'Carregando...'}</p>
@@ -229,10 +230,10 @@ export default function AtendimentoTecnicoPage() {
             <section className="rounded-xl bg-white p-5 shadow-sm">
               <div className="grid gap-3 md:grid-cols-2">
                 <Info label="Cliente" value={os.clientes?.nome ?? '-'} />
-                <Info label="WhatsApp" value={os.clientes?.whatsapp ?? '-'} />
+                <Info label="WhatsApp" value={os.clientes?.whatsapp ?? '-'} href={linkWhatsApp(os.clientes?.whatsapp)} />
                 <Info label="Equipamento" value={equipamento || '-'} />
-                <Info label="Status atual" value={os.status ?? '-'} />
-                <Info label="Endereco" value={formatarEndereco(os)} wide />
+                <Info label="Status atual" value={rotuloStatus(os.status)} />
+                <Info label="Endereço" value={formatarEndereco(os)} wide href={linkMapa(formatarEndereco(os))} />
                 <Info label="Defeito informado" value={os.defeito ?? '-'} wide />
               </div>
             </section>
@@ -240,7 +241,7 @@ export default function AtendimentoTecnicoPage() {
             <section className="rounded-xl bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-950">Tratativa técnica</h2>
               <p className="mt-1 text-sm text-slate-500">
-                O orcamento vai para revisao do administrativo. O cliente so recebe apos a equipe liberar.
+                O orçamento vai para revisão do administrativo. O cliente só recebe após a equipe liberar.
               </p>
               <div className="mt-4 grid gap-4">
                 <label className="text-sm font-semibold text-slate-700">
@@ -265,11 +266,11 @@ export default function AtendimentoTecnicoPage() {
                 <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
                   <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <h3 className="text-sm font-bold text-slate-900">Fotos obrigatorias</h3>
-                      <p className="text-xs text-slate-500">Preencha no minimo 4 dos 6 espacos para enviar o orcamento ao admin.</p>
+                      <h3 className="text-sm font-bold text-slate-900">Fotos obrigatórias</h3>
+                      <p className="text-xs text-slate-500">Preencha no mínimo 4 dos 6 espaços para enviar o orçamento ao admin.</p>
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-bold ${podeEnviarRevisao ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                      {Math.min(totalFotos, 6)}/4 obrigatorias
+                      {Math.min(totalFotos, 6)}/4 obrigatórias
                     </span>
                   </div>
 
@@ -282,7 +283,7 @@ export default function AtendimentoTecnicoPage() {
                   />
 
                   <p className="mt-2 text-xs font-semibold text-slate-600">
-                    Adicione uma foto por vez. Cada espaco concluido sera marcado em verde.
+                    Adicione uma foto por vez. Cada espaço concluído será marcado em verde.
                   </p>
 
                   <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -303,7 +304,7 @@ export default function AtendimentoTecnicoPage() {
                         >
                           <div className="mb-2 flex items-center justify-between gap-2">
                             <span className={`text-[10px] font-black uppercase ${index < 4 ? 'text-orange-600' : 'text-slate-400'}`}>
-                              {index < 4 ? 'Obrigatoria' : 'Opcional'}
+                              {index < 4 ? 'Obrigatória' : 'Opcional'}
                             </span>
                             <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-black ${
                               preenchido ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'
@@ -343,7 +344,7 @@ export default function AtendimentoTecnicoPage() {
 
                   {totalFotos >= 6 && (
                     <p className="mt-3 rounded-lg bg-emerald-100 px-3 py-2 text-xs font-bold text-emerald-700">
-                      Todos os 6 espacos foram preenchidos.
+                      Todos os 6 espaços foram preenchidos.
                     </p>
                   )}
                 </div>
@@ -354,7 +355,7 @@ export default function AtendimentoTecnicoPage() {
                   disabled={salvando}
                   className="rounded-xl bg-orange-500 px-5 py-4 text-base font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {salvando ? 'Salvando...' : 'Salvar rascunho tecnico'}
+                  {salvando ? 'Salvando...' : 'Salvar rascunho técnico'}
                 </button>
 
                 <button
@@ -363,7 +364,7 @@ export default function AtendimentoTecnicoPage() {
                   disabled={salvando || !podeEnviarRevisao}
                   className="rounded-xl bg-slate-900 px-5 py-4 text-base font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Enviar orcamento para revisao do admin
+                  Enviar orçamento para revisão do admin
                 </button>
               </div>
             </section>
@@ -374,13 +375,31 @@ export default function AtendimentoTecnicoPage() {
   )
 }
 
-function Info({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+function Info({ label, value, wide = false, href = '' }: { label: string; value: string; wide?: boolean; href?: string }) {
+  const classe = `mt-1 whitespace-pre-wrap text-sm font-semibold text-slate-900 ${href ? 'text-blue-800 underline decoration-blue-200 underline-offset-2' : ''}`
   return (
     <div className={`rounded-lg bg-slate-50 px-4 py-3 ${wide ? 'md:col-span-2' : ''}`}>
       <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
-      <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-slate-900">{value}</p>
+      {href ? (
+        <a href={href} target="_blank" rel="noreferrer" className={classe}>{value}</a>
+      ) : (
+        <p className={classe}>{value}</p>
+      )}
     </div>
   )
+}
+
+function rotuloStatus(status?: string | null) {
+  return statusOptions.find((item) => item.value === status)?.label
+    ?? ({
+      NOVA: 'Nova',
+      TRIAGEM: 'Triagem',
+      AGUARDANDO_APROVACAO: 'Aguardando aprovação',
+      FINALIZADA: 'Finalizada',
+      ENCERRADA_SEM_REPARO: 'Encerrada sem reparo',
+    } as Record<string, string>)[status ?? '']
+    ?? status
+    ?? '-'
 }
 
 function TextArea({ label, name, value, onChange }: { label: string; name: string; value: string; onChange: (event: ChangeEvent<HTMLTextAreaElement>) => void }) {

@@ -4,6 +4,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import QRCode from 'qrcode'
+import { linkMapa, linkWhatsApp } from '@/lib/tecnico-contato'
 import { type ChangeEvent, type CSSProperties, type FormEvent, useCallback, useEffect, useState } from 'react'
 
 type OSItem = {
@@ -234,7 +235,8 @@ export default function PainelTecnicoPage() {
     ['AGUARDANDO_REVISAO', 'AGUARDANDO_APROVACAO'].includes(String(os.status))
   )
   const ordensAgendadas = ordensAbertas.filter((os) => Boolean(getAgendaDateTime(os, agendaDatas)))
-  const ordensExibidas = filtroOperacional === 'SEM_AGENDA'
+  const buscaNormalizada = buscaPortal.trim().toLocaleLowerCase('pt-BR')
+  const ordensTratamento = filtroOperacional === 'SEM_AGENDA'
     ? ordensSemAgenda
     : filtroOperacional === 'PENDENCIAS'
       ? ordensPendentes
@@ -243,7 +245,7 @@ export default function PainelTecnicoPage() {
         : filtroOperacional === 'AGENDADAS'
           ? ordensAgendadas
           : ordensAbertas
-  const buscaNormalizada = buscaPortal.trim().toLocaleLowerCase('pt-BR')
+  const ordensExibidas = ordensTratamento.filter((os) => correspondeBusca(os, buscaNormalizada))
   const ordensExecutadasExibidas = ordensExecutadasAtivas.filter((os) => correspondeBusca(os, buscaNormalizada))
   const ordensPagamentoBase = filtroPagamento === 'PENDENTE'
     ? ordensPagamentoPendente
@@ -404,7 +406,7 @@ export default function PainelTecnicoPage() {
             </div>
             <div className="flex items-center gap-2">
               <button type="button" onClick={carregarOrdens} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-800">Atualizar</button>
-              {!tecnicoId && <button type="button" onClick={sair} className="hidden rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300 transition hover:bg-slate-800 sm:block">Sair</button>}
+              {!tecnicoId && <button type="button" onClick={sair} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300 transition hover:bg-slate-800">Sair</button>}
             </div>
           </div>
           <nav className="flex gap-1 overflow-x-auto border-t border-slate-800 px-3 py-2 sm:px-5">
@@ -526,17 +528,15 @@ export default function PainelTecnicoPage() {
               </div>
             </div>
 
-            {abaAtiva !== 'tratamento' && (
-              <label className="mb-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <span className="text-slate-400" aria-hidden="true">⌕</span>
-                <input
-                  value={buscaPortal}
-                  onChange={(event) => setBuscaPortal(event.target.value)}
-                  className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none"
-                  placeholder="Buscar por OS, cliente ou equipamento..."
-                />
-              </label>
-            )}
+            <label className="mb-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <span className="text-slate-400" aria-hidden="true">⌕</span>
+              <input
+                value={buscaPortal}
+                onChange={(event) => setBuscaPortal(event.target.value)}
+                className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none"
+                placeholder="Buscar por OS, cliente ou equipamento..."
+              />
+            </label>
 
             {loading ? (
               <p className="text-sm text-slate-500">Carregando...</p>
@@ -579,7 +579,10 @@ export default function PainelTecnicoPage() {
 
                       <div className="space-y-1 text-xs sm:space-y-1.5">
                         <Info label="Equipamento" value={formatarEquipamento(os)} compact />
-                        <Info label="Endereco" value={formatarEndereco(os)} compact />
+                        <Info label="Endereço" value={formatarEndereco(os)} compact href={linkMapa(formatarEndereco(os))} />
+                        {linkWhatsApp(os.clientes?.whatsapp) && (
+                          <Info label="WhatsApp" value={os.clientes?.whatsapp ?? 'Conversar'} compact href={linkWhatsApp(os.clientes?.whatsapp)} />
+                        )}
                       </div>
 
                       <div className="mt-2 grid gap-1.5 sm:mt-3 sm:gap-2">
@@ -1050,11 +1053,16 @@ function CrachaDigital() {
   return <section className="rounded-xl bg-white p-4 shadow-sm"><div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-base font-black text-slate-950">Meu crachá digital</h2><p className="text-xs font-semibold text-slate-500">Foto profissional sujeita à aprovação administrativa.</p></div><label className="cursor-pointer rounded-lg bg-slate-900 px-3 py-2 text-center text-xs font-bold text-white">{enviando ? 'Enviando...' : cracha.foto_cracha_url ? 'Trocar foto' : 'Enviar foto'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={enviando} onChange={enviarFoto} className="hidden" /></label></div>{mensagem && <p className="mb-3 rounded-lg bg-slate-50 p-2 text-xs font-semibold text-slate-700">{mensagem}</p>}<div className="mx-auto grid max-w-[620px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md sm:grid-cols-[180px_1fr]"><div className="flex min-h-[210px] items-center justify-center bg-slate-950 p-4">{cracha.foto_cracha_url ? <img src={cracha.foto_cracha_url} alt={`Foto de ${nome}`} className="h-40 w-32 rounded-lg border-4 border-white object-cover" /> : <div className="flex h-40 w-32 items-center justify-center rounded-lg border-2 border-dashed border-slate-500 text-center text-xs font-bold text-slate-300">Foto pendente</div>}</div><div className="relative p-4"><Image src="/logo-ct.png" alt="Chame o Técnico" width={100} height={44} className="h-auto w-[90px]" /><span className={`absolute right-4 top-4 rounded-full px-2 py-1 text-[9px] font-black ${aprovado ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{aprovado ? 'ATIVO' : cracha.cracha_status === 'REPROVADO' ? 'REPROVADO' : 'AGUARDANDO APROVAÇÃO'}</span><p className="mt-4 text-xl font-black text-slate-950">{nome}</p><p className="text-xs font-bold uppercase tracking-wide text-orange-600">{cracha.tipo_vinculo === 'PROPRIO' ? 'Técnico próprio' : 'Técnico credenciado'}</p><p className="mt-2 text-xs text-slate-600">{(cracha.especialidades ?? []).join(' • ') || 'Assistência técnica'}</p><p className="mt-1 text-[11px] font-semibold text-slate-500">{[cracha.cidade, cracha.estado].filter(Boolean).join(' / ')}</p><div className="mt-3 flex items-end justify-between gap-3"><div className="text-[9px] font-bold text-slate-500"><p>ID #{String(cracha.id).padStart(5, '0')}</p><p>Validade: {cracha.cracha_validade ? new Date(`${cracha.cracha_validade}T12:00:00`).toLocaleDateString('pt-BR') : 'A definir'}</p></div>{qr && aprovado && <img src={qr} alt="QR Code de validação" className="h-20 w-20" />}</div></div></div></section>
 }
 
-function Info({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
+function Info({ label, value, compact = false, href = '' }: { label: string; value: string; compact?: boolean; href?: string }) {
+  const classe = `font-semibold leading-tight text-slate-900 ${compact ? 'line-clamp-1 text-[11px] sm:text-xs' : ''} ${href ? 'text-blue-800 underline decoration-blue-200 underline-offset-2' : ''}`
   return (
     <div className={`rounded-md bg-white ${compact ? 'px-2 py-1 sm:py-1.5' : 'px-3 py-2'}`}>
       <p className="text-[9px] font-semibold uppercase leading-tight text-slate-500 sm:text-[10px]">{label}</p>
-      <p className={`font-semibold leading-tight text-slate-900 ${compact ? 'line-clamp-1 text-[11px] sm:text-xs' : ''}`}>{value}</p>
+      {href ? (
+        <a href={href} target="_blank" rel="noreferrer" className={classe}>{value}</a>
+      ) : (
+        <p className={classe}>{value}</p>
+      )}
     </div>
   )
 }
@@ -1084,7 +1092,7 @@ function ResumoTecnicoPanel({ resumo }: { resumo: ResumoTecnico }) {
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <MiniMetric label="Executados" value={String(resumo.executados)} tone="emerald" />
           <MiniMetric label="Abertas" value={String(resumo.abertas)} tone="amber" />
-          <MiniMetric label="Revisao" value={String(resumo.emRevisao)} tone="indigo" />
+          <MiniMetric label="Revisão" value={String(resumo.emRevisao)} tone="indigo" />
         </div>
       </section>
 
@@ -1117,7 +1125,7 @@ function ResumoTecnicoPanel({ resumo }: { resumo: ResumoTecnico }) {
       </section>
 
       <section className="rounded-xl bg-white p-3 shadow-sm sm:p-4">
-        <h3 className="mb-2 text-sm font-bold text-slate-950">Servicos</h3>
+        <h3 className="mb-2 text-sm font-bold text-slate-950">Serviços</h3>
         <div className="space-y-2">
           <BarraResumo
             label="Executados"
