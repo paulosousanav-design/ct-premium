@@ -451,20 +451,24 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="border-b border-slate-200 bg-[#f8faf9]">
-            <div className="flex justify-center py-2">
+            <div className="grid grid-cols-[4.5rem_1fr_4.5rem] items-center px-2 py-2 lg:flex lg:justify-center lg:px-0">
+              <Link href="/admin/menu" className="text-sm font-semibold text-slate-800 lg:hidden">
+                Menu
+              </Link>
               <Image
                 src={acessoP4 ? '/p4-integra-logo.png' : '/logo-chame-o-tecnico.png'}
                 alt={acessoP4 ? 'P4 Integra' : 'Chame o Tecnico'}
                 width={900}
                 height={180}
-                className="h-auto w-[180px] object-contain md:w-[320px] lg:w-[460px]"
+                className="mx-auto h-auto w-[180px] object-contain md:w-[320px] lg:w-[460px]"
                 priority
               />
+              <span className="lg:hidden" aria-hidden="true" />
             </div>
             {unidades.length > 0 && (
               <div className="border-t border-slate-200 px-4 py-2">
                 <div className="mx-auto flex max-w-7xl items-center justify-end gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  <span className="hidden text-xs font-bold uppercase tracking-wide text-slate-500 md:inline">
                     {visaoGerencial ? 'Visão gerencial' : 'Empresa ativa — OS, estoque e vendas'}
                   </span>
                   <select
@@ -509,12 +513,75 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <div className="rounded-xl bg-red-50 p-5 text-sm font-bold text-red-700">
                 Seu acesso administrativo esta inativo. Solicite liberacao ao administrador.
               </div>
+            ) : pathname === '/admin/menu' ? (
+              <MenuCelular
+                grupos={menuVisivel}
+                pathname={pathname}
+                chatNaoLidas={chatNaoLidas}
+                monitoramentoAbertos={monitoramentoAbertos}
+                monitoramentoCriticos={monitoramentoCriticos}
+                onSair={sair}
+              />
             ) : (
               children
             )}
           </main>
         </div>
       </div>
+    </div>
+  )
+}
+
+function MenuCelular({
+  grupos,
+  pathname,
+  chatNaoLidas,
+  monitoramentoAbertos,
+  monitoramentoCriticos,
+  onSair,
+}: {
+  grupos: MenuGrupo[]
+  pathname: string
+  chatNaoLidas: number
+  monitoramentoAbertos: number
+  monitoramentoCriticos: number
+  onSair: () => void
+}) {
+  return (
+    <div className="mx-auto mb-16 max-w-lg overflow-hidden rounded-2xl bg-white shadow-sm">
+      {grupos.map((grupo) => (
+        <section key={grupo.titulo} className="border-b border-slate-100">
+          <p className={`px-4 pb-1 pt-3 text-xs font-medium ${grupo.discreto ? 'text-slate-400' : 'text-slate-500'}`}>{grupo.titulo}</p>
+          <ul>
+            {grupo.itens.map((item) => {
+              const ativo = itemMenuAtivo(pathname, item.href)
+              const contador = item.contador === 'chat'
+                ? chatNaoLidas
+                : item.contador === 'monitoramento'
+                  ? monitoramentoAbertos
+                  : 0
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className={`flex items-center justify-between gap-3 px-4 py-2.5 text-sm ${ativo ? 'font-semibold text-orange-700' : 'font-medium text-slate-800'}`}
+                  >
+                    <span className="truncate">{item.label}</span>
+                    {contador > 0 && (
+                      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white ${item.contador === 'monitoramento' && monitoramentoCriticos > 0 ? 'bg-red-600' : 'bg-orange-500'}`}>
+                        {contador > 99 ? '99+' : contador}
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      ))}
+      <button type="button" onClick={onSair} className="w-full px-4 py-3 text-left text-sm font-medium text-slate-500">
+        Sair
+      </button>
     </div>
   )
 }
