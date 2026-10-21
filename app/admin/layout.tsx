@@ -318,7 +318,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#c7d3cf]">
-      {permissoes?.includes('chat') && (
+      {permissoes?.includes('chat') && pathname !== '/admin/chat' && (
         <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
           <button
             type="button"

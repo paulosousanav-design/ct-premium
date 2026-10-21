@@ -38,7 +38,11 @@ export default function ChatInternoPage() {
   const [loading, setLoading] = useState(true)
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState('')
+  const [novaConversaAberta, setNovaConversaAberta] = useState(false)
+  const [vincularOs, setVincularOs] = useState(false)
+  const [mostrarLista, setMostrarLista] = useState(false)
   const mensagensRef = useRef<HTMLDivElement>(null)
+  const campoMensagemRef = useRef<HTMLTextAreaElement>(null)
   const preservarScrollRef = useRef<{ altura: number; topo: number } | null>(null)
 
   useEffect(() => {
@@ -130,6 +134,8 @@ export default function ChatInternoPage() {
       if (!response.ok) throw new Error(payload?.error ?? 'Nao foi possivel enviar a mensagem.')
       setConteudo('')
       setOsId('')
+      setVincularOs(false)
+      if (campoMensagemRef.current) campoMensagemRef.current.style.height = 'auto'
       await carregar(conversaId, true)
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Nao foi possivel enviar a mensagem.')
@@ -150,6 +156,7 @@ export default function ChatInternoPage() {
       const payload = await response.json().catch(() => null)
       if (!response.ok) throw new Error(payload?.error ?? 'Nao foi possivel iniciar a conversa.')
       setDestinatarioId('')
+      setNovaConversaAberta(false)
       setConversaId(Number(payload.conversaId))
       await carregar(Number(payload.conversaId), true)
     } catch (error) {
@@ -192,46 +199,122 @@ export default function ChatInternoPage() {
     }
   }
 
+  const ordemVinculada = ordens.find((ordem) => String(ordem.id) === osId)
+  const listaVisivel = mostrarLista || !conversaId
+
+  function abrirConversa(id: number) {
+    setConversaId(id)
+    setMostrarLista(false)
+  }
+
   return (
-    <div className="mx-auto max-w-[1500px] space-y-4 lg:flex lg:h-[calc(100dvh-10rem)] lg:flex-col lg:overflow-hidden lg:space-y-0 lg:gap-4">
-      <header className="flex flex-col gap-3 rounded-xl bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
-        <div><p className="text-xs font-black uppercase text-orange-600">Comunicacao administrativa</p><h1 className="text-2xl font-black text-slate-950">Chat interno</h1><p className="text-sm text-slate-500">Canais da empresa, unidades e conversas diretas.</p></div>
-        <Link href="/admin/dashboard" className="rounded-lg bg-slate-900 px-4 py-2 text-center text-sm font-bold text-white">Voltar ao Dashboard</Link>
-      </header>
+    <div className="-mx-4 -my-4 flex h-[calc(100dvh-7.5rem)] max-w-none flex-col lg:mx-auto lg:my-0 lg:h-[calc(100dvh-12.5rem)] lg:max-w-[1500px]">
+      {estruturaPendente && <div className="rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">Execute o arquivo supabase-add-chat-interno.sql no Supabase para liberar o chat.</div>}
+      {erro && <div className="rounded-xl bg-red-50 p-4 text-sm font-semibold text-red-700">{erro}</div>}
 
-      {estruturaPendente && <div className="rounded-xl bg-amber-50 p-4 text-sm font-bold text-amber-800">Execute o arquivo supabase-add-chat-interno.sql no Supabase para liberar o chat.</div>}
-      {erro && <div className="rounded-xl bg-red-50 p-4 text-sm font-bold text-red-700">{erro}</div>}
-
-      <div className="grid min-h-[680px] overflow-hidden rounded-2xl bg-white shadow-sm lg:min-h-0 lg:flex-1 lg:grid-cols-[320px_1fr]">
-        <aside className="border-b border-slate-200 bg-slate-50 lg:min-h-0 lg:overflow-y-auto lg:border-b-0 lg:border-r">
-          <div className="border-b border-slate-200 p-4">
-            <p className="mb-2 text-xs font-black uppercase text-slate-500">Nova conversa direta</p>
-            <div className="flex gap-2"><select value={destinatarioId} onChange={(event) => setDestinatarioId(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Selecionar usuario</option>{usuarios.map((usuario) => <option key={usuario.id} value={usuario.id}>{usuario.nome}</option>)}</select><button type="button" disabled={!destinatarioId || enviando} onClick={iniciarDireta} className="rounded-lg bg-orange-600 px-3 text-sm font-black text-white disabled:opacity-50">Abrir</button></div>
-          </div>
-          <div className="space-y-2 border-b border-slate-200 p-3">
-            <input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar conversa..." className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-orange-500" />
-            <div className="grid grid-cols-3 gap-1 rounded-lg bg-slate-200 p-1">
-              {([['ATIVAS', 'Ativas'], ['NAO_LIDAS', 'Não lidas'], ['ARQUIVADAS', 'Arquivadas']] as const).map(([valor, label]) => (
-                <button key={valor} type="button" onClick={() => setFiltro(valor)} className={`rounded-md px-2 py-2 text-[11px] font-black ${filtro === valor ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}>{label}</button>
-              ))}
+      <div className="grid min-h-0 flex-1 overflow-hidden bg-white lg:grid-cols-[280px_1fr] lg:rounded-2xl lg:border lg:border-slate-200">
+        <aside className={`${listaVisivel ? 'flex' : 'hidden'} min-h-0 flex-1 flex-col border-slate-200 lg:flex lg:flex-none lg:border-r`}>
+          <div className="space-y-1.5 border-b border-slate-100 p-2">
+            <div className="flex items-center gap-2">
+              <input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar" className="min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm outline-none focus:border-orange-400" />
+              <select value={filtro} onChange={(event) => setFiltro(event.target.value as FiltroConversa)} aria-label="Filtrar conversas" className="rounded-full border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-600 outline-none">
+                <option value="ATIVAS">Ativas</option>
+                <option value="NAO_LIDAS">Não lidas</option>
+                <option value="ARQUIVADAS">Arquivadas</option>
+              </select>
             </div>
+            <button type="button" onClick={() => setNovaConversaAberta((aberta) => !aberta)} className="text-xs font-semibold text-orange-700">
+              {novaConversaAberta ? 'Fechar' : 'Nova conversa'}
+            </button>
+            {novaConversaAberta && (
+              <div className="flex gap-2">
+                <select value={destinatarioId} onChange={(event) => setDestinatarioId(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <option value="">Escolher pessoa</option>
+                  {usuarios.map((usuario) => <option key={usuario.id} value={usuario.id}>{usuario.nome}</option>)}
+                </select>
+                <button type="button" disabled={!destinatarioId || enviando} onClick={iniciarDireta} className="rounded-xl bg-orange-500 px-3 text-sm font-semibold text-white disabled:opacity-40">Iniciar</button>
+              </div>
+            )}
           </div>
-          <Lista titulo="Canais" itens={canais} selecionada={conversaId} escolher={setConversaId} />
-          <Lista titulo="Conversas diretas" itens={diretas} selecionada={conversaId} escolher={setConversaId} vazio="Nenhuma conversa direta." />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <Lista titulo="Canais" itens={canais} selecionada={conversaId} escolher={abrirConversa} />
+            <Lista titulo="Diretas" itens={diretas} selecionada={conversaId} escolher={abrirConversa} vazio="Nenhuma conversa direta." />
+          </div>
         </aside>
 
-        <section className="flex min-h-[600px] min-w-0 flex-col lg:min-h-0">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4"><div><h2 className="font-black text-slate-950">{conversaAtual?.titulo ?? 'Selecione uma conversa'}</h2><p className="text-xs text-slate-500">30 mensagens recentes · histórico sob demanda</p></div>{arquivamentoDisponivel && conversaAtual?.tipo === 'DIRETA' && <button type="button" onClick={alternarArquivo} disabled={enviando} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-600 disabled:opacity-50">{conversaAtual.arquivada ? 'Reabrir conversa' : 'Arquivar'}</button>}</div>
-          <div ref={mensagensRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-100/60 p-4 md:p-6">
-            {conversaId && temMais && <div className="text-center"><button type="button" onClick={carregarAnteriores} disabled={carregandoAnteriores} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-black text-slate-600 shadow-sm disabled:opacity-50">{carregandoAnteriores ? 'Carregando...' : 'Carregar mensagens anteriores'}</button></div>}
-            {loading && <p className="text-sm font-bold text-slate-500">Carregando mensagens...</p>}
-            {!loading && conversaId && mensagens.length === 0 && <div className="mx-auto mt-20 max-w-sm rounded-xl bg-white p-5 text-center text-sm text-slate-500 shadow-sm">Ainda nao ha mensagens nesta conversa. Envie a primeira.</div>}
-            {mensagens.map((mensagem) => <MensagemItem key={mensagem.id} mensagem={mensagem} propria={mensagem.autor_id === usuarioAtualId} />)}
+        <section className={`${listaVisivel ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 flex-col lg:flex`}>
+          <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-2 py-1.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <button type="button" onClick={() => setMostrarLista(true)} className="rounded-full px-2 py-1 text-sm font-semibold text-slate-600 lg:hidden">Conversas</button>
+              {conversaAtual && <Avatar nome={conversaAtual.titulo} />}
+              <h2 className="truncate text-sm font-semibold text-slate-950">{conversaAtual?.titulo ?? 'Selecione uma conversa'}</h2>
+            </div>
+            {arquivamentoDisponivel && conversaAtual?.tipo === 'DIRETA' && (
+              <button type="button" onClick={alternarArquivo} disabled={enviando} className="text-xs font-medium text-slate-500 disabled:opacity-40">
+                {conversaAtual.arquivada ? 'Reabrir' : 'Arquivar'}
+              </button>
+            )}
           </div>
-          <form onSubmit={enviar} className="border-t border-slate-200 bg-white p-4">
-            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center"><select value={osId} onChange={(event) => setOsId(event.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm sm:max-w-md"><option value="">Sem OS vinculada</option>{ordens.map((ordem) => <option key={ordem.id} value={ordem.id}>{ordem.numero_os} - {nomeCliente(ordem.clientes)}</option>)}</select>{osId && <span className="text-xs font-bold text-orange-700">A OS sera anexada à mensagem.</span>}</div>
-            <div className="flex items-end gap-2"><textarea value={conteudo} onChange={(event) => setConteudo(event.target.value)} maxLength={2000} rows={2} placeholder="Digite uma mensagem..." disabled={!conversaId || estruturaPendente} className="min-h-[52px] flex-1 resize-none rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-500" /><button type="submit" disabled={!conversaId || !conteudo.trim() || enviando || estruturaPendente} className="rounded-xl bg-orange-600 px-5 py-3 text-sm font-black text-white disabled:opacity-50">{enviando ? 'Enviando...' : 'Enviar'}</button></div>
-            <p className="mt-1 text-right text-[11px] text-slate-400">{conteudo.length}/2.000</p>
+          <div ref={mensagensRef} className="flex-1 space-y-0.5 overflow-y-auto bg-[#f7f6f3] px-2.5 py-2 md:px-4">
+            {conversaId && temMais && (
+              <div className="pb-3 text-center">
+                <button type="button" onClick={carregarAnteriores} disabled={carregandoAnteriores} className="text-xs font-medium text-slate-500 disabled:opacity-40">
+                  {carregandoAnteriores ? 'Carregando...' : 'Mensagens anteriores'}
+                </button>
+              </div>
+            )}
+            {loading && <p className="text-sm text-slate-500">Carregando mensagens...</p>}
+            {!loading && conversaId && mensagens.length === 0 && <p className="pt-16 text-center text-sm text-slate-500">Ainda não há mensagens nesta conversa.</p>}
+            {mensagens.map((mensagem, index) => {
+              const anterior = mensagens[index - 1]
+              const novoDia = !anterior || diaChave(anterior.criado_em) !== diaChave(mensagem.criado_em)
+              const propria = mensagem.autor_id === usuarioAtualId
+              const mesmoAutor = Boolean(anterior && anterior.autor_id === mensagem.autor_id && !novoDia)
+              return (
+                <div key={mensagem.id} className={novoDia ? 'pt-2' : mesmoAutor ? 'pt-0.5' : 'pt-2'}>
+                  {novoDia && <p className="py-2 text-center text-[11px] font-medium text-slate-400">{rotuloDia(mensagem.criado_em)}</p>}
+                  <MensagemItem mensagem={mensagem} propria={propria} mostrarNome={!propria && !mesmoAutor} />
+                </div>
+              )
+            })}
+          </div>
+          <form onSubmit={enviar} className="border-t border-slate-100 bg-white px-2 py-1.5">
+            {(vincularOs || osId) && (
+              <select value={osId} onChange={(event) => setOsId(event.target.value)} className="mb-1.5 w-full rounded-xl border border-orange-200 bg-orange-50 px-3 py-1.5 text-sm">
+                <option value="">Sem OS</option>
+                {ordens.map((ordem) => <option key={ordem.id} value={ordem.id}>{ordem.numero_os} · {nomeCliente(ordem.clientes)}</option>)}
+              </select>
+            )}
+            <div className="flex items-end gap-1 rounded-full border border-slate-200 bg-slate-50 py-1 pl-1 pr-1">
+              <button type="button" onClick={() => setVincularOs((aberto) => !aberto)} disabled={!conversaId} className={`mb-0.5 shrink-0 rounded-full px-2.5 py-1.5 text-xs font-semibold disabled:opacity-40 ${ordemVinculada ? 'bg-orange-500 text-white' : 'bg-orange-100 text-orange-800'}`}>
+                {ordemVinculada ? ordemVinculada.numero_os : 'Vincular OS'}
+              </button>
+              <textarea
+                ref={campoMensagemRef}
+                value={conteudo}
+                onChange={(event) => {
+                  setConteudo(event.target.value)
+                  const campo = event.target
+                  campo.style.height = 'auto'
+                  campo.style.height = `${Math.min(campo.scrollHeight, 112)}px`
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault()
+                    event.currentTarget.form?.requestSubmit()
+                  }
+                }}
+                maxLength={2000}
+                rows={1}
+                placeholder="Mensagem"
+                disabled={!conversaId || estruturaPendente}
+                className="max-h-28 min-h-9 flex-1 resize-none bg-transparent py-2 text-sm outline-none"
+              />
+              <button type="submit" disabled={!conversaId || !conteudo.trim() || enviando || estruturaPendente} className="mb-0.5 rounded-full bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
+                {enviando ? '...' : 'Enviar'}
+              </button>
+            </div>
+            {conteudo.length >= 1600 && <p className="mt-1 px-2 text-right text-[11px] text-slate-400">{conteudo.length}/2.000</p>}
           </form>
         </section>
       </div>
@@ -240,17 +323,78 @@ export default function ChatInternoPage() {
 }
 
 function Lista({ titulo, itens, selecionada, escolher, vazio }: { titulo: string; itens: Conversa[]; selecionada: number | null; escolher: (id: number) => void; vazio?: string }) {
-  return <div className="p-3"><p className="px-2 py-2 text-xs font-black uppercase text-slate-500">{titulo}</p>{itens.length === 0 && vazio && <p className="px-2 py-3 text-xs text-slate-400">{vazio}</p>}<div className="space-y-1">{itens.map((item) => <button key={item.id} type="button" onClick={() => escolher(item.id)} className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left text-sm transition ${selecionada === item.id ? 'bg-slate-900 text-white' : 'hover:bg-white'}`}><div className="min-w-0"><p className="truncate font-black">{item.tipo === 'DIRETA' ? '● ' : '# '}{item.titulo}</p><p className={`truncate text-xs ${selecionada === item.id ? 'text-slate-300' : 'text-slate-400'}`}>{item.ultimaMensagem?.conteudo ?? 'Sem mensagens'}</p></div>{item.naoLidas > 0 && <span className="min-w-6 rounded-full bg-orange-600 px-2 py-1 text-center text-[11px] font-black text-white">{item.naoLidas > 99 ? '99+' : item.naoLidas}</span>}</button>)}</div></div>
+  return (
+    <div className="px-2 py-2">
+      <p className="px-2 py-1 text-[11px] font-medium text-slate-400">{titulo}</p>
+      {itens.length === 0 && vazio && <p className="px-2 py-2 text-xs text-slate-400">{vazio}</p>}
+      <div>
+        {itens.map((item) => {
+          const ativa = selecionada === item.id
+          const previa = item.ultimaMensagem?.conteudo?.trim()
+          return (
+            <button key={item.id} type="button" onClick={() => escolher(item.id)} className={`flex w-full items-center gap-2 rounded-xl px-1.5 py-1.5 text-left ${ativa ? 'bg-orange-50' : 'hover:bg-slate-50'}`}>
+              <Avatar nome={item.titulo} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="truncate text-sm font-semibold text-slate-950">{item.titulo}</span>
+                  {item.ultimaMensagem?.criado_em && <span className="shrink-0 text-[10px] text-slate-400">{horaCurta(item.ultimaMensagem.criado_em)}</span>}
+                </span>
+                {previa && <span className="block truncate text-xs text-slate-500">{previa}</span>}
+              </span>
+              {item.naoLidas > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1.5 text-[10px] font-semibold text-white">{item.naoLidas > 99 ? '99+' : item.naoLidas}</span>}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
-function MensagemItem({ mensagem, propria }: { mensagem: Mensagem; propria: boolean }) {
+function MensagemItem({ mensagem, propria, mostrarNome }: { mensagem: Mensagem; propria: boolean; mostrarNome: boolean }) {
   const autor = relacao(mensagem.autor)
   const ordem = relacao(mensagem.ordens_servico)
-  return <div className={`flex ${propria ? 'justify-end' : 'justify-start'}`}><article className={`max-w-[88%] rounded-2xl px-4 py-3 shadow-sm md:max-w-[72%] ${propria ? 'rounded-br-md bg-slate-900 text-white' : 'rounded-bl-md bg-white text-slate-900'}`}><div className="mb-1 flex items-center justify-between gap-5"><p className={`text-xs font-black ${propria ? 'text-orange-300' : 'text-orange-700'}`}>{propria ? 'Voce' : autor?.nome ?? autor?.email ?? 'Usuario'}</p><time className={`text-[10px] ${propria ? 'text-slate-400' : 'text-slate-400'}`}>{new Date(mensagem.criado_em).toLocaleString('pt-BR')}</time></div><p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{mensagem.conteudo}</p>{ordem && <Link href={`/admin/os/${ordem.id}`} className={`mt-3 block rounded-lg border px-3 py-2 text-xs font-black ${propria ? 'border-slate-600 bg-slate-800 text-orange-300' : 'border-orange-200 bg-orange-50 text-orange-700'}`}>Abrir OS {ordem.numero_os}</Link>}</article></div>
+  const nome = autor?.nome ?? autor?.email ?? 'Usuário'
+  return (
+    <div className={`flex ${propria ? 'justify-end' : 'justify-start'}`}>
+      <article className={`max-w-[88%] rounded-2xl border px-2.5 py-1.5 md:max-w-[68%] ${propria ? 'border-orange-200 bg-orange-100 text-slate-900' : 'border-slate-200 bg-white text-slate-900'}`}>
+        {mostrarNome && <p className="mb-0.5 text-xs font-semibold text-orange-800">{nome}</p>}
+        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+          {mensagem.conteudo}
+          <time className="ml-2 inline-block align-bottom text-[10px] font-medium text-slate-500">{horaCurta(mensagem.criado_em)}</time>
+        </p>
+        {ordem && <Link href={`/admin/os/${ordem.id}`} className="mt-1 inline-block text-xs font-semibold text-orange-800 underline decoration-orange-200 underline-offset-2">OS {ordem.numero_os}</Link>}
+      </article>
+    </div>
+  )
+}
+
+function Avatar({ nome }: { nome: string }) {
+  return <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-700">{iniciais(nome)}</span>
 }
 
 function relacao<T>(valor?: T | T[] | null) { return Array.isArray(valor) ? valor[0] : valor }
-function nomeCliente(valor?: Ordem['clientes']) { return relacao(valor)?.nome ?? 'Cliente nao informado' }
+function nomeCliente(valor?: Ordem['clientes']) { return relacao(valor)?.nome ?? 'Cliente não informado' }
+function diaChave(iso: string) {
+  const data = new Date(iso)
+  return `${data.getFullYear()}-${data.getMonth()}-${data.getDate()}`
+}
+function rotuloDia(iso: string) {
+  const hoje = new Date()
+  const ontem = new Date()
+  ontem.setDate(hoje.getDate() - 1)
+  const chave = diaChave(iso)
+  if (chave === `${hoje.getFullYear()}-${hoje.getMonth()}-${hoje.getDate()}`) return 'Hoje'
+  if (chave === `${ontem.getFullYear()}-${ontem.getMonth()}-${ontem.getDate()}`) return 'Ontem'
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+}
+function horaCurta(iso: string) {
+  return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+function iniciais(nome: string) {
+  const partes = nome.trim().split(/\s+/).filter(Boolean)
+  const letras = `${partes[0]?.[0] ?? ''}${partes.length > 1 ? partes[partes.length - 1]?.[0] ?? '' : ''}`
+  return letras.toUpperCase() || '?'
+}
 function unirMensagens(...listas: Mensagem[][]) {
   const porId = new Map<number, Mensagem>()
   listas.flat().forEach((mensagem) => porId.set(mensagem.id, mensagem))

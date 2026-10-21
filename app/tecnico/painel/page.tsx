@@ -27,6 +27,7 @@ type OSItem = {
   tecnico_pago_em?: string | null
   tecnico_agendado_para?: string | null
   status_financeiro?: string | null
+  orcamento_status?: string | null
   clientes?: {
     nome: string | null
     whatsapp: string | null
@@ -80,7 +81,7 @@ type AlertaAcademia = {
   obrigatorios: number
 }
 
-type FiltroOperacional = 'TODOS' | 'SEM_AGENDA' | 'PENDENCIAS' | 'AGUARDANDO_EQUIPE' | 'AGENDADAS'
+type FiltroOperacional = 'TODOS' | 'SEM_AGENDA' | 'PENDENCIAS' | 'AGUARDANDO_EQUIPE' | 'LIBERADO_CLIENTE' | 'AGENDADAS'
 type AbaPortal = 'tratamento' | 'executados' | 'pagamentos'
 type FiltroPagamento = 'TODOS' | 'PENDENTE' | 'AGUARDANDO_NF' | 'A_RECEBER' | 'PAGO'
 
@@ -231,9 +232,9 @@ export default function PainelTecnicoPage() {
   const ordensPendentes = ordensAbertas.filter((os) =>
     ['EM_ATENDIMENTO', 'CRITICA', 'AGUARDANDO_PECA'].includes(String(os.status))
   )
-  const ordensAguardandoEquipe = ordensAbertas.filter((os) =>
-    ['AGUARDANDO_REVISAO', 'AGUARDANDO_APROVACAO'].includes(String(os.status))
-  )
+  const ordensNaEquipe = ordensAbertas.filter((os) => os.status === 'AGUARDANDO_REVISAO')
+  const ordensNoCliente = ordensAbertas.filter((os) => os.status === 'AGUARDANDO_APROVACAO')
+  const ordensAguardandoEquipe = [...ordensNaEquipe, ...ordensNoCliente]
   const ordensAgendadas = ordensAbertas.filter((os) => Boolean(getAgendaDateTime(os, agendaDatas)))
   const buscaNormalizada = buscaPortal.trim().toLocaleLowerCase('pt-BR')
   const ordensTratamento = filtroOperacional === 'SEM_AGENDA'
@@ -242,7 +243,9 @@ export default function PainelTecnicoPage() {
       ? ordensPendentes
       : filtroOperacional === 'AGUARDANDO_EQUIPE'
         ? ordensAguardandoEquipe
-        : filtroOperacional === 'AGENDADAS'
+        : filtroOperacional === 'LIBERADO_CLIENTE'
+          ? ordensNoCliente
+          : filtroOperacional === 'AGENDADAS'
           ? ordensAgendadas
           : ordensAbertas
   const ordensExibidas = ordensTratamento.filter((os) => correspondeBusca(os, buscaNormalizada))
@@ -263,7 +266,9 @@ export default function PainelTecnicoPage() {
       ? 'Minhas pendências'
       : filtroOperacional === 'AGUARDANDO_EQUIPE'
         ? 'Aguardando a equipe'
-        : filtroOperacional === 'AGENDADAS'
+        : filtroOperacional === 'LIBERADO_CLIENTE'
+          ? 'Liberados pela equipe'
+          : filtroOperacional === 'AGENDADAS'
           ? 'Atendimentos agendados'
           : 'Meus atendimentos'
   async function sair() {
@@ -421,6 +426,22 @@ export default function PainelTecnicoPage() {
 
         {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{erro}</div>}
 
+        {ordensNoCliente.length > 0 && (
+          <button
+            type="button"
+            onClick={() => abrirFiltro('LIBERADO_CLIENTE')}
+            className="flex w-full items-center justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-left shadow-sm"
+          >
+            <span>
+              <span className="block text-sm font-black text-cyan-900">
+                A equipe liberou {ordensNoCliente.length} orçamento{ordensNoCliente.length === 1 ? '' : 's'}
+              </span>
+              <span className="mt-0.5 block text-xs font-semibold text-slate-600">O cliente está decidindo. Toque para ver as ordens.</span>
+            </span>
+            <span className="shrink-0 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white">Ver</span>
+          </button>
+        )}
+
         {!tecnicoId && alertaAcademia.novos > 0 && (
           <Link
             href="/tecnico/academia"
@@ -472,7 +493,7 @@ export default function PainelTecnicoPage() {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
             <PortalActionCard label="Agendar visita" detail="Sem data definida" count={ordensSemAgenda.length} tone="red" icon="calendar" active={filtroOperacional === 'SEM_AGENDA' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('SEM_AGENDA')} />
             <PortalActionCard label="Minhas pendências" detail="Precisam de ação" count={ordensPendentes.length} tone="cyan" icon="alert" active={filtroOperacional === 'PENDENCIAS' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('PENDENCIAS')} />
-            <PortalActionCard label="Aguardando equipe" detail="Em análise interna" count={ordensAguardandoEquipe.length} tone="slate" icon="hourglass" active={filtroOperacional === 'AGUARDANDO_EQUIPE' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('AGUARDANDO_EQUIPE')} />
+            <PortalActionCard label="Aguardando equipe" detail={detalheAguardandoEquipe(ordensNaEquipe.length, ordensNoCliente.length)} count={ordensAguardandoEquipe.length} tone="slate" icon="hourglass" active={filtroOperacional === 'AGUARDANDO_EQUIPE' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('AGUARDANDO_EQUIPE')} />
             <PortalActionCard label="Agendados" detail="Com data marcada" count={ordensAgendadas.length} tone="blue" icon="check-calendar" active={filtroOperacional === 'AGENDADAS' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('AGENDADAS')} />
             <PortalActionCard label="Meus serviços" detail="Todos em aberto" count={ordensAbertas.length} tone="indigo" icon="services" active={filtroOperacional === 'TODOS' && abaAtiva === 'tratamento'} onClick={() => abrirFiltro('TODOS')} />
             <PortalActionCard label="Serviços executados" detail="Concluídos e não pagos" count={ordensExecutadasAtivas.length} tone="green" icon="check" active={abaAtiva === 'executados'} onClick={abrirExecutados} />
@@ -543,7 +564,7 @@ export default function PainelTecnicoPage() {
             ) : abaAtiva === 'tratamento' && ordensExibidas.length ? (
               <div className="grid gap-2 sm:gap-3 md:grid-cols-2">
                 {ordensExibidas.map((os) => {
-                  const alerta = getStatusAlerta(os.status)
+                  const alerta = getStatusAlerta(os.status, os.orcamento_status)
                   const agendaDataHora = getAgendaDateTime(os, agendaDatas)
                   const agendado = Boolean(agendaDataHora)
                   const valorAgenda = agendaDataHora || defaultAgendaDateTime(os.created_at)
@@ -560,7 +581,7 @@ export default function PainelTecnicoPage() {
                           <h3 className="truncate text-sm font-black leading-tight text-slate-950 sm:text-base">{os.clientes?.nome ?? 'Cliente'}</h3>
                           <p className="text-[10px] leading-tight text-slate-500 sm:text-[11px]">{new Date(os.created_at).toLocaleString('pt-BR')}</p>
                         </div>
-                        <StatusBadge status={os.status ?? 'NOVA'} compact />
+                        <StatusBadge status={os.status ?? 'NOVA'} orcamentoStatus={os.orcamento_status} compact />
                       </div>
 
                       <div className={`mb-1.5 rounded-md border px-2 py-1 text-[11px] font-bold leading-tight sm:mb-2 sm:rounded-lg sm:py-1.5 sm:text-xs ${agendado ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>
@@ -1067,10 +1088,10 @@ function Info({ label, value, compact = false, href = '' }: { label: string; val
   )
 }
 
-function StatusBadge({ status, compact = false }: { status: string; compact?: boolean }) {
-  const alerta = getStatusAlerta(status)
+function StatusBadge({ status, orcamentoStatus, compact = false }: { status: string; orcamentoStatus?: string | null; compact?: boolean }) {
+  const alerta = getStatusAlerta(status, orcamentoStatus)
 
-  return <span className={`shrink-0 rounded-md font-bold ${compact ? 'max-w-[120px] truncate px-1.5 py-1 text-[9px] sm:max-w-none sm:px-2 sm:text-[10px]' : 'px-3 py-1 text-xs'}`} style={alerta.badgeStyle}>{status}</span>
+  return <span className={`shrink-0 rounded-md font-bold ${compact ? 'max-w-[120px] truncate px-1.5 py-1 text-[9px] sm:max-w-none sm:px-2 sm:text-[10px]' : 'px-3 py-1 text-xs'}`} style={alerta.badgeStyle}>{alerta.badge}</span>
 }
 
 function ResumoTecnicoPanel({ resumo }: { resumo: ResumoTecnico }) {
@@ -1413,19 +1434,37 @@ function BarraResumo({
   )
 }
 
-function getStatusAlerta(status?: string | null) {
+function detalheAguardandoEquipe(naEquipe: number, noCliente: number) {
+  if (naEquipe > 0 && noCliente > 0) return `${naEquipe} na equipe · ${noCliente} no cliente`
+  if (noCliente > 0) return 'A equipe já liberou'
+  if (naEquipe > 0) return 'A equipe ainda vai conferir'
+  return 'Nenhum orçamento parado'
+}
+
+function getStatusAlerta(status?: string | null, orcamentoStatus?: string | null) {
   switch (status) {
     case 'EM_ATENDIMENTO':
-      return {
-        label: 'Em atendimento: executar diagnóstico e atualizar a OS.',
-        accentColor: '#059669',
-        cardStyle: statusStyle('#a7f3d0', '#ecfdf5'),
-        bannerStyle: alertStyle('#059669', '#ffffff'),
-        badgeStyle: alertStyle('#059669', '#ffffff'),
-      }
+      return orcamentoStatus === 'APROVADO'
+        ? {
+            label: 'A equipe aprovou o orçamento. Pode seguir o serviço.',
+            badge: 'Aprovado',
+            accentColor: '#059669',
+            cardStyle: statusStyle('#a7f3d0', '#ecfdf5'),
+            bannerStyle: alertStyle('#059669', '#ffffff'),
+            badgeStyle: alertStyle('#059669', '#ffffff'),
+          }
+        : {
+            label: 'Em atendimento: executar diagnóstico e atualizar a OS.',
+            badge: 'Em atendimento',
+            accentColor: '#059669',
+            cardStyle: statusStyle('#a7f3d0', '#ecfdf5'),
+            bannerStyle: alertStyle('#059669', '#ffffff'),
+            badgeStyle: alertStyle('#059669', '#ffffff'),
+          }
     case 'AGUARDANDO_APROVACAO':
       return {
-        label: 'Aguardando aprovação: orçamento enviado ao cliente.',
+        label: 'A equipe liberou o orçamento. O cliente está decidindo.',
+        badge: 'No cliente',
         accentColor: '#0891b2',
         cardStyle: statusStyle('#67e8f9', '#ecfeff'),
         bannerStyle: alertStyle('#0891b2', '#ffffff'),
@@ -1433,7 +1472,8 @@ function getStatusAlerta(status?: string | null) {
       }
     case 'AGUARDANDO_REVISAO':
       return {
-        label: 'Aguardando revisao administrativa: equipe vai conferir antes de enviar ao cliente.',
+        label: 'Orçamento enviado. A equipe ainda vai conferir.',
+        badge: 'Na equipe',
         accentColor: '#4f46e5',
         cardStyle: statusStyle('#818cf8', '#eef2ff'),
         bannerStyle: alertStyle('#4f46e5', '#ffffff'),
@@ -1442,6 +1482,7 @@ function getStatusAlerta(status?: string | null) {
     case 'AGUARDANDO_PECA':
       return {
         label: 'Aguardando peça: acompanhar compra ou chegada.',
+        badge: 'Peça',
         accentColor: '#7c3aed',
         cardStyle: statusStyle('#c4b5fd', '#f5f3ff'),
         bannerStyle: alertStyle('#7c3aed', '#ffffff'),
@@ -1450,6 +1491,7 @@ function getStatusAlerta(status?: string | null) {
     case 'PRONTO_AGUARDANDO_ENTREGA':
       return {
         label: 'Pronto: aguardando entrega ou retirada pelo cliente.',
+        badge: 'Pronto',
         accentColor: '#059669',
         cardStyle: statusStyle('#34d399', '#ecfdf5'),
         bannerStyle: alertStyle('#059669', '#ffffff'),
@@ -1458,6 +1500,7 @@ function getStatusAlerta(status?: string | null) {
     case 'CRITICA':
       return {
         label: 'Crítica: atendimento precisa de prioridade.',
+        badge: 'Crítica',
         accentColor: '#dc2626',
         cardStyle: statusStyle('#f87171', '#fef2f2'),
         bannerStyle: alertStyle('#dc2626', '#ffffff'),
@@ -1466,6 +1509,7 @@ function getStatusAlerta(status?: string | null) {
     default:
       return {
         label: 'Status em triagem: confira as informações da OS.',
+        badge: 'Triagem',
         accentColor: '#f59e0b',
         cardStyle: statusStyle('#fcd34d', '#fffbeb'),
         bannerStyle: alertStyle('#f59e0b', '#0f172a'),
