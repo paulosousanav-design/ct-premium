@@ -327,25 +327,28 @@ export default function PainelTecnicoPage() {
           <meta charset="utf-8" />
           <title>${escapeHtml(os.numero_os ?? `OS #${os.id}`)}</title>
           <style>
-            *{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#0f172a;margin:0;padding:12px 16px;background:#fff}
-            .cabecalho{display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:2px solid #0f172a;padding-bottom:6px}
-            .logo{height:46px;width:auto}.titulo{text-align:right;flex:1}.titulo h1{font-size:17px;margin:0;line-height:1.1}.titulo p{font-size:10px;color:#64748b;margin:2px 0 0}
-            .qr-bloco{display:flex;flex-direction:column;align-items:center;gap:1px}.qr-bloco img{width:54px;height:54px}.qr-bloco span{font-size:7px;font-weight:700;color:#475569}
-            .selo{display:inline-block;margin-top:4px;border-radius:999px;background:#ecfdf5;color:#047857;padding:2px 8px;font-size:9px;font-weight:700}
-            .grupo{margin-top:6px;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;break-inside:avoid}.grupo-titulo{background:#f1f5f9;border-bottom:1px solid #cbd5e1;padding:3px 8px;font-size:8px;text-transform:uppercase;font-weight:800;color:#334155;letter-spacing:.02em}
-            .grid{display:grid;grid-template-columns:1fr 1fr;gap:0}.grid.cols-3{grid-template-columns:1.4fr .8fr .8fr}
-            .campo{min-height:34px;padding:4px 8px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}
-            .campo.anotacao{min-height:78px}
+            *{box-sizing:border-box}html,body{margin:0;background:#fff}body{font-family:Arial,sans-serif;color:#0f172a;padding:12px 16px}
+            .folha{min-height:272mm;display:flex;flex-direction:column}
+            .cabecalho{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:2px solid #0f172a;padding-bottom:8px}
+            .logo{height:52px;width:auto}.titulo{text-align:right;flex:1}.titulo h1{font-size:18px;margin:0;line-height:1.15}.titulo p{font-size:11px;color:#64748b;margin:3px 0 0}
+            .qr-bloco{display:flex;flex-direction:column;align-items:center;gap:2px}.qr-bloco img{width:62px;height:62px}.qr-bloco span{font-size:8px;font-weight:700;color:#475569}
+            .selo{display:inline-block;margin-top:5px;border-radius:999px;background:#ecfdf5;color:#047857;padding:3px 9px;font-size:10px;font-weight:700}
+            .grupo{margin-top:8px;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;break-inside:avoid}.grupo-titulo{background:#f1f5f9;border-bottom:1px solid #cbd5e1;padding:5px 10px;font-size:9px;text-transform:uppercase;font-weight:800;color:#334155;letter-spacing:.02em}
+            .grid{display:grid;grid-template-columns:1fr 1fr}.grid.cols-3{grid-template-columns:1.45fr .8fr .75fr}
+            .campo{min-height:42px;padding:6px 10px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}
+            .grupo.escrita{flex:1;display:flex;flex-direction:column;min-height:0}.grupo.escrita .grid{flex:1;grid-template-rows:minmax(26mm,1fr) minmax(26mm,1fr) minmax(26mm,1fr)}
+            .campo.anotacao{min-height:26mm}
             .grid.cols-2 .campo:nth-child(2n){border-right:0}.grid.cols-3 .campo:nth-child(3n){border-right:0}
             .campo.largo{grid-column:1/-1;border-right:0}.grid .campo:last-child{border-bottom:0}
-            .rotulo{font-size:8px;text-transform:uppercase;font-weight:700;color:#64748b;line-height:1.1}.valor{font-size:11px;font-weight:600;margin-top:2px;line-height:1.25;white-space:pre-wrap}
-            .assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:26px}.linha{border-top:1px solid #334155;text-align:center;padding-top:4px;font-size:9px}
-            .rodape{margin-top:8px;border-top:1px solid #e2e8f0;padding-top:4px;text-align:center;font-size:8px;line-height:1.35;color:#64748b}
+            .rotulo{font-size:9px;text-transform:uppercase;font-weight:700;color:#64748b;line-height:1.15}.valor{font-size:12px;font-weight:600;margin-top:3px;line-height:1.3;white-space:pre-wrap}
+            .assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-top:8mm}.linha{border-top:1px solid #334155;text-align:center;padding-top:5px;font-size:10px}
+            .rodape{margin-top:6mm;border-top:1px solid #e2e8f0;padding-top:5px;text-align:center;font-size:9px;line-height:1.4;color:#64748b}
             .contato{font-weight:700;color:#334155}
             @media print{@page{size:A4;margin:7mm}body{padding:0}.no-print{display:none}}
           </style>
         </head>
         <body>
+          <div class="folha">
           <div class="cabecalho">
             <img class="logo" src="${logo}" alt="Chame o Técnico" />
             <div class="titulo"><h1>${tituloDocumento}</h1><p>${escapeHtml(os.numero_os ?? `OS #${os.id}`)} • ${data}</p><span class="selo">${garantia}</span></div>
@@ -378,7 +381,7 @@ export default function PainelTecnicoPage() {
             campoImpressao('Diagnóstico técnico', executada ? os.diagnostico_tecnico : '', true, !executada),
             campoImpressao('Serviço executado', executada ? os.servico_executado : '', true, !executada),
             campoImpressao('Peças utilizadas', executada ? os.pecas_utilizadas : '', true, !executada),
-          ])}
+          ], 2, 'escrita')}
           ${grupoImpressao('Responsáveis', [
             campoImpressao('Técnico responsável', tecnicoNome),
             campoImpressao('Data do documento', data),
@@ -387,6 +390,7 @@ export default function PainelTecnicoPage() {
           <div class="rodape">
             <div class="contato">www.chameotecnico.com.br | atendimento@chameotecnico.com.br</div>
             <div>Documento técnico sem valores • Chame o Técnico</div>
+          </div>
           </div>
           <script>window.onload=()=>{window.print()}</script>
         </body>
@@ -1608,8 +1612,9 @@ function campoImpressao(label: string, value: unknown, largo = false, anotacao =
   return `<div class="campo${largo ? ' largo' : ''}${anotacao ? ' anotacao' : ''}"><div class="rotulo">${escapeHtml(label)}</div><div class="valor">${escapeHtml(String(value ?? '').trim() || '-')}</div></div>`
 }
 
-function grupoImpressao(titulo: string, campos: string[], colunas: 2 | 3 = 2) {
-  return `<section class="grupo"><div class="grupo-titulo">${escapeHtml(titulo)}</div><div class="grid cols-${colunas}">${campos.join('')}</div></section>`
+function grupoImpressao(titulo: string, campos: string[], colunas: 2 | 3 = 2, classe = '') {
+  const extra = classe ? ` ${classe}` : ''
+  return `<section class="grupo${extra}"><div class="grupo-titulo">${escapeHtml(titulo)}</div><div class="grid cols-${colunas}">${campos.join('')}</div></section>`
 }
 
 function escapeHtml(value: string) {
