@@ -64,6 +64,9 @@ export async function GET(request: NextRequest) {
         prioridade,
         garantia,
         referencia_garantidor,
+        data_compra,
+        numero_nf,
+        local_compra,
         modelo,
         numero_serie,
         defeito,
@@ -79,6 +82,7 @@ export async function GET(request: NextRequest) {
         parceiro_id,
         clientes:cliente_id (
           nome,
+          cpf_cnpj,
           whatsapp,
           cep,
           logradouro,
@@ -93,7 +97,8 @@ export async function GET(request: NextRequest) {
           razao_social
         ),
         categorias:categoria_id ( nome ),
-        marcas:marca_id ( nome )
+        marcas:marca_id ( nome ),
+        garantidores:garantidor_id ( nome )
       `)
       .eq('parceiro_id', tecnicoId)
       .order('created_at', { ascending: false })

@@ -15,6 +15,9 @@ type OSItem = {
   prioridade: string | null
   garantia?: boolean | string | null
   referencia_garantidor?: string | null
+  data_compra?: string | null
+  numero_nf?: string | null
+  local_compra?: string | null
   modelo: string | null
   numero_serie?: string | null
   defeito: string | null
@@ -30,6 +33,7 @@ type OSItem = {
   orcamento_status?: string | null
   clientes?: {
     nome: string | null
+    cpf_cnpj?: string | null
     whatsapp: string | null
     cep?: string | null
     logradouro: string | null
@@ -45,6 +49,7 @@ type OSItem = {
   } | null
   categorias?: { nome: string | null } | null
   marcas?: { nome: string | null } | null
+  garantidores?: { nome: string | null } | null
 }
 
 type ResumoTecnico = {
@@ -295,7 +300,7 @@ export default function PainelTecnicoPage() {
     window.setTimeout(() => document.getElementById('minhas-os')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
   }
 
-  function imprimirOS(os: OSItem, executada: boolean) {
+  async function imprimirOS(os: OSItem, executada: boolean) {
     const popup = window.open('', '_blank', 'width=900,height=720')
     if (!popup) {
       setErro('O navegador bloqueou a janela de impressão. Libere pop-ups e tente novamente.')
@@ -303,6 +308,16 @@ export default function PainelTecnicoPage() {
     }
 
     const garantia = emGarantia(os.garantia) ? 'Serviço dentro da garantia' : 'Serviço fora da garantia'
+    const mostrarCompra = emGarantia(os.garantia) || [os.local_compra, os.data_compra, os.numero_nf].some((valor) => String(valor ?? '').trim())
+    const mostrarGarantidor = emGarantia(os.garantia) || Boolean(os.referencia_garantidor?.trim() || os.garantidores?.nome?.trim())
+    let qrCodeUrl = ''
+    try {
+      const consultaUrl = new URL('/consulta', window.location.origin)
+      consultaUrl.searchParams.set('os', os.numero_os ?? String(os.id))
+      qrCodeUrl = await QRCode.toDataURL(consultaUrl.toString(), { errorCorrectionLevel: 'M', margin: 1, width: 280 })
+    } catch {
+      qrCodeUrl = ''
+    }
     const data = new Date(os.created_at).toLocaleDateString('pt-BR')
     const logo = `${window.location.origin}/logo-ct.png`
     const tituloDocumento = executada ? 'Ordem de serviço executada' : 'Ordem de serviço'
@@ -313,8 +328,9 @@ export default function PainelTecnicoPage() {
           <title>${escapeHtml(os.numero_os ?? `OS #${os.id}`)}</title>
           <style>
             *{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#0f172a;margin:0;padding:20px 24px;background:#fff}
-            .cabecalho{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0f172a;padding-bottom:10px}
-            .logo{width:105px;height:auto}.titulo{text-align:right}.titulo h1{font-size:19px;margin:0}.titulo p{font-size:10px;color:#64748b;margin:4px 0 0}
+            .cabecalho{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:2px solid #0f172a;padding-bottom:10px}
+            .logo{width:105px;height:auto}.titulo{text-align:right;flex:1}.titulo h1{font-size:19px;margin:0}.titulo p{font-size:10px;color:#64748b;margin:4px 0 0}
+            .qr-bloco{display:flex;flex-direction:column;align-items:center;gap:2px}.qr-bloco img{width:68px;height:68px}.qr-bloco span{font-size:8px;font-weight:700;color:#475569}
             .selo{display:inline-block;margin-top:10px;border-radius:999px;background:#ecfdf5;color:#047857;padding:5px 10px;font-size:10px;font-weight:700}
             .grupo{margin-top:9px;border:1px solid #cbd5e1;border-radius:10px;overflow:hidden;break-inside:avoid}.grupo-titulo{background:#f1f5f9;border-bottom:1px solid #cbd5e1;padding:6px 10px;font-size:9px;text-transform:uppercase;font-weight:800;color:#334155}
             .grid{display:grid;grid-template-columns:1fr 1fr;gap:0}.campo{min-height:46px;padding:8px 10px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}
@@ -330,24 +346,32 @@ export default function PainelTecnicoPage() {
           <div class="cabecalho">
             <img class="logo" src="${logo}" alt="Chame o Técnico" />
             <div class="titulo"><h1>${tituloDocumento}</h1><p>${escapeHtml(os.numero_os ?? `OS #${os.id}`)} • ${data}</p></div>
+            ${qrCodeUrl ? `<div class="qr-bloco"><img src="${qrCodeUrl}" alt="QR Code da OS" /><span>Consultar OS</span></div>` : ''}
           </div>
           <span class="selo">${garantia}</span>
           ${grupoImpressao('Dados do cliente', [
             campoImpressao('Cliente', os.clientes?.nome),
-            campoImpressao('Contato', os.clientes?.whatsapp),
+            campoImpressao('CPF/CNPJ', os.clientes?.cpf_cnpj),
+            campoImpressao('Contato', os.clientes?.whatsapp, true),
             campoImpressao('Endereço completo', formatarEndereco(os), true),
           ])}
           ${grupoImpressao('Dados do equipamento', [
             campoImpressao('Equipamento', formatarEquipamento(os)),
             campoImpressao('Número de série', os.numero_serie),
-            ...(emGarantia(os.garantia) || os.referencia_garantidor?.trim()
+            ...(mostrarGarantidor
               ? [
                   campoImpressao('Condição do atendimento', garantia),
-                  campoImpressao('OS/Sinistro do garantidor', os.referencia_garantidor),
+                  campoImpressao('Garantidor', os.garantidores?.nome),
+                  campoImpressao('OS/Sinistro do garantidor', os.referencia_garantidor, true),
                 ]
               : [campoImpressao('Condição do atendimento', garantia, true)]),
             campoImpressao('Defeito informado', os.defeito, true),
           ])}
+          ${mostrarCompra ? grupoImpressao('Compra e nota', [
+            campoImpressao('Loja de compra', os.local_compra),
+            campoImpressao('Data da compra', formatarDataSomente(os.data_compra)),
+            campoImpressao('Número da nota fiscal', os.numero_nf, true),
+          ]) : ''}
           ${grupoImpressao('Atendimento técnico', [
             campoImpressao('Diagnóstico técnico', executada ? os.diagnostico_tecnico : '', true, !executada),
             campoImpressao('Serviço executado', executada ? os.servico_executado : '', true, !executada),
@@ -1624,6 +1648,13 @@ function iniciaisNome(nome: string) {
 
 function formatarEquipamento(os: OSItem) {
   return [os.categorias?.nome, os.marcas?.nome, os.modelo].filter(Boolean).join(' / ') || '-'
+}
+
+function formatarDataSomente(value?: string | null) {
+  const data = String(value ?? '').slice(0, 10)
+  const [ano, mes, dia] = data.split('-')
+  if (!ano || !mes || !dia) return ''
+  return `${dia}/${mes}/${ano}`
 }
 
 function formatarEndereco(os: OSItem) {
