@@ -15,7 +15,7 @@ import { type ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import QRCode from 'qrcode'
 import { adminFetch } from '@/lib/admin-fetch'
-import { formatarDuracao, montarTempoReparo, rotuloStatusReparo, type TempoReparo } from '@/lib/tempo-reparo'
+import { formatarDuracao, montarTempoReparo, type TempoReparo } from '@/lib/tempo-reparo'
 
 type Cliente = {
   id: number
@@ -1496,25 +1496,26 @@ export default function OrdemServicoAtendimentoPage() {
           </section>
         )}
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <InfoCard label="Status" value={form.status} />
-          <InfoCard label="Prioridade" value={form.prioridade} />
-          <InfoCard label="Garantia" value={form.garantia} />
-          <InfoCard label="Modelo" value={os.modelo ?? '-'} />
-        </section>
-
-        <TempoReparoCard
-          tempo={montarTempoReparo(
-            historico.map((item) => ({
-              statusAnterior: item.status_anterior,
-              statusNovo: item.status_novo,
-              criadoEm: item.criado_em,
-            })),
-            os.status,
-            os.finalizada_em ?? os.encerrada_sem_reparo_em,
-            agoraReparo
-          )}
-        />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          <TempoReparoCard
+            tempo={montarTempoReparo(
+              historico.map((item) => ({
+                statusAnterior: item.status_anterior,
+                statusNovo: item.status_novo,
+                criadoEm: item.criado_em,
+              })),
+              os.status,
+              os.finalizada_em ?? os.encerrada_sem_reparo_em,
+              agoraReparo
+            )}
+          />
+          <section className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <InfoCard label="Status" value={form.status} compact />
+            <InfoCard label="Prioridade" value={form.prioridade} compact />
+            <InfoCard label="Garantia" value={form.garantia} compact />
+            <InfoCard label="Modelo" value={os.modelo ?? '-'} compact />
+          </section>
+        </div>
 
         {rentabilidade && <RentabilidadeMaster dados={rentabilidade} />}
 
@@ -2596,38 +2597,23 @@ function Field({
 
 function TempoReparoCard({ tempo }: { tempo: TempoReparo }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Tempo de reparo</p>
-      <p className="mt-1 text-sm text-slate-500">Desde que o técnico assumiu a ordem.</p>
-      {tempo.iniciado ? (
-        <>
-          <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
-            <p className="text-3xl font-black tracking-tight text-slate-950">{formatarDuracao(tempo.reparoMs)}</p>
-            <p className="text-sm font-semibold text-slate-500">Parado {formatarDuracao(tempo.paradoMs)}</p>
-          </div>
-          {tempo.trechos.length > 0 && (
-            <ul className="mt-4 divide-y divide-slate-100 border-t border-slate-100">
-              {tempo.trechos.map((trecho) => (
-                <li key={`${trecho.status}-${trecho.inicio}`} className="flex items-center justify-between gap-3 py-2 text-sm">
-                  <span className="text-slate-700">{rotuloStatusReparo(trecho.status)}</span>
-                  <span className="font-semibold text-slate-950">{formatarDuracao(trecho.fim - trecho.inicio)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      ) : (
-        <p className="mt-3 text-2xl font-black tracking-tight text-slate-950">Reparo ainda não iniciado</p>
-      )}
+    <section className="flex w-full max-w-[240px] shrink-0 flex-col justify-center gap-1 rounded-xl bg-slate-950 px-3 py-2.5 text-white shadow-sm">
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Tempo de reparo</p>
+      <p className="text-2xl font-black leading-none tracking-tight">
+        {tempo.iniciado ? formatarDuracao(tempo.reparoMs) : '—'}
+      </p>
+      <p className="text-[11px] font-semibold text-slate-400">
+        {tempo.iniciado ? `Parado ${formatarDuracao(tempo.paradoMs)}` : 'Ainda não iniciado'}
+      </p>
     </section>
   )
 }
 
-function InfoCard({ label, value }: { label: string; value: string }) {
+function InfoCard({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
   return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm">
-      <p className="text-xs uppercase text-slate-500">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-slate-900">{value}</p>
+    <div className={compact ? 'rounded-xl bg-white px-3 py-2.5 shadow-sm' : 'rounded-2xl bg-white p-5 shadow-sm'}>
+      <p className={compact ? 'text-[10px] uppercase text-slate-500' : 'text-xs uppercase text-slate-500'}>{label}</p>
+      <p className={compact ? 'mt-0.5 text-sm font-semibold text-slate-900' : 'mt-2 text-lg font-semibold text-slate-900'}>{value}</p>
     </div>
   )
 }
