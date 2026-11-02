@@ -15,6 +15,7 @@ import { type ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import QRCode from 'qrcode'
 import { adminFetch } from '@/lib/admin-fetch'
+import { formatarDuracao, montarTempoReparo, rotuloStatusReparo, type TempoReparo } from '@/lib/tempo-reparo'
 
 type Cliente = {
   id: number
@@ -321,6 +322,7 @@ export default function OrdemServicoAtendimentoPage() {
 
   const [os, setOs] = useState<OrdemServico | null>(null)
   const [historico, setHistorico] = useState<HistoricoItem[]>([])
+  const [agoraReparo, setAgoraReparo] = useState(() => Date.now())
   const [fotos, setFotos] = useState<OSFoto[]>([])
   const [pecas, setPecas] = useState<PecaItemDb[]>([])
   const [estoquePecas, setEstoquePecas] = useState<PecaEstoque[]>([])
@@ -391,6 +393,11 @@ export default function OrdemServicoAtendimentoPage() {
     if (!id) return
     void carregarOS()
   }, [id])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setAgoraReparo(Date.now()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   const total = useMemo(() => {
     const bruto = (form.valorPecasCliente || 0) + (form.valorMaoObra || 0) - (form.desconto || 0)
@@ -1496,6 +1503,19 @@ export default function OrdemServicoAtendimentoPage() {
           <InfoCard label="Modelo" value={os.modelo ?? '-'} />
         </section>
 
+        <TempoReparoCard
+          tempo={montarTempoReparo(
+            historico.map((item) => ({
+              statusAnterior: item.status_anterior,
+              statusNovo: item.status_novo,
+              criadoEm: item.criado_em,
+            })),
+            os.status,
+            os.finalizada_em ?? os.encerrada_sem_reparo_em,
+            agoraReparo
+          )}
+        />
+
         {rentabilidade && <RentabilidadeMaster dados={rentabilidade} />}
 
         {['FINALIZADA', 'ENCERRADA_SEM_REPARO'].includes(String(os.status)) && os.equipamento_entrega_status && os.equipamento_entrega_status !== 'NAO_APLICAVEL' && (
@@ -2571,6 +2591,35 @@ function Field({
         />
       )}
     </div>
+  )
+}
+
+function TempoReparoCard({ tempo }: { tempo: TempoReparo }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Tempo de reparo</p>
+      <p className="mt-1 text-sm text-slate-500">Desde que o técnico assumiu a ordem.</p>
+      {tempo.iniciado ? (
+        <>
+          <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+            <p className="text-3xl font-black tracking-tight text-slate-950">{formatarDuracao(tempo.reparoMs)}</p>
+            <p className="text-sm font-semibold text-slate-500">Parado {formatarDuracao(tempo.paradoMs)}</p>
+          </div>
+          {tempo.trechos.length > 0 && (
+            <ul className="mt-4 divide-y divide-slate-100 border-t border-slate-100">
+              {tempo.trechos.map((trecho) => (
+                <li key={`${trecho.status}-${trecho.inicio}`} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <span className="text-slate-700">{rotuloStatusReparo(trecho.status)}</span>
+                  <span className="font-semibold text-slate-950">{formatarDuracao(trecho.fim - trecho.inicio)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      ) : (
+        <p className="mt-3 text-2xl font-black tracking-tight text-slate-950">Reparo ainda não iniciado</p>
+      )}
+    </section>
   )
 }
 
