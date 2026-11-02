@@ -56,6 +56,16 @@ export async function POST(request: NextRequest) {
         modelo,
         numero_serie,
         defeito,
+        garantia,
+        garantia_asc,
+        origem_os,
+        referencia_garantidor,
+        diagnostico_tecnico,
+        servico_executado,
+        pecas_utilizadas,
+        data_compra,
+        numero_nf,
+        local_compra,
         valor_pecas,
         valor_mao_obra,
         desconto,
@@ -64,7 +74,8 @@ export async function POST(request: NextRequest) {
         orcamento_resposta_em,
         cliente_id,
         categoria_id,
-        marca_id
+        marca_id,
+        garantidores:garantidor_id ( nome )
       `)
       .eq('numero_os', numeroOs)
       .maybeSingle()
@@ -113,20 +124,26 @@ export async function POST(request: NextRequest) {
       .eq('id', os.marca_id ?? 0)
       .maybeSingle()
 
-    const pecas = await safeList(
-      supabase
-        .from('os_pecas')
-        .select('id, descricao, quantidade, valor_unitario, total_item, criado_em')
-        .eq('os_id', os.id)
-        .order('criado_em', { ascending: true })
-    )
+    const semValores = osSemValores(os)
+    const pecas = semValores
+      ? []
+      : await safeList(
+          supabase
+            .from('os_pecas')
+            .select('id, descricao, quantidade, valor_unitario, total_item, criado_em')
+            .eq('os_id', os.id)
+            .order('criado_em', { ascending: true })
+        )
+    const garantidor = Array.isArray(os.garantidores) ? os.garantidores[0] : os.garantidores
 
     return NextResponse.json({
       os: {
-        ...os,
+        ...osPublica(os, semValores),
+        sem_valores: semValores,
         cliente,
         categoria: categoria ?? null,
         marca: marca ?? null,
+        garantidor: semValores && garantidor?.nome ? { nome: garantidor.nome } : null,
       },
       pecas,
     })
@@ -137,4 +154,72 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+function osSemValores(os: {
+  garantia?: boolean | null
+  garantia_asc?: boolean | null
+  origem_os?: string | null
+}) {
+  if (os.garantia === true || os.garantia_asc === true) return true
+  const origem = String(os.origem_os ?? '').toUpperCase()
+  return origem === 'GARANTIA_SEGURADORA' || origem === 'GARANTIA_ASC'
+}
+
+function osPublica(os: Record<string, unknown>, semValores: boolean) {
+  const {
+    valor_pecas: _valorPecas,
+    valor_mao_obra: _valorMaoObra,
+    desconto: _desconto,
+    total: _total,
+    orcamento_status: _orcamentoStatus,
+    orcamento_resposta_em: _orcamentoRespostaEm,
+    cliente_id: _clienteId,
+    categoria_id: _categoriaId,
+    marca_id: _marcaId,
+    garantidores: _garantidores,
+    garantia: _garantia,
+    garantia_asc: _garantiaAsc,
+    origem_os: _origemOs,
+    referencia_garantidor: _referenciaGarantidor,
+    diagnostico_tecnico: _diagnosticoTecnico,
+    servico_executado: _servicoExecutado,
+    pecas_utilizadas: _pecasUtilizadas,
+    data_compra: _dataCompra,
+    numero_nf: _numeroNf,
+    local_compra: _localCompra,
+    ...publico
+  } = os
+
+  if (!semValores) {
+    return {
+      ...publico,
+      valor_pecas: os.valor_pecas ?? null,
+      valor_mao_obra: os.valor_mao_obra ?? null,
+      desconto: os.desconto ?? null,
+      total: os.total ?? null,
+      orcamento_status: os.orcamento_status ?? null,
+      orcamento_resposta_em: os.orcamento_resposta_em ?? null,
+    }
+  }
+
+  return {
+    ...publico,
+    referencia_garantidor: os.referencia_garantidor ?? null,
+    diagnostico_tecnico: os.diagnostico_tecnico ?? null,
+    servico_executado: os.servico_executado ?? null,
+    pecas_utilizadas: removerValoresDoTexto(os.pecas_utilizadas),
+    data_compra: os.data_compra ?? null,
+    numero_nf: os.numero_nf ?? null,
+    local_compra: os.local_compra ?? null,
+  }
+}
+
+function removerValoresDoTexto(value: unknown) {
+  return String(value ?? '')
+    .replace(/\(\s*(\d+(?:[.,]\d+)?)\s*x\s*R\$\s*[\d.]+(?:,\d{1,2})?\s*\)/gi, '($1x)')
+    .replace(/\s*(?:[-–—]\s*)?R\$\s*[\d.]+(?:,\d{1,2})?/gi, '')
+    .replace(/\(\s*(\d+(?:[.,]\d+)?)\s*x\s*\)/gi, '($1x)')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
 }

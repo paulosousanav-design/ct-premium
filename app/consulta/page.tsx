@@ -49,15 +49,24 @@ type ConsultaResultado = {
     modelo: string | null
     numero_serie: string | null
     defeito: string | null
-    valor_pecas: number | string | null
-    valor_mao_obra: number | string | null
-    desconto: number | string | null
-    total: number | string | null
-    orcamento_status: string | null
-    orcamento_resposta_em: string | null
+    sem_valores?: boolean | null
+    referencia_garantidor?: string | null
+    diagnostico_tecnico?: string | null
+    servico_executado?: string | null
+    pecas_utilizadas?: string | null
+    data_compra?: string | null
+    numero_nf?: string | null
+    local_compra?: string | null
+    valor_pecas?: number | string | null
+    valor_mao_obra?: number | string | null
+    desconto?: number | string | null
+    total?: number | string | null
+    orcamento_status?: string | null
+    orcamento_resposta_em?: string | null
     cliente: Cliente
     categoria: Categoria | null
     marca: Marca | null
+    garantidor?: { nome: string | null } | null
   }
   pecas: PecaItem[]
 }
@@ -77,9 +86,9 @@ export default function ConsultaPage() {
     if (!inicial.form.numeroOs || !inicial.form.whatsapp) return
 
     void (async () => {
-      await consultarChamado(inicial.form)
+      const data = await consultarChamado(inicial.form)
 
-      if (inicial.acao) {
+      if (inicial.acao && !data?.os.sem_valores) {
         setMensagem(
           inicial.acao === 'APROVAR'
             ? 'Confira o orçamento abaixo e confirme no botão Aprovar orçamento.'
@@ -127,10 +136,13 @@ export default function ConsultaPage() {
         throw new Error(data?.error ?? 'Não foi possível consultar a OS.')
       }
 
-      setResultado(data as ConsultaResultado)
+      const consulta = data as ConsultaResultado
+      setResultado(consulta)
       setUltimaConsulta(payload)
+      return consulta
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Erro ao consultar a OS.')
+      return null
     } finally {
       setLoading(false)
     }
@@ -201,8 +213,9 @@ export default function ConsultaPage() {
   }
 
   const atendimentoEncerrado = atendimentoJaEncerrado(resultado?.os.status)
+  const semValores = Boolean(resultado?.os.sem_valores)
   const podeResponderOrcamento =
-    resultado?.os.orcamento_status === 'PENDENTE' && totalGeral > 0 && !atendimentoEncerrado
+    !semValores && resultado?.os.orcamento_status === 'PENDENTE' && totalGeral > 0 && !atendimentoEncerrado
 
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-6 md:px-6">
@@ -275,7 +288,7 @@ export default function ConsultaPage() {
                 {podeResponderOrcamento ? 'Aguardando a sua aprovação' : formatarStatusOs(resultado.os.status)}
               </h2>
               <p className="mt-2 text-sm text-slate-300">
-                {textoDoAndamento(resultado.os.status, podeResponderOrcamento)}
+                {textoDoAndamento(resultado.os.status, podeResponderOrcamento, semValores)}
               </p>
             </section>
 
@@ -294,6 +307,34 @@ export default function ConsultaPage() {
               </p>
             </section>
 
+            {semValores ? (
+              <section className="rounded-2xl bg-white p-6 shadow-sm">
+                <div className="mb-4">
+                  <h2 className="text-xl font-semibold text-slate-900">Atendimento em garantia</h2>
+                  <p className="text-sm text-slate-500">Serviço dentro da garantia. Esta consulta não mostra valores.</p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {resultado.os.garantidor?.nome && <InfoBlock label="Garantidor" value={resultado.os.garantidor.nome} />}
+                  {resultado.os.referencia_garantidor?.trim() && (
+                    <InfoBlock label="OS/Sinistro do garantidor" value={resultado.os.referencia_garantidor} />
+                  )}
+                  {resultado.os.local_compra?.trim() && <InfoBlock label="Loja de compra" value={resultado.os.local_compra} />}
+                  {formatarDataSomente(resultado.os.data_compra) && (
+                    <InfoBlock label="Data da compra" value={formatarDataSomente(resultado.os.data_compra)} />
+                  )}
+                  {resultado.os.numero_nf?.trim() && <InfoBlock label="Número da nota fiscal" value={resultado.os.numero_nf} />}
+                  <div className="md:col-span-2">
+                    <InfoBlock label="Diagnóstico técnico" value={textoInformado(resultado.os.diagnostico_tecnico)} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <InfoBlock label="Serviço executado" value={textoInformado(resultado.os.servico_executado)} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <InfoBlock label="Peças utilizadas" value={textoInformado(resultado.os.pecas_utilizadas)} />
+                  </div>
+                </div>
+              </section>
+            ) : (
             <section className="rounded-2xl bg-white p-6 shadow-sm">
               <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -350,6 +391,7 @@ export default function ConsultaPage() {
                 </div>
               )}
             </section>
+            )}
           </div>
         )}
       </div>
@@ -441,7 +483,12 @@ function formatarStatusOs(status?: string | null) {
   return labels[String(status ?? '')] ?? String(status ?? '-')
 }
 
-function textoDoAndamento(status: string | null, aguardandoDecisao: boolean) {
+function textoDoAndamento(status: string | null, aguardandoDecisao: boolean, semValores = false) {
+  if (semValores) {
+    if (String(status ?? '') === 'FINALIZADA') return 'O atendimento em garantia foi concluído.'
+    if (String(status ?? '') === 'ENCERRADA_SEM_REPARO') return 'O chamado em garantia foi encerrado sem o reparo.'
+    return 'O atendimento segue pela garantia, sem cobrança nesta consulta.'
+  }
   if (aguardandoDecisao) return 'Confira o valor e autorize o reparo.'
 
   const textos: Record<string, string> = {
@@ -478,6 +525,18 @@ function formatCurrency(value: number) {
     style: 'currency',
     currency: 'BRL',
   }).format(value || 0)
+}
+
+function textoInformado(value?: string | null) {
+  const texto = String(value ?? '').trim()
+  return texto || 'Ainda não informado.'
+}
+
+function formatarDataSomente(value?: string | null) {
+  const data = String(value ?? '').slice(0, 10)
+  const [ano, mes, dia] = data.split('-')
+  if (!ano || !mes || !dia || ano.length !== 4) return ''
+  return `${dia}/${mes}/${ano}`
 }
 
 function formatarTelefone(valor: string) {
