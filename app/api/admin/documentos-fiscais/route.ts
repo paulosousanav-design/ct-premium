@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
-import { createSecureContext } from 'node:tls'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUnidade } from '@/lib/admin-unidade'
 import { cabecalhosAuditoria, type AtorAuditoria } from '@/lib/auditoria-contexto'
+import { normalizarPfxParaServidor } from '@/lib/dfe-certificado'
 import { criptografarSegredo, descriptografarSegredo } from '@/lib/google-drive'
 import { sincronizarDocumentosDfe } from '@/lib/dfe-sync'
 import { manifestarCienciaDaOperacao } from '@/lib/dfe-manifestacao'
@@ -102,19 +102,13 @@ export async function POST(request: NextRequest) {
 
       const pfx = Buffer.from(certificadoBase64, 'base64')
       if (!pfx.length || pfx.length > MAX_CERTIFICADO_BYTES) return NextResponse.json({ error: 'O certificado A1 é inválido ou excede 100 KB.' }, { status: 400 })
+      let pfxParaGuardar = pfx
       try {
-        createSecureContext({ pfx, passphrase: senha, minVersion: 'TLSv1.2' })
+        pfxParaGuardar = normalizarPfxParaServidor(pfx, senha)
       } catch (error) {
-        const detalhe = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
-        console.error('Falha segura ao validar certificado A1:', detalhe)
-        if (/unsupported|digital envelope|algorithm|cipher/i.test(detalhe)) {
-          return NextResponse.json({
-            error: 'A senha está correta, mas este PFX usa criptografia antiga incompatível com o servidor. Reexporte o mesmo certificado no padrão AES-256/SHA-256 e tente novamente.',
-            codigo: 'CERTIFICADO_FORMATO_LEGADO',
-          }, { status: 400 })
-        }
-        if (/mac verify|password|passphrase|decrypt/i.test(detalhe)) {
-          return NextResponse.json({ error: 'Não foi possível abrir o certificado A1. O arquivo foi reconhecido, mas a senha não foi validada.' }, { status: 400 })
+        const codigo = error instanceof Error ? error.message : ''
+        if (codigo === 'SENHA_INVALIDA') {
+          return NextResponse.json({ error: 'Não foi possível abrir o certificado A1. Confira a senha.' }, { status: 400 })
         }
         return NextResponse.json({ error: 'O arquivo PFX não pôde ser aberto pelo servidor. Reexporte o certificado no padrão AES-256/SHA-256 e tente novamente.' }, { status: 400 })
       }
@@ -124,7 +118,7 @@ export async function POST(request: NextRequest) {
         cnpj,
         uf,
         ambiente: 1,
-        certificado_pfx_criptografado: criptografarSegredo(certificadoBase64),
+        certificado_pfx_criptografado: criptografarSegredo(pfxParaGuardar.toString('base64')),
         certificado_senha_criptografada: criptografarSegredo(senha),
         certificado_nome: nome,
         consulta_ativa: true,
