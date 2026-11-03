@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
 
       const pfx = Buffer.from(certificadoBase64, 'base64')
       if (!pfx.length || pfx.length > MAX_CERTIFICADO_BYTES) return NextResponse.json({ error: 'O certificado A1 é inválido ou excede 100 KB.' }, { status: 400 })
-      let pfxParaGuardar = pfx
+      let pfxParaGuardar: Buffer
       try {
         pfxParaGuardar = normalizarPfxParaServidor(pfx, senha)
       } catch (error) {
