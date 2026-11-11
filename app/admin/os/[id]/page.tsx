@@ -209,6 +209,13 @@ type FormState = {
   observacaoTecnica: string
 }
 
+type FreteLinha = {
+  valor: string
+  transportadora: string
+  conhecimento: string
+  documento: string
+}
+
 type PecaForm = {
   origem: 'ESTOQUE' | 'AVULSA' | 'SERVICO'
   pecaId: string
@@ -329,6 +336,7 @@ export default function OrdemServicoAtendimentoPage() {
   const [agoraReparo, setAgoraReparo] = useState(() => Date.now())
   const [fotos, setFotos] = useState<OSFoto[]>([])
   const [pecas, setPecas] = useState<PecaItemDb[]>([])
+  const [fretes, setFretes] = useState<FreteLinha[]>([])
   const [estoquePecas, setEstoquePecas] = useState<PecaEstoque[]>([])
   const [tecnicosSugeridos, setTecnicosSugeridos] = useState<TecnicoSugerido[]>([])
   const [tecnicosDisponiveis, setTecnicosDisponiveis] = useState<TecnicoSugerido[]>([])
@@ -482,6 +490,7 @@ export default function OrdemServicoAtendimentoPage() {
       setFotos((payload.fotos ?? []) as OSFoto[])
       setHistorico((payload.historico ?? []) as HistoricoItem[])
       setPecas((payload.pecas ?? []) as PecaItemDb[])
+      setFretes(fretesCarregados(payload.fretes, osPayloadRelacoes.valor_frete))
       setEstoquePecas((payload.estoquePecas ?? []) as PecaEstoque[])
       setTecnicosSugeridos((payload.tecnicosSugeridos ?? []) as TecnicoSugerido[])
       setTecnicosDisponiveis((payload.tecnicosDisponiveis ?? payload.tecnicosSugeridos ?? []) as TecnicoSugerido[])
@@ -569,10 +578,15 @@ export default function OrdemServicoAtendimentoPage() {
         localCompra: '',
         valorFrete: 0,
       }))
+      setFretes([])
       return
     }
 
     setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  function alterarFrete(index: number, campo: keyof FreteLinha, valor: string) {
+    setFretes((atual) => atual.map((item, posicao) => posicao === index ? { ...item, [campo]: valor } : item))
   }
 
   async function atribuirTecnico(parceiroId: number) {
@@ -797,7 +811,8 @@ export default function OrdemServicoAtendimentoPage() {
           servicoExecutado: form.servicoExecutado,
           tecnicoValorPecas: custoTecnico.valorPecas,
           tecnicoValorMaoObra: form.tecnicoValorMaoObra,
-          valorFrete: form.garantia === 'SIM' ? form.valorFrete : 0,
+          valorFrete: form.garantia === 'SIM' ? totalFretes(fretes) : 0,
+          fretes: form.garantia === 'SIM' ? fretes : [],
           tecnicoDesconto: custoTecnico.desconto,
           observacaoTecnica: form.observacaoTecnica,
           valorPecas: form.valorPecasCliente,
@@ -925,7 +940,8 @@ export default function OrdemServicoAtendimentoPage() {
           servicoExecutado: form.servicoExecutado,
           tecnicoValorPecas: custoTecnico.valorPecas,
           tecnicoValorMaoObra: form.tecnicoValorMaoObra,
-          valorFrete: form.garantia === 'SIM' ? form.valorFrete : 0,
+          valorFrete: form.garantia === 'SIM' ? totalFretes(fretes) : 0,
+          fretes: form.garantia === 'SIM' ? fretes : [],
           tecnicoDesconto: custoTecnico.desconto,
           observacaoTecnica: form.observacaoTecnica,
           valorPecas: form.valorPecasCliente,
@@ -2038,20 +2054,34 @@ export default function OrdemServicoAtendimentoPage() {
               </div>
 
               {form.garantia === 'SIM' && (
-                <div className="mb-4 grid gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 md:grid-cols-[220px_1fr] md:items-end">
-                  <Field
-                    label="Frete das peças ao parceiro"
-                    name="valorFrete"
-                    value={String(form.valorFrete)}
-                    onChange={handleChange}
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    disabled={isLocked}
-                  />
-                  <p className="pb-2 text-xs font-semibold text-amber-900">
-                    Despesa interna da empresa. Entra na rentabilidade e no DRE, e não aparece para o técnico nem na consulta do cliente.
-                  </p>
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-black text-amber-950">Frete das peças ao parceiro</h3>
+                      <p className="text-xs font-semibold text-amber-900">Despesa interna. Uma linha por envio. Não aparece para o técnico nem na consulta do cliente.</p>
+                    </div>
+                    <p className="text-sm font-black text-amber-950">Total {formatCurrency(totalFretes(fretes))}</p>
+                  </div>
+                  <div className="space-y-2">
+                    {fretes.map((frete, index) => (
+                      <div key={index} className="grid gap-2 rounded-lg bg-white p-2 md:grid-cols-[120px_1fr_1fr_1fr_auto] md:items-end">
+                        <label className="text-xs font-bold text-slate-600">Valor
+                          <input value={frete.valor} disabled={isLocked} type="number" min="0" step="0.01" onChange={(event) => alterarFrete(index, 'valor', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-sm disabled:bg-slate-100" />
+                        </label>
+                        <label className="text-xs font-bold text-slate-600">Transportadora
+                          <input value={frete.transportadora} disabled={isLocked} onChange={(event) => alterarFrete(index, 'transportadora', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-sm disabled:bg-slate-100" />
+                        </label>
+                        <label className="text-xs font-bold text-slate-600">Conhecimento
+                          <input value={frete.conhecimento} disabled={isLocked} onChange={(event) => alterarFrete(index, 'conhecimento', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-sm disabled:bg-slate-100" />
+                        </label>
+                        <label className="text-xs font-bold text-slate-600">NF/OS
+                          <input value={frete.documento} disabled={isLocked} onChange={(event) => alterarFrete(index, 'documento', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-sm disabled:bg-slate-100" />
+                        </label>
+                        <button type="button" disabled={isLocked} onClick={() => setFretes((atual) => atual.filter((_, item) => item !== index))} className="h-10 rounded-lg border border-red-300 px-3 text-xs font-bold text-red-700 disabled:opacity-60">Remover</button>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" disabled={isLocked} onClick={() => setFretes((atual) => [...atual, freteVazio()])} className="mt-3 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-60">Adicionar envio</button>
                 </div>
               )}
 
@@ -2729,6 +2759,31 @@ function formatarGrupoEquipamento(grupo: string) {
   if (grupo === 'LINHA_MARROM') return 'Linha marrom'
   if (grupo === 'INFORMATICA') return 'Informática'
   return 'Gerais'
+}
+
+function freteVazio(): FreteLinha {
+  return { valor: '', transportadora: '', conhecimento: '', documento: '' }
+}
+
+function totalFretes(linhas: FreteLinha[]) {
+  return linhas.reduce((acc, item) => acc + toNumber(item.valor), 0)
+}
+
+function fretesCarregados(valor: unknown, valorAntigo?: number | null) {
+  const linhas = Array.isArray(valor)
+    ? valor.flatMap((item) => {
+        if (!item || typeof item !== 'object') return []
+        const linha = item as Record<string, unknown>
+        return [{
+          valor: toNumber(linha.valor) ? String(toNumber(linha.valor)) : '',
+          transportadora: String(linha.transportadora ?? ''),
+          conhecimento: String(linha.conhecimento ?? ''),
+          documento: String(linha.documento ?? ''),
+        }]
+      })
+    : []
+  if (linhas.length > 0) return linhas
+  return toNumber(valorAntigo) > 0 ? [{ ...freteVazio(), valor: String(toNumber(valorAntigo)) }] : []
 }
 
 function getGarantidorNome(garantidores: Garantidor[], id: string) {

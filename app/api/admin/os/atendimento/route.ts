@@ -490,6 +490,7 @@ export async function GET(request: NextRequest) {
       fotos: fotos ?? [],
       historico: historico ?? [],
       pecas: pecas ?? [],
+      fretes: await carregarFretesOs(supabase, osId),
       estoquePecas,
       categorias: categorias ?? [],
       marcas: marcas ?? [],
@@ -685,6 +686,36 @@ async function carregarRotasDaOs(
   return data ?? []
 }
 
+async function carregarFretesOs(supabase: ReturnType<typeof getSupabaseAdmin>, osId: number) {
+  if (!(await tabelaExiste(supabase, 'os_fretes'))) return []
+  const { data, error } = await supabase
+    .from('os_fretes')
+    .select('id, valor, transportadora, conhecimento, documento')
+    .eq('os_id', osId)
+    .order('id')
+  if (error) throw error
+  return data ?? []
+}
+
+function normalizarFretes(valor: unknown) {
+  if (!Array.isArray(valor)) return []
+  return valor.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const linha = item as Record<string, unknown>
+    const transportadora = textoOuNulo(linha.transportadora)
+    const conhecimento = textoOuNulo(linha.conhecimento)
+    const documento = textoOuNulo(linha.documento)
+    const valorFrete = Math.max(0, toNumber(linha.valor))
+    if (!transportadora && !conhecimento && !documento && valorFrete <= 0) return []
+    return [{ valor: valorFrete, transportadora, conhecimento, documento }]
+  })
+}
+
+function textoOuNulo(valor: unknown) {
+  const texto = String(valor ?? '').trim()
+  return texto || null
+}
+
 function custoPecas(pecas: Record<string, unknown>[]) {
   return pecas.reduce((acc, item) => acc + toNumber(item.quantidade) * toNumber(item.valor_custo), 0)
 }
@@ -868,12 +899,14 @@ export async function PATCH(request: NextRequest) {
         body?.garantia === 'SIM' && body?.garantidorId ? Number(body.garantidorId) : null
     }
 
-    const colunaFreteExiste = await colunaExiste(supabase, 'ordens_servico', 'valor_frete')
-    const valorFrete = body?.garantia === 'SIM' ? Math.max(0, toNumber(body?.valorFrete)) : 0
-    if (colunaFreteExiste) updatePayload.valor_frete = valorFrete
-    else if (valorFrete > 0) {
-      return NextResponse.json({ error: 'Execute supabase-add-frete-os.sql no Supabase antes de salvar o frete.' }, { status: 400 })
+    const fretesInformados = body?.garantia === 'SIM' ? normalizarFretes(body?.fretes) : []
+    const valorFrete = fretesInformados.reduce((acc, item) => acc + item.valor, 0)
+    const tabelaFreteExiste = await tabelaExiste(supabase, 'os_fretes')
+    if (!tabelaFreteExiste && fretesInformados.length > 0) {
+      return NextResponse.json({ error: 'Execute supabase-add-fretes-os-linhas.sql no Supabase antes de salvar o frete.' }, { status: 400 })
     }
+    const colunaFreteExiste = await colunaExiste(supabase, 'ordens_servico', 'valor_frete')
+    if (colunaFreteExiste) updatePayload.valor_frete = valorFrete
 
     const colunaReferenciaGarantidorExiste = await colunaExiste(supabase, 'ordens_servico', 'referencia_garantidor')
     if (colunaReferenciaGarantidorExiste) {
@@ -887,6 +920,17 @@ export async function PATCH(request: NextRequest) {
       .eq('id', osId)
 
     if (updateError) throw updateError
+
+    if (tabelaFreteExiste) {
+      const { error: deleteFretesError } = await supabase.from('os_fretes').delete().eq('os_id', osId)
+      if (deleteFretesError) throw deleteFretesError
+      if (fretesInformados.length > 0) {
+        const { error: insertFretesError } = await supabase.from('os_fretes').insert(
+          fretesInformados.map((item) => ({ os_id: osId, ...item }))
+        )
+        if (insertFretesError) throw insertFretesError
+      }
+    }
 
     const { error: deletePecasError } = await supabase.from('os_pecas').delete().eq('os_id', osId)
     if (deletePecasError) throw deletePecasError
@@ -939,7 +983,7 @@ export async function PATCH(request: NextRequest) {
       `Mao de obra tecnico: ${formatCurrency(tecnicoValorMaoObra)}`,
       `Total tecnico: ${formatCurrency(tecnicoTotal)}`,
       `Pecas total: ${formatCurrency(valorPecas)}`,
-      valorFrete > 0 ? `Frete interno: ${formatCurrency(valorFrete)}` : '',
+      valorFrete > 0 ? `Frete interno: ${formatCurrency(valorFrete)} (${fretesInformados.length} envio(s))` : '',
       `Mao de obra: ${formatCurrency(valorMaoObra)}`,
       `Desconto: ${formatCurrency(desconto)}`,
       `Total: ${formatCurrency(total)}`,
