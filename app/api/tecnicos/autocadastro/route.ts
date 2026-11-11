@@ -49,8 +49,17 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin()
+    const { data: organizacao, error: organizacaoError } = await supabase
+      .from('saas_organizacoes')
+      .select('id')
+      .eq('slug', 'grupo-interno')
+      .maybeSingle()
+    if (organizacaoError) throw organizacaoError
+    if (!organizacao?.id) throw new Error('Organização interna não localizada para receber o cadastro.')
+
     const avisos: string[] = []
     const payload: Record<string, unknown> = {
+      organizacao_id: organizacao.id,
       responsavel: nome,
       razao_social: empresa || nome,
       nome_fantasia: empresa || nome,

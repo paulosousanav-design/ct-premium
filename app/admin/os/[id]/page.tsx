@@ -132,6 +132,7 @@ type OrdemServico = {
   servico_executado: string | null
   pecas_utilizadas: string | null
   valor_pecas: number | null
+  valor_frete?: number | null
   valor_mao_obra: number | null
   desconto: number | null
   total: number | null
@@ -201,6 +202,7 @@ type FormState = {
   diagnosticoTecnico: string
   servicoExecutado: string
   tecnicoValorMaoObra: number
+  valorFrete: number
   valorPecasCliente: number
   valorMaoObra: number
   desconto: number
@@ -224,6 +226,7 @@ type RentabilidadeResumo = {
   custoPecasReconhecido: number
   custoTecnico: number
   custoRota: number
+  custoFrete: number
   custosDiretos: number
   lucroBruto: number
   margemPercentual: number
@@ -242,6 +245,7 @@ type RentabilidadeOs = {
     custoPecas: number
     custoTecnicos: number
     custoRotas: number
+    custoFrete: number
     lucroBruto: number
     margemPercentual: number
   }
@@ -367,6 +371,7 @@ export default function OrdemServicoAtendimentoPage() {
     diagnosticoTecnico: '',
     servicoExecutado: '',
     tecnicoValorMaoObra: 0,
+    valorFrete: 0,
     valorPecasCliente: 0,
     valorMaoObra: 0,
     desconto: 0,
@@ -513,6 +518,7 @@ export default function OrdemServicoAtendimentoPage() {
         diagnosticoTecnico: osPayloadRelacoes.diagnostico_tecnico ?? '',
         servicoExecutado: osPayloadRelacoes.servico_executado ?? '',
         tecnicoValorMaoObra: toNumber(osPayloadRelacoes.tecnico_valor_mao_obra ?? osPayloadRelacoes.valor_mao_obra),
+        valorFrete: toNumber(osPayloadRelacoes.valor_frete),
         valorPecasCliente: temOrcamentoCliente
           ? toNumber(osPayloadRelacoes.cliente_valor_pecas)
           : toNumber(osPayloadRelacoes.valor_pecas) || toNumber(osPayloadRelacoes.tecnico_valor_pecas),
@@ -547,7 +553,7 @@ export default function OrdemServicoAtendimentoPage() {
       return
     }
 
-    if (name === 'valorPecasCliente' || name === 'valorMaoObra' || name === 'desconto' || name === 'tecnicoValorMaoObra') {
+    if (name === 'valorPecasCliente' || name === 'valorMaoObra' || name === 'desconto' || name === 'tecnicoValorMaoObra' || name === 'valorFrete') {
       setForm((prev) => ({ ...prev, [name]: value === '' ? 0 : Number(value) }))
       return
     }
@@ -561,6 +567,7 @@ export default function OrdemServicoAtendimentoPage() {
         dataCompra: '',
         numeroNf: '',
         localCompra: '',
+        valorFrete: 0,
       }))
       return
     }
@@ -790,6 +797,7 @@ export default function OrdemServicoAtendimentoPage() {
           servicoExecutado: form.servicoExecutado,
           tecnicoValorPecas: custoTecnico.valorPecas,
           tecnicoValorMaoObra: form.tecnicoValorMaoObra,
+          valorFrete: form.garantia === 'SIM' ? form.valorFrete : 0,
           tecnicoDesconto: custoTecnico.desconto,
           observacaoTecnica: form.observacaoTecnica,
           valorPecas: form.valorPecasCliente,
@@ -917,6 +925,7 @@ export default function OrdemServicoAtendimentoPage() {
           servicoExecutado: form.servicoExecutado,
           tecnicoValorPecas: custoTecnico.valorPecas,
           tecnicoValorMaoObra: form.tecnicoValorMaoObra,
+          valorFrete: form.garantia === 'SIM' ? form.valorFrete : 0,
           tecnicoDesconto: custoTecnico.desconto,
           observacaoTecnica: form.observacaoTecnica,
           valorPecas: form.valorPecasCliente,
@@ -2028,6 +2037,24 @@ export default function OrdemServicoAtendimentoPage() {
                 <InfoCard label="Total técnico" value={formatCurrency(custoTecnico.total)} />
               </div>
 
+              {form.garantia === 'SIM' && (
+                <div className="mb-4 grid gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 md:grid-cols-[220px_1fr] md:items-end">
+                  <Field
+                    label="Frete das peças ao parceiro"
+                    name="valorFrete"
+                    value={String(form.valorFrete)}
+                    onChange={handleChange}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    disabled={isLocked}
+                  />
+                  <p className="pb-2 text-xs font-semibold text-amber-900">
+                    Despesa interna da empresa. Entra na rentabilidade e no DRE, e não aparece para o técnico nem na consulta do cliente.
+                  </p>
+                </div>
+              )}
+
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <Field
                   label="Peças cliente"
@@ -2469,6 +2496,7 @@ function RentabilidadeMaster({ dados }: { dados: RentabilidadeOs }) {
             <RentabilidadeCard label="Custo das peças" valor={dados.os.custoPecas} tom="amber" />
             <RentabilidadeCard label="Técnico/comissão" valor={dados.os.custoTecnico} tom="amber" />
             <RentabilidadeCard label="Rota rateada" valor={dados.os.custoRota} tom="amber" />
+            <RentabilidadeCard label="Frete de peças" valor={dados.os.custoFrete} tom="amber" />
             <RentabilidadeCard label="Custos diretos" valor={dados.os.custosDiretos} tom="red" />
             <RentabilidadeCard label="Lucro bruto estimado" valor={dados.os.lucroBruto} tom={margemOsPositiva ? 'green' : 'red'} />
             <RentabilidadeCard label="Margem bruta" texto={`${dados.os.margemPercentual.toFixed(1)}%`} tom={margemOsPositiva ? 'green' : 'red'} />
@@ -2499,6 +2527,7 @@ function RentabilidadeMaster({ dados }: { dados: RentabilidadeOs }) {
             <RentabilidadeCard label="Total recebido" valor={dados.historico.recebido} tom="green" />
             <RentabilidadeCard label="Ticket médio" valor={dados.historico.ticketMedio} />
             <RentabilidadeCard label="Rotas rateadas" valor={dados.historico.custoRotas} tom="amber" />
+            <RentabilidadeCard label="Frete de peças" valor={dados.historico.custoFrete} tom="amber" />
             <RentabilidadeCard label="Lucro bruto acumulado" valor={dados.historico.lucroBruto} tom={margemHistoricoPositiva ? 'green' : 'red'} />
             <RentabilidadeCard label="Margem acumulada" texto={`${dados.historico.margemPercentual.toFixed(1)}%`} tom={margemHistoricoPositiva ? 'green' : 'red'} />
           </div>

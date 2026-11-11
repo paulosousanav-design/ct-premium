@@ -62,6 +62,7 @@ test('rentabilidade de técnico próprio soma peças, comissões e rota', () => 
     comissaoPecasPercentual: 5,
     comissaoMaoObraPercentual: 10,
     custoRota: 100,
+    custoFrete: 0,
   })
 
   assert.equal(resultado.custoTecnico, 70)
@@ -83,13 +84,16 @@ test('rentabilidade de terceirizado não duplica o custo das peças', () => {
     comissaoPecasPercentual: 0,
     comissaoMaoObraPercentual: 0,
     custoRota: 100,
+    custoFrete: 40,
   })
+
+  assert.equal(resultado.custoFrete, 40)
 
   assert.equal(resultado.custoPecas, 300)
   assert.equal(resultado.custoPecasReconhecido, 0)
-  assert.equal(resultado.custosDiretos, 750)
-  assert.equal(resultado.lucroBruto, 250)
-  assert.equal(resultado.margemPercentual, 25)
+  assert.equal(resultado.custosDiretos, 790)
+  assert.equal(resultado.lucroBruto, 210)
+  assert.equal(resultado.margemPercentual, 21)
   assert.equal(resultado.terceirizadoComCustoCompleto, true)
 })
 
@@ -104,6 +108,7 @@ test('rentabilidade sem receita não gera divisão inválida', () => {
     comissaoPecasPercentual: 0,
     comissaoMaoObraPercentual: 0,
     custoRota: 20,
+    custoFrete: 0,
   })
 
   assert.equal(resultado.lucroBruto, -70)

@@ -206,6 +206,7 @@ export async function GET(request: NextRequest) {
     const colunaFormaRecebimentoExiste = await colunaExiste(supabase, 'ordens_servico', 'forma_recebimento')
     const colunaEncerramentoExiste = await colunaExiste(supabase, 'ordens_servico', 'encerramento_motivo')
     const colunaEntregaExiste = await colunaExiste(supabase, 'ordens_servico', 'equipamento_entrega_status')
+    const colunaFreteExiste = await colunaExiste(supabase, 'ordens_servico', 'valor_frete')
 
     const selectBase = `
         id,
@@ -244,6 +245,7 @@ export async function GET(request: NextRequest) {
         pecas_utilizadas,
         valor_pecas,
         valor_mao_obra,
+        ${colunaFreteExiste ? 'valor_frete,' : ''}
         desconto,
         total,
         status_financeiro,
@@ -533,16 +535,17 @@ async function montarRentabilidadeOs(
   if (!entidadeId) {
     return {
       os: atual,
-      historico: { tipo: entidadeTipo, nome: entidadeNome, totalOs: 0, faturado: 0, recebido: 0, ticketMedio: 0, custoPecas: 0, custoTecnicos: 0, custoRotas: 0, lucroBruto: 0, margemPercentual: 0 },
+      historico: { tipo: entidadeTipo, nome: entidadeNome, totalOs: 0, faturado: 0, recebido: 0, ticketMedio: 0, custoPecas: 0, custoTecnicos: 0, custoRotas: 0, custoFrete: 0, lucroBruto: 0, margemPercentual: 0 },
       rotas: rotasAtual,
       observacoes: observacoesRentabilidade(pecas, atual),
     }
   }
 
+  const colunaFreteExiste = await colunaExiste(supabase, 'ordens_servico', 'valor_frete')
   let historicoQuery = supabase
     .from('ordens_servico')
     .select(`
-      id, status, garantia, garantidor_id, total, valor_pecas, valor_mao_obra,
+      id, status, garantia, garantidor_id, total, valor_pecas, valor_mao_obra, ${colunaFreteExiste ? 'valor_frete,' : ''}
       cliente_total, cliente_valor_pecas, cliente_valor_mao_obra,
       valor_recebido_cliente, status_financeiro, tecnico_total,
       parceiros:parceiro_id (
@@ -589,6 +592,7 @@ async function montarRentabilidadeOs(
   const custoPecasTotal = somaCalculos(calculos, 'custoPecas')
   const custoTecnicos = somaCalculos(calculos, 'custoTecnico')
   const custoRotas = somaCalculos(calculos, 'custoRota')
+  const custoFrete = somaCalculos(calculos, 'custoFrete')
   const lucroBruto = somaCalculos(calculos, 'lucroBruto')
 
   return {
@@ -603,6 +607,7 @@ async function montarRentabilidadeOs(
       custoPecas: custoPecasTotal,
       custoTecnicos,
       custoRotas,
+      custoFrete,
       lucroBruto,
       margemPercentual: faturado > 0 ? (lucroBruto / faturado) * 100 : 0,
     },
@@ -651,6 +656,7 @@ function calcularRentabilidadeOrdem(
     comissaoPecasPercentual: toNumber(parceiro?.comissao_pecas_percentual),
     comissaoMaoObraPercentual: toNumber(parceiro?.comissao_mao_obra_percentual),
     custoRota,
+    custoFrete: toNumber(ordem.valor_frete),
   })
 }
 
@@ -862,6 +868,13 @@ export async function PATCH(request: NextRequest) {
         body?.garantia === 'SIM' && body?.garantidorId ? Number(body.garantidorId) : null
     }
 
+    const colunaFreteExiste = await colunaExiste(supabase, 'ordens_servico', 'valor_frete')
+    const valorFrete = body?.garantia === 'SIM' ? Math.max(0, toNumber(body?.valorFrete)) : 0
+    if (colunaFreteExiste) updatePayload.valor_frete = valorFrete
+    else if (valorFrete > 0) {
+      return NextResponse.json({ error: 'Execute supabase-add-frete-os.sql no Supabase antes de salvar o frete.' }, { status: 400 })
+    }
+
     const colunaReferenciaGarantidorExiste = await colunaExiste(supabase, 'ordens_servico', 'referencia_garantidor')
     if (colunaReferenciaGarantidorExiste) {
       updatePayload.referencia_garantidor =
@@ -926,6 +939,7 @@ export async function PATCH(request: NextRequest) {
       `Mao de obra tecnico: ${formatCurrency(tecnicoValorMaoObra)}`,
       `Total tecnico: ${formatCurrency(tecnicoTotal)}`,
       `Pecas total: ${formatCurrency(valorPecas)}`,
+      valorFrete > 0 ? `Frete interno: ${formatCurrency(valorFrete)}` : '',
       `Mao de obra: ${formatCurrency(valorMaoObra)}`,
       `Desconto: ${formatCurrency(desconto)}`,
       `Total: ${formatCurrency(total)}`,

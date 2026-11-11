@@ -91,6 +91,9 @@ export async function GET(request: NextRequest) {
     const custoPecasOs = base === 'COMPETENCIA'
       ? soma(pecasOs, custoPecaOsReconhecido)
       : 0
+    const custoFreteOs = base === 'COMPETENCIA'
+      ? soma(ordens, (item) => numero(item.valor_frete))
+      : 0
     const custoVendas = base === 'COMPETENCIA'
       ? soma(itensVenda, (item) => numero(item.quantidade) * numero(item.valor_custo_unitario))
       : 0
@@ -128,7 +131,7 @@ export async function GET(request: NextRequest) {
     const receitaBruta = receitaServicos + receitaPecasOs + receitaVendas
     deducoes += impostosSobreVendas
     const receitaLiquida = receitaBruta - deducoes
-    const custosDiretos = custoPecasOs + custoVendas + custoTecnicos + custosContas
+    const custosDiretos = custoPecasOs + custoFreteOs + custoVendas + custoTecnicos + custosContas
     const lucroBruto = receitaLiquida - custosDiretos
     const resultadoOperacional = lucroBruto - despesasOperacionais
     const resultadoLiquido = resultadoOperacional + receitasFinanceiras - despesasFinanceiras - despesasNaoOperacionais
@@ -142,7 +145,7 @@ export async function GET(request: NextRequest) {
         })
       }
       const custoOsPorId = agruparValor(pecasOs, 'os_id', custoPecaOsReconhecido)
-      for (const ordem of ordens) adicionarMes(meses, ordem.finalizada_em, { custos: custoOsPorId.get(numero(ordem.id)) ?? 0 })
+      for (const ordem of ordens) adicionarMes(meses, ordem.finalizada_em, { custos: (custoOsPorId.get(numero(ordem.id)) ?? 0) + numero(ordem.valor_frete) })
       const custoVendaPorId = agruparValor(itensVenda, 'venda_id', (item) => numero(item.quantidade) * numero(item.valor_custo_unitario))
       for (const venda of vendas) adicionarMes(meses, venda.criado_em, { receita: numero(venda.total), custos: custoVendaPorId.get(numero(venda.id)) ?? 0 })
     } else {
@@ -183,7 +186,7 @@ export async function GET(request: NextRequest) {
         receitaServicos, receitaPecasOs, receitaVendas,
         descontos: deducoes - impostosSobreVendas - issRetidoRecebimentos, impostosSobreVendas: impostosSobreVendas + issRetidoRecebimentos,
         receitasFinanceiras,
-        custoPecasOs, custoVendas, custoTecnicos, custosContas,
+        custoPecasOs, custoFreteOs, custoVendas, custoTecnicos, custosContas,
       },
       despesasCategorias,
       detalhes,
@@ -204,11 +207,13 @@ export async function GET(request: NextRequest) {
 
 async function carregarOrdens(supabase: ReturnType<typeof db>, unidades: number[], inicio: string, fim: string, base: BaseCalculo) {
   const temTaxaDiagnostico = await colunaExiste(supabase, 'ordens_servico', 'encerramento_taxa_diagnostico')
+  const temFrete = await colunaExiste(supabase, 'ordens_servico', 'valor_frete')
   let query = supabase.from('ordens_servico').select(`
     id, unidade_id, numero_os, status, finalizada_em, data_pagamento, data_ultimo_recebimento,
     valor_pecas, valor_mao_obra, desconto, total,
     cliente_valor_pecas, cliente_valor_mao_obra, cliente_desconto, cliente_total,
     ${temTaxaDiagnostico ? 'encerramento_taxa_diagnostico,' : ''}
+    ${temFrete ? 'valor_frete,' : ''}
     valor_recebido_cliente, tecnico_total, tecnico_pago_em,
     parceiros:parceiro_id ( tipo_vinculo, comissao_pecas_percentual, comissao_mao_obra_percentual )
   `).in('unidade_id', unidades)
@@ -344,6 +349,7 @@ function montarDetalhes(params: {
       adicionar('receitaPecasOs', { ...comum, valor: receitaPecasOrdem(ordem) })
       adicionar('descontos', { ...comum, descricao: 'Desconto concedido na OS', valor: descontoOrdem(ordem) })
       adicionar('custoTecnicos', { ...comum, descricao: 'Custo técnico/comissão', valor: custoTecnicoCompetencia(ordem) })
+      adicionar('custoFreteOs', { ...comum, descricao: 'Frete de peças ao parceiro', valor: numero(ordem.valor_frete) })
     }
   } else {
     for (const recebimento of recebimentosEscopo) {

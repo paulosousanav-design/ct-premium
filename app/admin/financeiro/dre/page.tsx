@@ -31,6 +31,7 @@ type Dre = {
     impostosSobreVendas: number
     receitasFinanceiras: number
     custoPecasOs: number
+    custoFreteOs: number
     custoVendas: number
     custoTecnicos: number
     custosContas: number
@@ -163,6 +164,7 @@ export default function DrePage() {
               <Linha label="(=) Receita líquida" valor={dados.resumo.receitaLiquida} forte fundo="blue" />
               <Linha label="(-) Custos diretos" valor={-dados.resumo.custosDiretos} forte />
               <Linha label="Custo das peças utilizadas em OS" valor={-dados.linhas.custoPecasOs} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: 'custoPecasOs', titulo: 'Custos das peças utilizadas em OS' })} />
+              <Linha label="Frete de peças ao parceiro" valor={-dados.linhas.custoFreteOs} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: 'custoFreteOs', titulo: 'Frete de peças enviado ao parceiro' })} />
               <Linha label="Custo dos produtos vendidos" valor={-dados.linhas.custoVendas} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: 'custoVendas', titulo: 'Custos dos produtos vendidos' })} />
               <Linha label="Técnicos próprios, terceiros e comissões" valor={-dados.linhas.custoTecnicos} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: 'custoTecnicos', titulo: 'Custos técnicos e comissões' })} />
               <Linha label="Outros custos diretos lançados" valor={-dados.linhas.custosContas} nivel={1} onDetalhe={() => setDetalheAtivo({ chave: 'custosContas', titulo: 'Outros custos diretos' })} />

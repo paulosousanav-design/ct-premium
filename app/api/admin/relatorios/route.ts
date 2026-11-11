@@ -27,6 +27,7 @@ type OrdemRelatorio = {
   valor_recebido_cliente?: number | string | null
   desconto_recebimento_cliente?: number | string | null
   tecnico_total?: number | string | null
+  valor_frete?: number | string | null
   tecnico_status_pagamento?: string | null
   tecnico_pago_em?: string | null
   tipo_atendimento?: string | null
@@ -109,6 +110,7 @@ export async function GET(request: NextRequest) {
     const temDataUltimoRecebimento = await colunaExiste(supabase, 'ordens_servico', 'data_ultimo_recebimento')
     const temTecnicoPagoEm = await colunaExiste(supabase, 'ordens_servico', 'tecnico_pago_em')
     const temGarantidor = await colunaExiste(supabase, 'ordens_servico', 'garantidor_id')
+    const temFrete = await colunaExiste(supabase, 'ordens_servico', 'valor_frete')
     const temTaxaDiagnostico = await colunaExiste(supabase, 'ordens_servico', 'encerramento_taxa_diagnostico')
 
     const selectOrdens = `
@@ -126,6 +128,7 @@ export async function GET(request: NextRequest) {
       ${temClienteTotal ? 'cliente_total,' : ''}
       ${temTaxaDiagnostico ? 'encerramento_taxa_diagnostico,' : ''}
       ${temTecnicoTotal ? 'tecnico_total,' : ''}
+      ${temFrete ? 'valor_frete,' : ''}
       ${temFinanceiro ? 'status_financeiro,' : ''}
       ${temDataPagamento ? 'data_pagamento,' : ''}
       ${temValorRecebidoCliente ? 'valor_recebido_cliente,' : ''}
@@ -377,6 +380,7 @@ async function montarRentabilidadePeriodo(
   let custoPecas = 0
   let custoTecnicos = 0
   let custoRotas = 0
+  let custoFrete = 0
 
   for (const ordem of elegiveis) {
     const receita = valorClienteOrdem(ordem)
@@ -400,6 +404,7 @@ async function montarRentabilidadePeriodo(
     custoPecas += custoPecasHistorico
     custoTecnicos += custoTecnico
     custoRotas += custosRotasPorOs.get(ordem.id) ?? 0
+    custoFrete += toNumber((ordem as unknown as Record<string, unknown>).valor_frete)
   }
 
   const custosDiretosReconhecidos = elegiveis.reduce((acc, ordem) => {
@@ -410,7 +415,7 @@ async function montarRentabilidadePeriodo(
         + valorPreferencial((ordem as unknown as Record<string, unknown>).cliente_valor_mao_obra, (ordem as unknown as Record<string, unknown>).valor_mao_obra) * toNumber(parceiroRaw?.comissao_mao_obra_percentual) / 100
       : toNumber(ordem.tecnico_total)
     const custoPeca = !proprio && custoTecnico > 0 ? 0 : custosPorOs.get(ordem.id) ?? 0
-    return acc + custoPeca + custoTecnico + (custosRotasPorOs.get(ordem.id) ?? 0)
+    return acc + custoPeca + custoTecnico + (custosRotasPorOs.get(ordem.id) ?? 0) + toNumber((ordem as unknown as Record<string, unknown>).valor_frete)
   }, 0)
   const lucroBruto = faturamento - custosDiretosReconhecidos
 
@@ -421,6 +426,7 @@ async function montarRentabilidadePeriodo(
       custoPecas,
       custoTecnicos,
       custoRotas,
+      custoFrete,
       custosDiretos: custosDiretosReconhecidos,
       lucroBruto,
       margemPercentual: faturamento > 0 ? (lucroBruto / faturamento) * 100 : 0,

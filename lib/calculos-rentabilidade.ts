@@ -10,6 +10,7 @@ export type EntradaRentabilidade = {
   comissaoPecasPercentual: number
   comissaoMaoObraPercentual: number
   custoRota: number
+  custoFrete: number
 }
 
 export function calcularRentabilidade(input: EntradaRentabilidade) {
@@ -18,6 +19,7 @@ export function calcularRentabilidade(input: EntradaRentabilidade) {
   const receitaMaoObra = moeda(input.receitaMaoObra)
   const custoPecas = moeda(input.custoPecas)
   const custoRota = moeda(input.custoRota)
+  const custoFrete = moeda(input.custoFrete)
   const custoTecnico = input.tecnicoProprio
     ? moeda(
         receitaPecas * Math.max(Number(input.comissaoPecasPercentual) || 0, 0) / 100
@@ -26,7 +28,7 @@ export function calcularRentabilidade(input: EntradaRentabilidade) {
     : moeda(input.tecnicoTotal)
   const terceirizadoComCustoCompleto = !input.tecnicoProprio && custoTecnico > 0
   const custoPecasReconhecido = terceirizadoComCustoCompleto ? 0 : custoPecas
-  const custosDiretos = moeda(custoPecasReconhecido + custoTecnico + custoRota)
+  const custosDiretos = moeda(custoPecasReconhecido + custoTecnico + custoRota + custoFrete)
   const lucroBruto = moeda(receita - custosDiretos)
 
   return {
@@ -37,6 +39,7 @@ export function calcularRentabilidade(input: EntradaRentabilidade) {
     custoPecasReconhecido,
     custoTecnico,
     custoRota,
+    custoFrete,
     custosDiretos,
     lucroBruto,
     margemPercentual: receita > 0 ? lucroBruto / receita * 100 : 0,
