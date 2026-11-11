@@ -2774,8 +2774,9 @@ function fretesCarregados(valor: unknown, valorAntigo?: number | null) {
     ? valor.flatMap((item) => {
         if (!item || typeof item !== 'object') return []
         const linha = item as Record<string, unknown>
+        const valorLinha = toNumber(typeof linha.valor === 'number' || typeof linha.valor === 'string' ? linha.valor : null)
         return [{
-          valor: toNumber(linha.valor) ? String(toNumber(linha.valor)) : '',
+          valor: valorLinha ? String(valorLinha) : '',
           transportadora: String(linha.transportadora ?? ''),
           conhecimento: String(linha.conhecimento ?? ''),
           documento: String(linha.documento ?? ''),
