@@ -318,6 +318,9 @@ export default function PainelTecnicoPage() {
     } catch {
       qrCodeUrl = ''
     }
+    const diagnostico = String(os.diagnostico_tecnico ?? '').trim()
+    const servicoExecutado = String(os.servico_executado ?? '').trim()
+    const pecasUtilizadas = String(os.pecas_utilizadas ?? '').trim()
     const data = new Date(os.created_at).toLocaleDateString('pt-BR')
     const logo = `${window.location.origin}/logo-ct.png`
     const tituloDocumento = executada ? 'Ordem de serviço executada' : 'Ordem de serviço'
@@ -336,7 +339,7 @@ export default function PainelTecnicoPage() {
             .grupo{margin-top:8px;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;break-inside:avoid}.grupo-titulo{background:#f1f5f9;border-bottom:1px solid #cbd5e1;padding:5px 10px;font-size:9px;text-transform:uppercase;font-weight:800;color:#334155;letter-spacing:.02em}
             .grid{display:grid;grid-template-columns:1fr 1fr}.grid.cols-3{grid-template-columns:1.45fr .8fr .75fr}
             .campo{min-height:42px;padding:6px 10px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}
-            .grupo.escrita{flex:1;display:flex;flex-direction:column;min-height:0}.grupo.escrita .grid{flex:1;grid-template-rows:minmax(26mm,1fr) minmax(26mm,1fr) minmax(26mm,1fr)}
+            .grupo.escrita{flex:1;display:flex;flex-direction:column;min-height:0;overflow:visible}.grupo.escrita .grid{flex:1;grid-template-rows:auto}
             .campo.anotacao{min-height:26mm}
             .grid.cols-2 .campo:nth-child(2n){border-right:0}.grid.cols-3 .campo:nth-child(3n){border-right:0}
             .campo.largo{grid-column:1/-1;border-right:0}.grid .campo:last-child{border-bottom:0}
@@ -378,9 +381,9 @@ export default function PainelTecnicoPage() {
             campoImpressao('Número da nota fiscal', os.numero_nf),
           ], 3) : ''}
           ${grupoImpressao('Atendimento técnico', [
-            campoImpressao('Diagnóstico técnico', executada ? os.diagnostico_tecnico : '', true, !executada),
-            campoImpressao('Serviço executado', executada ? os.servico_executado : '', true, !executada),
-            campoImpressao('Peças utilizadas', executada ? os.pecas_utilizadas : '', true, !executada),
+            campoImpressao('Diagnóstico técnico', diagnostico, true, !diagnostico),
+            campoImpressao('Serviço executado', servicoExecutado, true, !servicoExecutado),
+            campoImpressao('Peças utilizadas', pecasUtilizadas, true, !pecasUtilizadas),
           ], 2, 'escrita')}
           ${grupoImpressao('Responsáveis', [
             campoImpressao('Técnico responsável', tecnicoNome),
