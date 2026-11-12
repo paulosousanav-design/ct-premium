@@ -27,14 +27,15 @@ const marcasAtendidas = [
   { nome: 'LG', src: '/brand-lg-flat.svg' },
   { nome: 'Samsung', src: '/brand-samsung.svg' },
   { nome: 'Electrolux', src: '/brand-electrolux.svg' },
-  { nome: 'Brastemp', src: '/brand-brastemp.svg', maior: true },
+  { nome: 'Brastemp', src: '/brand-brastemp.svg', maior: true, chapa: true },
   { nome: 'Consul', src: '/brand-consul.svg' },
   { nome: 'Panasonic', src: '/brand-panasonic.svg' },
   { nome: 'Philco', src: '/brand-philco.png' },
   { nome: 'Midea', src: '/brand-midea.png', maior: true },
-  { nome: 'Carrier', src: '/brand-carrier.svg', maior: true },
+  { nome: 'Carrier', src: '/brand-carrier.svg', maior: true, chapa: true },
   { nome: 'AOC', src: '/brand-aoc.svg' },
   { nome: 'JVC', src: '/brand-jvc.svg' },
+  { nome: 'AIWA', src: '/brand-aiwa.svg' },
   { nome: 'Philips', src: '/brand-philips.svg' },
 ]
 
@@ -111,17 +112,27 @@ export default function Home() {
       </section>
 
       <section className="brand-band" aria-labelledby="marcas-atendidas">
-        <div className="home-shell brand-band-inner">
-          <div className="brand-band-copy">
-            <span>ASSISTÊNCIA MULTIMARCAS</span>
-            <h2 id="marcas-atendidas">Marcas que fazem parte do seu dia a dia</h2>
-          </div>
-          <ul className="brand-list" aria-label="Marcas atendidas pelo Chame o Técnico">
-            {marcasAtendidas.map((marca) => (
-              <li key={marca.nome} className={'maior' in marca && marca.maior ? 'logo-maior' : undefined}>
-                <img src={marca.src} alt={marca.nome} />
-              </li>
-            ))}
+        <div className="home-shell brand-band-copy">
+          <span>ASSISTÊNCIA MULTIMARCAS</span>
+          <h2 id="marcas-atendidas">Marcas que fazem parte do seu dia a dia</h2>
+        </div>
+        <div className="brand-marquee">
+          <ul className="brand-marquee-track" aria-label="Marcas atendidas pelo Chame o Técnico">
+            {[...marcasAtendidas, ...marcasAtendidas].map((marca, index) => {
+              const copia = index >= marcasAtendidas.length
+              return (
+                <li key={`${marca.nome}-${index}`} className={'maior' in marca && marca.maior ? 'logo-maior' : undefined} aria-hidden={copia || undefined}>
+                  <img
+                    src={marca.src}
+                    alt={copia ? '' : marca.nome}
+                    className={[
+                      marca.src.endsWith('.png') ? 'logo-fundo' : '',
+                      'chapa' in marca && marca.chapa ? 'logo-chapa' : '',
+                    ].filter(Boolean).join(' ') || undefined}
+                  />
+                </li>
+              )
+            })}
           </ul>
         </div>
       </section>

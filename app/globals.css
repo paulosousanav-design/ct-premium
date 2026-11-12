@@ -169,11 +169,12 @@ body {
           color: #ffffff;
         }
 
-        .brand-band-inner {
-          display: grid;
-          grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr);
+        .brand-band-copy {
+          display: flex;
+          flex-direction: column;
           align-items: center;
-          gap: 28px;
+          margin-bottom: 18px;
+          text-align: center;
         }
 
         .brand-band-copy span {
@@ -188,45 +189,53 @@ body {
         }
 
         .brand-band-copy h2 {
-          max-width: 290px;
-          margin: 10px 0 0;
+          max-width: 16em;
+          margin: 10px auto 0;
           font-size: clamp(21px, 2vw, 29px);
           line-height: 1.05;
           font-weight: 950;
         }
 
-        .brand-list {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
+        .brand-marquee-track {
+          gap: 0;
           margin: 0;
           padding: 0;
           list-style: none;
         }
 
-        .brand-list li {
-          display: inline-flex;
-          height: 58px;
+        .brand-marquee-track li {
+          display: flex;
+          height: 52px;
           align-items: center;
           justify-content: center;
-          border: 1px solid rgba(255, 255, 255, 0.22);
-          border-radius: 12px;
-          background: #ffffff;
-          padding: 0 12px;
+          padding: 0 34px;
         }
 
-        .brand-list img {
+        .brand-marquee-track img {
           display: block;
-          height: 26px;
+          height: 28px;
           width: auto;
-          max-width: 150px;
+          max-width: 148px;
           object-fit: contain;
           object-position: center;
+          filter: brightness(0) invert(1) drop-shadow(0 0 7px rgba(255, 255, 255, 0.35));
+          opacity: 0.9;
         }
 
-        .brand-list li.logo-maior img {
-          height: 34px;
-          max-width: 120px;
+        .brand-marquee-track img.logo-chapa {
+          filter: grayscale(1) invert(1) brightness(1.75) contrast(1.08);
+          opacity: 0.94;
+        }
+
+        .brand-marquee-track img.logo-fundo {
+          filter: grayscale(1) invert(1) brightness(1.2) contrast(1.35);
+          mix-blend-mode: screen;
+          opacity: 1;
+        }
+
+        .brand-marquee-track li.logo-maior img {
+          height: 44px;
+          max-width: 150px;
         }
 
         .parcerias {
@@ -356,15 +365,37 @@ body {
         .brand-marquee {
           position: relative;
           overflow: hidden;
-          mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+          background: linear-gradient(105deg, #061a3a 0%, #073c7f 58%, #0b69bd 100%) fixed;
+        }
+
+        .brand-marquee::before,
+        .brand-marquee::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          width: 72px;
+          z-index: 2;
+          pointer-events: none;
+        }
+
+        .brand-marquee::before {
+          left: 0;
+          background: linear-gradient(90deg, #061a3a, rgba(6, 26, 58, 0));
+        }
+
+        .brand-marquee::after {
+          right: 0;
+          background: linear-gradient(270deg, #0b69bd, rgba(11, 105, 189, 0));
         }
 
         .brand-marquee-track {
           display: flex;
           width: max-content;
           align-items: center;
-          gap: 12px;
-          animation: brand-scroll 32s linear infinite;
+          gap: 0;
+          background: linear-gradient(105deg, #061a3a 0%, #073c7f 58%, #0b69bd 100%) fixed;
+          animation: brand-scroll 42s linear infinite;
         }
 
         .brand-marquee:hover .brand-marquee-track {
@@ -439,7 +470,7 @@ body {
 
         @keyframes brand-scroll {
           from { transform: translateX(0); }
-          to { transform: translateX(calc(-50% - 6px)); }
+          to { transform: translateX(-50%); }
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -447,6 +478,16 @@ body {
           .brand-tile-cta,
           .hero-kicker i {
             animation: none;
+          }
+
+          .brand-marquee-track {
+            width: auto;
+            flex-wrap: wrap;
+            justify-content: center;
+          }
+
+          .brand-marquee-track li[aria-hidden='true'] {
+            display: none;
           }
         }
 
@@ -1451,11 +1492,6 @@ body {
             max-width: none;
           }
 
-          .brand-band-inner {
-            grid-template-columns: 1fr;
-            gap: 16px;
-          }
-
           .brand-band-copy h2 {
             max-width: none;
           }
@@ -1477,20 +1513,16 @@ body {
             padding: 22px 0;
           }
 
-          .brand-marquee {
-            overflow-x: auto;
-            mask-image: none;
-            padding-bottom: 4px;
-            scrollbar-width: thin;
+          .brand-marquee-track li {
+            padding: 0 22px;
           }
 
-          .brand-marquee-track {
-            gap: 10px;
-            animation: none;
+          .brand-marquee-track img {
+            height: 22px;
           }
 
-          .brand-marquee-track .brand-tile:nth-child(n + 10) {
-            display: none;
+          .brand-marquee-track li.logo-maior img {
+            height: 34px;
           }
 
           .brand-tile {
