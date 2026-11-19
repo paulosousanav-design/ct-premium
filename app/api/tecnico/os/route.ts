@@ -42,7 +42,8 @@ export async function GET(request: NextRequest) {
     const colunaAgendamentoTecnicoExiste = await colunaExiste(supabase, 'ordens_servico', 'tecnico_agendado_para')
     const selectOrcamentoTecnico = colunasOrcamentoTecnicoExistem
       ? `
-        tecnico_valor_mao_obra,`
+        tecnico_valor_mao_obra,
+        tecnico_total,`
       : ''
     const selectPagamentoTecnico = colunaPagamentoTecnicoExiste
       ? `
@@ -136,7 +137,7 @@ export async function GET(request: NextRequest) {
     }
 
     const selectResumoTecnico = [
-      colunasOrcamentoTecnicoExistem ? 'tecnico_valor_mao_obra' : '',
+      colunasOrcamentoTecnicoExistem ? 'tecnico_valor_mao_obra, tecnico_total' : '',
       colunaPagamentoTecnicoExiste ? 'tecnico_status_pagamento' : '',
     ].filter(Boolean).join(', ')
     const { data: resumoData, error: resumoError } = await supabase
@@ -262,8 +263,6 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const valorServico = Math.max(0, toNumber(body?.valorMaoObra))
-
     const updatePayload: Record<string, unknown> = {
       status,
       diagnostico_tecnico: String(body?.diagnosticoTecnico ?? '').trim() || null,
@@ -275,18 +274,6 @@ export async function PATCH(request: NextRequest) {
     if (pecasInformadas !== pecasAtuaisSemValores) {
       updatePayload.pecas_utilizadas = pecasInformadas || null
     }
-
-    const colunasOrcamentoTecnicoExistem = await colunaExiste(supabase, 'ordens_servico', 'tecnico_total')
-    if (!colunasOrcamentoTecnicoExistem) {
-      return NextResponse.json(
-        { error: 'Os campos financeiros do técnico ainda não estão configurados. Contate o administrativo.' },
-        { status: 400 }
-      )
-    }
-    updatePayload.tecnico_valor_pecas = 0
-    updatePayload.tecnico_valor_mao_obra = valorServico
-    updatePayload.tecnico_desconto = 0
-    updatePayload.tecnico_total = valorServico
 
     if (status === 'AGUARDANDO_REVISAO') updatePayload.orcamento_status = 'PENDENTE'
     if (status === 'PRONTO_AGUARDANDO_ENTREGA') {
@@ -318,7 +305,6 @@ export async function PATCH(request: NextRequest) {
       String(body?.diagnosticoTecnico ?? '').trim() ? `Diagnostico: ${String(body.diagnosticoTecnico).trim()}` : '',
       String(body?.servicoExecutado ?? '').trim() ? `Servico: ${String(body.servicoExecutado).trim()}` : '',
       String(body?.pecasUtilizadas ?? '').trim() ? `Pecas: ${String(body.pecasUtilizadas).trim()}` : '',
-      `Valor do servico do tecnico: ${formatCurrency(valorServico)}`,
     ]
       .filter(Boolean)
       .join(' | ')
@@ -336,7 +322,7 @@ export async function PATCH(request: NextRequest) {
 
     if (historicoError) throw historicoError
 
-    return NextResponse.json({ ok: true, valorServico })
+    return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Erro ao salvar atendimento do tecnico:', error)
     return NextResponse.json(
@@ -423,18 +409,12 @@ function getTecnicoId(request: NextRequest) {
   return lerSessaoTecnico(request.cookies.get(tecnicoSessionCookie)?.value) ?? 0
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(value || 0)
-}
-
 function calcularResumo(
   ordens: Array<{
     id: number
     status: string | null
     tecnico_valor_mao_obra?: number | string | null
+    tecnico_total?: number | string | null
     tecnico_status_pagamento?: string | null
     status_financeiro?: string | null
   }>
@@ -460,7 +440,10 @@ function calcularResumo(
   }
 }
 
-function valorTotalTecnico(os: { tecnico_valor_mao_obra?: number | string | null }) {
+function valorTotalTecnico(os: { tecnico_valor_mao_obra?: number | string | null; tecnico_total?: number | string | null }) {
+  if (os.tecnico_total !== undefined && os.tecnico_total !== null && String(os.tecnico_total) !== '') {
+    return toNumber(os.tecnico_total)
+  }
   return toNumber(os.tecnico_valor_mao_obra)
 }
 

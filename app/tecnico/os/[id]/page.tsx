@@ -18,6 +18,7 @@ type OSDetalhe = {
   servico_executado: string | null
   pecas_utilizadas: string | null
   tecnico_valor_mao_obra?: number | string | null
+  tecnico_total?: number | string | null
   observacao_tecnica: string | null
   fotos_count?: number
   fotos?: OSFoto[]
@@ -46,7 +47,6 @@ type FormState = {
   diagnosticoTecnico: string
   servicoExecutado: string
   pecasUtilizadas: string
-  valorMaoObra: string
   observacaoTecnica: string
 }
 
@@ -68,7 +68,6 @@ export default function AtendimentoTecnicoPage() {
     diagnosticoTecnico: '',
     servicoExecutado: '',
     pecasUtilizadas: '',
-    valorMaoObra: '0',
     observacaoTecnica: '',
   })
   const [loading, setLoading] = useState(true)
@@ -99,13 +98,11 @@ export default function AtendimentoTecnicoPage() {
       const item = data?.data as OSDetalhe
       setOs(item)
       setFotos(item.fotos ?? [])
-      const valoresTecnico = valoresOrcamentoTecnico(item)
       setForm({
         status: item.status ?? 'EM_ATENDIMENTO',
         diagnosticoTecnico: item.diagnostico_tecnico ?? '',
         servicoExecutado: item.servico_executado ?? '',
         pecasUtilizadas: item.pecas_utilizadas ?? '',
-        valorMaoObra: String(valoresTecnico.valorMaoObra),
         observacaoTecnica: item.observacao_tecnica ?? '',
       })
     } catch (error) {
@@ -259,8 +256,9 @@ export default function AtendimentoTecnicoPage() {
                 <TextArea label="Observação técnica" name="observacaoTecnica" value={form.observacaoTecnica} onChange={handleChange} />
 
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                  <MoneyInput label="Valor do seu serviço" name="valorMaoObra" value={form.valorMaoObra} onChange={handleChange} />
-                  <p className="mt-2 text-xs font-semibold text-emerald-700">Informe somente o valor da sua mão de obra. Valores de peças são controlados pelo administrativo.</p>
+                  <p className="text-sm font-semibold text-slate-700">Valor do seu serviço</p>
+                  <p className="mt-1 text-2xl font-black text-emerald-800">{formatCurrency(valorAcordadoTecnico(os))}</p>
+                  <p className="mt-2 text-xs font-semibold text-emerald-700">Valor definido pelo administrativo. Não pode ser alterado neste portal.</p>
                 </div>
 
                 <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
@@ -411,15 +409,6 @@ function TextArea({ label, name, value, onChange }: { label: string; name: strin
   )
 }
 
-function MoneyInput({ label, name, value, onChange }: { label: string; name: string; value: string; onChange: (event: ChangeEvent<HTMLInputElement>) => void }) {
-  return (
-    <label className="text-sm font-semibold text-slate-700">
-      {label}
-      <input name={name} value={value} onChange={onChange} type="number" min="0" step="0.01" className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-orange-500" />
-    </label>
-  )
-}
-
 function Notice({ text, tone }: { text: string; tone: 'neutral' | 'error' | 'success' }) {
   const cls =
     tone === 'error'
@@ -447,8 +436,13 @@ function toNumber(value: number | string | null | undefined) {
   return Number(value ?? 0)
 }
 
-function valoresOrcamentoTecnico(item: OSDetalhe) {
-  return {
-    valorMaoObra: toNumber(item.tecnico_valor_mao_obra),
+function valorAcordadoTecnico(item: OSDetalhe) {
+  if (item.tecnico_total !== undefined && item.tecnico_total !== null && String(item.tecnico_total) !== '') {
+    return toNumber(item.tecnico_total)
   }
+  return toNumber(item.tecnico_valor_mao_obra)
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0)
 }
