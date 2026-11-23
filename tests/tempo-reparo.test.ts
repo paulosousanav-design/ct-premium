@@ -41,6 +41,17 @@ test('pronto aguardando entrega não entra no reparo nem na espera', () => {
   assert.equal(tempo.trechos.at(-1)?.fim, Date.parse('2026-11-03T11:00:00'))
 })
 
+test('espera da coleta não conta como reparo', () => {
+  const tempo = montarTempoReparo([
+    marco('NOVA', 'EM_ATENDIMENTO', '2026-11-01T10:00:00'),
+    marco('EM_ATENDIMENTO', 'AGUARDANDO_COLETA', '2026-11-01T11:00:00'),
+    marco('AGUARDANDO_COLETA', 'EM_ATENDIMENTO', '2026-11-01T15:00:00'),
+  ], 'EM_ATENDIMENTO', null, Date.parse('2026-11-01T16:00:00'))
+
+  assert.equal(tempo.reparoMs, 2 * hora)
+  assert.equal(tempo.paradoMs, 4 * hora)
+})
+
 test('ordem em atendimento continua contando', () => {
   const agora = Date.parse('2026-11-01T13:30:00')
   const tempo = montarTempoReparo([

@@ -282,6 +282,7 @@ type RentabilidadeOs = {
 const STATUS_OPTIONS = [
   { value: 'NOVA', label: 'Nova' },
   { value: 'EM_TRIAGEM', label: 'Em Triagem' },
+  { value: 'AGUARDANDO_COLETA', label: 'Aguardando coleta' },
   { value: 'EM_ATENDIMENTO', label: 'Em Atendimento' },
   { value: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto aguardando entrega' },
   { value: 'AGUARDANDO_APROVACAO', label: 'Aguardando Aprovação' },
@@ -318,6 +319,7 @@ const FORMAS_RECEBIMENTO = [
 ]
 
 const STATUS_ATALHOS = [
+  { value: 'AGUARDANDO_COLETA', label: 'Aguardando coleta', className: 'border-orange-300 text-orange-700 hover:bg-orange-50' },
   { value: 'EM_ATENDIMENTO', label: 'Em atendimento', className: 'border-emerald-300 text-emerald-700 hover:bg-emerald-50' },
   { value: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto aguardando entrega', className: 'border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600' },
   { value: 'AGUARDANDO_APROVACAO', label: 'Aguardando aprovação', className: 'border-cyan-300 text-cyan-700 hover:bg-cyan-50' },
@@ -763,7 +765,7 @@ export default function OrdemServicoAtendimentoPage() {
 
     const statusFinal = statusForcado ?? form.status
     if (
-      ['EM_ATENDIMENTO', 'AGUARDANDO_REVISAO', 'AGUARDANDO_APROVACAO', 'AGUARDANDO_PECA', 'PRONTO_AGUARDANDO_ENTREGA', 'FINALIZADA'].includes(statusFinal) &&
+      ['AGUARDANDO_COLETA', 'EM_ATENDIMENTO', 'AGUARDANDO_REVISAO', 'AGUARDANDO_APROVACAO', 'AGUARDANDO_PECA', 'PRONTO_AGUARDANDO_ENTREGA', 'FINALIZADA'].includes(statusFinal) &&
       !tecnicoAtribuido
     ) {
       setErro('Selecione um técnico antes de iniciar o tratamento da OS.')
@@ -2261,6 +2263,15 @@ export default function OrdemServicoAtendimentoPage() {
                   className="rounded-lg border border-cyan-300 px-4 py-2 text-sm font-medium text-cyan-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   Marcar aguardando aprovação
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => salvarAtendimento('AGUARDANDO_COLETA')}
+                  disabled={salvando || isLocked}
+                  className="rounded-lg border border-orange-300 px-4 py-2 text-sm font-medium text-orange-700 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  Marcar aguardando coleta
                 </button>
 
                 <button

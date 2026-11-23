@@ -236,7 +236,7 @@ export default function PainelTecnicoPage() {
   const ordensExecutadasAtivas = ordensExecutadas.filter((os) => !tecnicoPago(os))
   const ordensSemAgenda = ordensAbertas.filter((os) => !getAgendaDateTime(os, agendaDatas))
   const ordensPendentes = ordensAbertas.filter((os) =>
-    ['EM_ATENDIMENTO', 'CRITICA', 'AGUARDANDO_PECA'].includes(String(os.status))
+    ['AGUARDANDO_COLETA', 'EM_ATENDIMENTO', 'CRITICA', 'AGUARDANDO_PECA'].includes(String(os.status))
   )
   const ordensNaEquipe = ordensAbertas.filter((os) => os.status === 'AGUARDANDO_REVISAO')
   const ordensNoCliente = ordensAbertas.filter((os) => os.status === 'AGUARDANDO_APROVACAO')
@@ -1512,6 +1512,15 @@ function getStatusAlerta(status?: string | null, orcamentoStatus?: string | null
         cardStyle: statusStyle('#818cf8', '#eef2ff'),
         bannerStyle: alertStyle('#4f46e5', '#ffffff'),
         badgeStyle: alertStyle('#4f46e5', '#ffffff'),
+      }
+    case 'AGUARDANDO_COLETA':
+      return {
+        label: 'Aguardando coleta: o equipamento ainda está com o cliente.',
+        badge: 'Coleta',
+        accentColor: '#ea580c',
+        cardStyle: statusStyle('#fdba74', '#fff7ed'),
+        bannerStyle: alertStyle('#ea580c', '#ffffff'),
+        badgeStyle: alertStyle('#ea580c', '#ffffff'),
       }
     case 'AGUARDANDO_PECA':
       return {

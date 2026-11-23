@@ -567,6 +567,7 @@ function formatarStatusOS(status: string) {
     AGUARDANDO_APROVACAO: 'Aguard. cliente',
     EM_ATENDIMENTO: 'Atendimento',
     EM_TRIAGEM: 'Triagem',
+    AGUARDANDO_COLETA: 'Aguard. coleta',
     AGUARDANDO_PECA: 'Aguard. peca',
     CRITICA: 'Critica',
     FINALIZADA: 'Finalizada',

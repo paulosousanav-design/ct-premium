@@ -7,6 +7,7 @@ import { adminFetch } from '@/lib/admin-fetch'
 type DashboardStats = {
   osNovas: number
   emTriagem: number
+  aguardandoColeta: number
   emAtendimento: number
   aguardandoRevisao: number
   aguardandoPeca: number
@@ -74,7 +75,7 @@ type GarantidorFiltro = {
 
 type FiltroOrigemDashboard = 'TODOS' | 'CLIENTE' | 'GARANTIDOR'
 type PeriodoKpi = 'MES_ATUAL' | '30_DIAS' | '90_DIAS'
-type TomAndamento = 'blue' | 'amber' | 'emerald' | 'violet' | 'orange' | 'teal' | 'green' | 'rose'
+type TomAndamento = 'blue' | 'amber' | 'sky' | 'emerald' | 'violet' | 'orange' | 'teal' | 'green' | 'rose'
 type AndamentoItem = { label: string; value: number; href: string; tone: TomAndamento }
 
 type KpiResumo = {
@@ -126,6 +127,7 @@ const KPI_METAS_PADRAO: KpiMetas = {
 const STATUS_RAPIDOS = [
   { value: 'NOVA', label: 'Nova', className: 'border-slate-300 text-slate-700 hover:bg-slate-50', icon: UserIcon },
   { value: 'EM_TRIAGEM', label: 'Triagem', className: 'border-amber-300 text-amber-700 hover:bg-amber-50', icon: ListIcon },
+  { value: 'AGUARDANDO_COLETA', label: 'Coleta', className: 'border-orange-300 text-orange-700 hover:bg-orange-50', icon: ListIcon },
   { value: 'EM_ATENDIMENTO', label: 'Atendimento', className: 'border-emerald-300 text-emerald-700 hover:bg-emerald-50', icon: WrenchIcon },
   { value: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto/entrega', className: 'border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600', icon: CheckIcon },
   { value: 'AGUARDANDO_PECA', label: 'Aguard. Peça', className: 'border-violet-300 text-violet-700 hover:bg-violet-50', icon: SettingsIcon },
@@ -141,6 +143,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
     osNovas: 0,
     emTriagem: 0,
+    aguardandoColeta: 0,
     emAtendimento: 0,
     aguardandoRevisao: 0,
     aguardandoPeca: 0,
@@ -260,6 +263,7 @@ export default function DashboardPage() {
       setStats({
         osNovas: relatoriosResumo.osNovas,
         emTriagem: relatoriosResumo.emTriagem,
+        aguardandoColeta: relatoriosResumo.aguardandoColeta,
         emAtendimento: relatoriosResumo.emAtendimento,
         aguardandoRevisao: relatoriosResumo.aguardandoRevisao,
         aguardandoPeca: relatoriosResumo.aguardandoPeca,
@@ -376,6 +380,7 @@ export default function DashboardPage() {
     const itens: AndamentoItem[] = [
       { label: 'Novas', value: stats.osNovas, href: '/admin/os?status=NOVA', tone: 'blue' },
       { label: 'Triagem', value: stats.emTriagem, href: '/admin/os?status=EM_TRIAGEM', tone: 'amber' },
+      { label: 'Coleta', value: stats.aguardandoColeta, href: '/admin/os?status=AGUARDANDO_COLETA', tone: 'sky' },
       { label: 'Atendimento', value: stats.emAtendimento, href: '/admin/os?status=EM_ATENDIMENTO', tone: 'emerald' },
       { label: 'Peça', value: stats.aguardandoPeca, href: '/admin/os?status=AGUARDANDO_PECA', tone: 'violet' },
       { label: 'Revisão', value: stats.aguardandoRevisao, href: '/admin/os?status=AGUARDANDO_REVISAO', tone: 'orange' },
@@ -846,6 +851,7 @@ function AndamentoCard({
   const paleta: Record<TomAndamento, { borda: string; fundo: string; texto: string; barra: string; trilho: string }> = {
     blue: { borda: 'border-blue-300', fundo: 'bg-blue-50', texto: 'text-blue-700', barra: 'bg-blue-500', trilho: 'bg-blue-100' },
     amber: { borda: 'border-amber-300', fundo: 'bg-amber-50', texto: 'text-amber-700', barra: 'bg-amber-500', trilho: 'bg-amber-100' },
+    sky: { borda: 'border-sky-300', fundo: 'bg-sky-50', texto: 'text-sky-700', barra: 'bg-sky-500', trilho: 'bg-sky-100' },
     emerald: { borda: 'border-emerald-300', fundo: 'bg-emerald-50', texto: 'text-emerald-700', barra: 'bg-emerald-500', trilho: 'bg-emerald-100' },
     violet: { borda: 'border-violet-300', fundo: 'bg-violet-50', texto: 'text-violet-700', barra: 'bg-violet-500', trilho: 'bg-violet-100' },
     orange: { borda: 'border-orange-300', fundo: 'bg-orange-50', texto: 'text-orange-700', barra: 'bg-orange-500', trilho: 'bg-orange-100' },
@@ -1072,6 +1078,7 @@ async function carregarResumoRelatorios(
     return {
       osNovas: Number(cards.novas ?? 0) || 0,
       emTriagem: countStatus('EM_TRIAGEM'),
+      aguardandoColeta: countStatus('AGUARDANDO_COLETA'),
       emAtendimento: countStatus('EM_ATENDIMENTO'),
       prontoEntrega: countStatus('PRONTO_AGUARDANDO_ENTREGA'),
       aguardandoRevisao: countStatus('AGUARDANDO_REVISAO'),
@@ -1098,6 +1105,7 @@ async function carregarResumoRelatorios(
     return {
       osNovas: 0,
       emTriagem: 0,
+      aguardandoColeta: 0,
       emAtendimento: 0,
       aguardandoRevisao: 0,
       aguardandoPeca: 0,
@@ -1190,6 +1198,7 @@ function formatarStatusDashboard(status: string | null) {
   const nomes: Record<string, string> = {
     NOVA: 'Nova',
     EM_TRIAGEM: 'Triagem',
+    AGUARDANDO_COLETA: 'Aguardando coleta',
     EM_ATENDIMENTO: 'Em atendimento',
     AGUARDANDO_PECA: 'Aguardando peça',
     AGUARDANDO_REVISAO: 'Revisão',
@@ -1227,6 +1236,7 @@ function getEventColor(acao: string | null, statusNovo: string | null) {
   if (statusNovo === 'AGUARDANDO_PECA') return '#f59e0b'
   if (statusNovo === 'PRONTO_AGUARDANDO_ENTREGA') return '#10b981'
   if (statusNovo === 'EM_ATENDIMENTO') return '#22c55e'
+  if (statusNovo === 'AGUARDANDO_COLETA') return '#f97316'
   if (statusNovo === 'EM_TRIAGEM') return '#3b82f6'
   if (statusNovo === 'FINALIZADA') return '#16a34a'
   return '#94a3b8'

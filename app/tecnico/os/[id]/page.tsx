@@ -51,6 +51,7 @@ type FormState = {
 }
 
 const statusOptions = [
+  { value: 'AGUARDANDO_COLETA', label: 'Aguardando coleta' },
   { value: 'EM_ATENDIMENTO', label: 'Em atendimento' },
   { value: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto aguardando entrega' },
   { value: 'AGUARDANDO_REVISAO', label: 'Aguardando revisão do admin' },

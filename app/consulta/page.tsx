@@ -471,6 +471,7 @@ function formatarStatusOs(status?: string | null) {
   const labels: Record<string, string> = {
     NOVA: 'Recebido',
     EM_TRIAGEM: 'Em triagem',
+    AGUARDANDO_COLETA: 'Aguardando coleta',
     EM_ATENDIMENTO: 'Em atendimento',
     AGUARDANDO_APROVACAO: 'Aguardando aprovação',
     AGUARDANDO_PECA: 'Aguardando peça',
@@ -494,6 +495,7 @@ function textoDoAndamento(status: string | null, aguardandoDecisao: boolean, sem
   const textos: Record<string, string> = {
     NOVA: 'A equipe vai confirmar o atendimento.',
     EM_TRIAGEM: 'A equipe está verificando o chamado.',
+    AGUARDANDO_COLETA: 'A equipe vai coletar o equipamento.',
     EM_ATENDIMENTO: 'O técnico está com o serviço.',
     AGUARDANDO_APROVACAO: 'O orçamento está pronto para a sua decisão.',
     AGUARDANDO_PECA: 'O reparo segue quando a peça chegar.',

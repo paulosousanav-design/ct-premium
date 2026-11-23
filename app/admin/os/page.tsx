@@ -205,6 +205,7 @@ const STATUS_FILTROS = [
   { value: 'TODAS', label: 'Todas' },
   { value: 'NOVA', label: 'Novas' },
   { value: 'EM_TRIAGEM', label: 'Triagem' },
+  { value: 'AGUARDANDO_COLETA', label: 'Aguard. coleta' },
   { value: 'EM_ATENDIMENTO', label: 'Atendimento' },
   { value: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto/entrega' },
   { value: 'AGUARDANDO_REVISAO', label: 'Revisao admin' },
@@ -216,6 +217,7 @@ const STATUS_FILTROS = [
 const STATUS_BOARD = [
   { value: 'NOVA', label: 'Novas', accent: 'bg-slate-500' },
   { value: 'EM_TRIAGEM', label: 'Triagem', accent: 'bg-amber-500' },
+  { value: 'AGUARDANDO_COLETA', label: 'Aguardando coleta', accent: 'bg-orange-500' },
   { value: 'EM_ATENDIMENTO', label: 'Atendimento', accent: 'bg-blue-500' },
   { value: 'PRONTO_AGUARDANDO_ENTREGA', label: 'Pronto / Entrega', accent: 'bg-emerald-500' },
   { value: 'AGUARDANDO_REVISAO', label: 'Revisao Admin', accent: 'bg-indigo-500' },
@@ -1389,6 +1391,7 @@ export default function OrdensServicoPage() {
                 <option value="TODAS">Todas</option>
                 <option value="NOVA">Nova</option>
                 <option value="EM_TRIAGEM">Em Triagem</option>
+                <option value="AGUARDANDO_COLETA">Aguardando coleta</option>
                 <option value="EM_ATENDIMENTO">Em Atendimento</option>
                 <option value="PRONTO_AGUARDANDO_ENTREGA">Pronto aguardando entrega</option>
                 <option value="AGUARDANDO_REVISAO">Revisão da equipe</option>
@@ -1507,6 +1510,7 @@ export default function OrdensServicoPage() {
                       >
                         <option value="NOVA">Nova</option>
                         <option value="EM_TRIAGEM">Em Triagem</option>
+                        <option value="AGUARDANDO_COLETA">Aguardando coleta</option>
                         <option value="EM_ATENDIMENTO">Em Atendimento</option>
                         <option value="PRONTO_AGUARDANDO_ENTREGA">Pronto aguardando entrega</option>
                         <option value="AGUARDANDO_APROVACAO">Aguardando Aprovação</option>
@@ -1761,6 +1765,7 @@ function KanbanOSBoard({
             >
               <option value="NOVA">Nova</option>
               <option value="EM_TRIAGEM">Em Triagem</option>
+              <option value="AGUARDANDO_COLETA">Aguardando coleta</option>
               <option value="EM_ATENDIMENTO">Em Atendimento</option>
               <option value="PRONTO_AGUARDANDO_ENTREGA">Pronto aguardando entrega</option>
               <option value="AGUARDANDO_APROVACAO">Aguard. Aprov.</option>
@@ -1916,6 +1921,7 @@ function KanbanOSBoard({
                     >
                       <option value="NOVA">Nova</option>
                       <option value="EM_TRIAGEM">Em Triagem</option>
+                      <option value="AGUARDANDO_COLETA">Aguardando coleta</option>
                       <option value="EM_ATENDIMENTO">Em Atendimento</option>
                       <option value="PRONTO_AGUARDANDO_ENTREGA">Pronto aguardando entrega</option>
                       <option value="AGUARDANDO_APROVACAO">Aguardando Aprovação</option>
@@ -2119,6 +2125,8 @@ function StatusBadge({ status }: { status: string }) {
         ? 'bg-blue-100 text-blue-700'
         : status === 'EM_TRIAGEM'
           ? 'bg-amber-100 text-amber-700'
+          : status === 'AGUARDANDO_COLETA'
+            ? 'bg-orange-100 text-orange-700'
           : status === 'PRONTO_AGUARDANDO_ENTREGA'
             ? 'bg-emerald-100 text-emerald-700'
           : status === 'AGUARDANDO_APROVACAO'
@@ -2136,6 +2144,7 @@ function formatarStatusOs(status?: string | null) {
   const labels: Record<string, string> = {
     NOVA: 'Nova',
     EM_TRIAGEM: 'Em triagem',
+    AGUARDANDO_COLETA: 'Aguardando coleta',
     EM_ATENDIMENTO: 'Em atendimento',
     AGUARDANDO_REVISAO: 'Revisao admin',
     AGUARDANDO_APROVACAO: 'Aguardando aprovacao',

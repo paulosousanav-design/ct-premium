@@ -19,11 +19,12 @@ export type TempoReparo = {
 }
 
 const STATUS_REPARO = new Set(['EM_ATENDIMENTO'])
-const STATUS_PARADO = new Set(['AGUARDANDO_PECA', 'AGUARDANDO_APROVACAO', 'AGUARDANDO_REVISAO', 'CRITICA'])
+const STATUS_PARADO = new Set(['AGUARDANDO_COLETA', 'AGUARDANDO_PECA', 'AGUARDANDO_APROVACAO', 'AGUARDANDO_REVISAO', 'CRITICA'])
 const STATUS_FIM = new Set(['FINALIZADA', 'ENCERRADA_SEM_REPARO'])
 
 const ROTULOS: Record<string, string> = {
   EM_ATENDIMENTO: 'Em atendimento',
+  AGUARDANDO_COLETA: 'Aguardando coleta',
   AGUARDANDO_PECA: 'Aguardando peça',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
   AGUARDANDO_REVISAO: 'Aguardando revisão',

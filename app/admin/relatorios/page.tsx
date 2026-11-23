@@ -1128,6 +1128,7 @@ function formatStatus(status?: string | null) {
   const map: Record<string, string> = {
     NOVA: 'Nova',
     EM_TRIAGEM: 'Em triagem',
+    AGUARDANDO_COLETA: 'Aguardando coleta',
     EM_ATENDIMENTO: 'Em atendimento',
     PRONTO_AGUARDANDO_ENTREGA: 'Pronto aguardando entrega',
     AGUARDANDO_APROVACAO: 'Aguard. aprovacao',

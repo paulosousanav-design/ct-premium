@@ -174,7 +174,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Informe OS e tecnico autenticado.' }, { status: 400 })
     }
 
-    if (!['EM_ATENDIMENTO', 'AGUARDANDO_REVISAO', 'AGUARDANDO_PECA', 'PRONTO_AGUARDANDO_ENTREGA', 'CRITICA'].includes(status)) {
+    if (!['AGUARDANDO_COLETA', 'EM_ATENDIMENTO', 'AGUARDANDO_REVISAO', 'AGUARDANDO_PECA', 'PRONTO_AGUARDANDO_ENTREGA', 'CRITICA'].includes(status)) {
       return NextResponse.json({ error: 'Status invalido para atendimento tecnico.' }, { status: 400 })
     }
 
